@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Invoice {{ inv.invoice_no }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="pinv">
+  <div class="pinv-head">
+    <div class="pinv-firm">
+      <h2>{{ settings.firm_name or "My Firm" }}</h2>
+      <p>{{ settings.address }}</p>
+      <p>{% if settings.phone %}Phone: {{ settings.phone }}{% endif %}</p>
+    </div>
+    <div class="pinv-meta">
+      <div class="lbl">Invoice No.</div>
+      <div class="inv-no">{{ inv.invoice_no }}</div>
+      <div class="lbl">Date</div>
+      <div>{{ inv.date }}</div>
+    </div>
+  </div>
+
+  <div class="pinv-billto">
+    <div>
+      <div class="lbl">Bill To</div>
+      <div style="font-weight:600;">{{ inv.customer.name }}</div>
+      <div style="font-size:12px;color:#5B6378;">{{ inv.customer.address }}</div>
+      <div style="font-size:12px;color:#5B6378;">
+        {% if inv.customer.phone %}Ph: {{ inv.customer.phone }}{% endif %}
+      </div>
+    </div>
+    <div class="stamp {{ inv.payment_status }}">{{ inv.payment_status }}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Description</th><th class="amt">Qty</th><th class="amt">Rate</th><th class="amt">Amount</th></tr>
+    </thead>
+    <tbody>
+      {% for li in inv.items %}
+      <tr>
+        <td>{{ li.description }}</td>
+        <td class="amt">{{ li.qty }} {{ li.unit }}</td>
+        <td class="amt">₹{{ "%.2f"|format(li.rate) }}</td>
+        <td class="amt">₹{{ "%.2f"|format(li.line_total) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pinv-totals">
+    <div class="inner">
+      <div class="row"><span>Subtotal</span><span>₹{{ "%.2f"|format(inv.subtotal) }}</span></div>
+      <div class="row"><span>Discount</span><span>- ₹{{ "%.2f"|format(inv.discount_amount) }}</span></div>
+      <div class="row"><span>Other Charges</span><span>₹{{ "%.2f"|format(inv.other_charges) }}</span></div>
+      <div class="row grand"><span>Grand Total</span><span>₹{{ "%.2f"|format(inv.grand_total) }}</span></div>
+      {% if inv.payment_status == 'partial' %}
+      <div class="row"><span>Received</span><span>₹{{ "%.2f"|format(inv.amount_received) }}</span></div>
+      <div class="row"><span>Balance Due</span><span>₹{{ "%.2f"|format(inv.grand_total - inv.amount_received) }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="pinv-footer">
+    <div class="terms">{{ inv.notes }}</div>
+    <div style="text-align:right;font-size:11.5px;color:#5B6378;">
+      {% if settings.bank_name %}<div>Bank: {{ settings.bank_name }}</div>{% endif %}
+      {% if settings.bank_acc %}<div>A/c No: {{ settings.bank_acc }}</div>{% endif %}
+      {% if settings.ifsc %}<div>IFSC: {{ settings.ifsc }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="print-trigger no-print">
+  <button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
+  <a class="btn btn-ghost" href="{{ url_for('invoices') }}">Back to Invoices</a>
+</div>
+
+</body>
+</html>

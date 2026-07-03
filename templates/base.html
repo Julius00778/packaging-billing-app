@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ firm_settings.firm_name or "Firm Billing" }} — {% block title %}{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar no-print">
+  <div class="brand">
+    <h1>{{ firm_settings.firm_name or "My Firm" }}</h1>
+    <span class="tagline">Billing &amp; Invoices</span>
+  </div>
+  <nav class="tabs">
+    <a class="tab-btn {% if active=='dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
+    <a class="tab-btn {% if active=='invoices' %}active{% endif %}" href="{{ url_for('invoices') }}">Invoices</a>
+    <a class="tab-btn {% if active=='customers' %}active{% endif %}" href="{{ url_for('customers') }}">Customers</a>
+    <a class="tab-btn {% if active=='items' %}active{% endif %}" href="{{ url_for('items') }}">Items / Stock</a>
+    {% if current_user.is_authenticated and current_user.is_owner %}
+    <a class="tab-btn {% if active=='settings' %}active{% endif %}" href="{{ url_for('settings_page') }}">Settings</a>
+    <a class="tab-btn {% if active=='users' %}active{% endif %}" href="{{ url_for('users_page') }}">Users</a>
+    {% endif %}
+  </nav>
+  {% if current_user.is_authenticated %}
+  <div class="user-pill">
+    <span>{{ current_user.name }} <span class="badge {{ current_user.role }}">{{ current_user.role }}</span></span>
+    <a href="{{ url_for('logout') }}">Logout</a>
+  </div>
+  {% endif %}
+</header>
+
+<main class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

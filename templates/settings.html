@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% set active = "settings" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+
+<div class="card panel-pad">
+  <h2 class="section-title">Firm Settings</h2>
+  <p class="section-sub">Ye details invoice ke header/footer me print hongi. GSTIN/State abhi optional hai — Phase 2 me GST add hone par use hoga.</p>
+  <form method="POST">
+    <div class="form-grid">
+      <div class="field"><label>Firm Name</label><input type="text" name="firm_name" value="{{ s.firm_name }}"></div>
+      <div class="field"><label>Phone</label><input type="text" name="phone" value="{{ s.phone }}"></div>
+    </div>
+    <div class="field"><label>Address</label><input type="text" name="address" value="{{ s.address }}"></div>
+    <div class="form-grid">
+      <div class="field"><label>GSTIN (optional, future use)</label><input type="text" name="gstin" value="{{ s.gstin }}"></div>
+      <div class="field">
+        <label>Firm's State (optional, future use)</label>
+        <select name="state">
+          <option value="">-- Select State --</option>
+          {% for st in state_names %}
+            <option value="{{ st }}" {% if st==s.state %}selected{% endif %}>{{ st }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="form-grid three">
+      <div class="field"><label>Bank Name</label><input type="text" name="bank_name" value="{{ s.bank_name }}"></div>
+      <div class="field"><label>Account No.</label><input type="text" name="bank_acc" value="{{ s.bank_acc }}"></div>
+      <div class="field"><label>IFSC</label><input type="text" name="ifsc" value="{{ s.ifsc }}"></div>
+    </div>
+    <div class="divider"></div>
+    <div class="form-grid">
+      <div class="field"><label>Invoice Number Prefix</label><input type="text" name="invoice_prefix" value="{{ s.invoice_prefix }}"></div>
+      <div class="field"><label>Next Invoice Number</label><input type="number" name="next_invoice_no" value="{{ s.next_invoice_no }}"></div>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" type="submit">Save Settings</button></div>
+  </form>
+</div>
+
+{% endblock %}

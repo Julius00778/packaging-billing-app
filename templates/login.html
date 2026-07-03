@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Firm Billing</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="card">
+    <h1>Login</h1>
+    <p class="sub">Apne username aur password se login karein.</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    <form method="POST">
+      <div class="field"><label>Username</label><input type="text" name="username" required autofocus></div>
+      <div class="field"><label>Password</label><input type="password" name="password" required></div>
+      <div class="btn-row"><button class="btn btn-primary" type="submit" style="width:100%;">Login</button></div>
+    </form>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% set active = "items" %}
+{% block title %}Items & Stock{% endblock %}
+{% block content %}
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+  <h2 class="section-title">Add Item (Finished Good)</h2>
+  <p class="section-sub">Hardware kit box, LD pouch, blister pack, bubble wrap roll — jo bhi bechte hain</p>
+  <form method="POST">
+    <div class="form-grid three">
+      <div class="field"><label>Item Name *</label><input type="text" name="name" required></div>
+      <div class="field"><label>Unit</label><input type="text" name="unit" value="pcs" list="unitList"></div>
+      <div class="field"><label>Sale Price (₹)</label><input type="number" step="0.01" name="sale_price" value="0"></div>
+    </div>
+    <div class="form-grid three">
+      <div class="field"><label>Opening Stock</label><input type="number" step="0.01" name="current_stock" value="0"></div>
+      <div class="field"><label>Reorder Level (alert below this)</label><input type="number" step="0.01" name="reorder_level" value="0"></div>
+      <div class="checkbox-row" style="margin-top:28px;">
+        <input type="checkbox" name="track_stock" id="track_stock" checked>
+        <label for="track_stock" style="margin:0;">Track stock for this item</label>
+      </div>
+    </div>
+    <datalist id="unitList">
+      <option value="pcs"><option value="kg"><option value="box"><option value="set">
+      <option value="mtr"><option value="ltr"><option value="roll"><option value="sheet">
+    </datalist>
+    <div class="btn-row"><button class="btn btn-primary" type="submit">Add Item</button></div>
+  </form>
+</div>
+
+<div class="card panel-pad">
+  <h2 class="section-title">All Items</h2>
+  <div class="toolbar">
+    <form method="GET" style="display:flex;gap:10px;flex:1;">
+      <input type="text" name="q" value="{{ q }}" placeholder="Search item...">
+      <button class="btn btn-ghost" type="submit">Search</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Unit</th><th>Price</th><th>Stock</th><th></th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.name }}</td>
+          <td>{{ it.unit }}</td>
+          <td class="num">₹{{ "%.2f"|format(it.sale_price) }}</td>
+          <td class="num {% if it.track_stock and it.current_stock <= it.reorder_level %}badge unpaid{% endif %}">
+            {% if it.track_stock %}{{ "%.2f"|format(it.current_stock) }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_item', iid=it.id) }}">Edit</a>
+            {% if it.track_stock %}
+            <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('stockModal{{it.id}}').style.display='flex'">+ Stock</button>
+            {% endif %}
+            {% if current_user.is_owner %}
+            <form method="POST" action="{{ url_for('delete_item', iid=it.id) }}" style="display:inline;" onsubmit="return confirm('Delete this item?');">
+              <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not items %}
+    <div class="empty-state"><div class="big">Koi item nahi hai abhi</div><div>Upar form se naya item add karein.</div></div>
+  {% endif %}
+</div>
+
+{% for it in items %}
+<div id="stockModal{{it.id}}" style="display:none;position:fixed;inset:0;background:rgba(28,37,65,0.5);align-items:center;justify-content:center;z-index:50;">
+  <div class="card panel-pad" style="width:320px;">
+    <h3 style="font-size:15px;margin-bottom:14px;">Add Stock — {{ it.name }}</h3>
+    <form method="POST" action="{{ url_for('add_stock', iid=it.id) }}">
+      <div class="field"><label>Quantity ({{ it.unit }}) — negative for adjustment/wastage</label><input type="number" step="0.01" name="qty" required></div>
+      <div class="field"><label>Note</label><input type="text" name="note" placeholder="e.g. Purchase from supplier"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <button class="btn btn-ghost" type="button" onclick="document.getElementById('stockModal{{it.id}}').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

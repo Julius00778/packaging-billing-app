@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% set active = "invoices" %}
+{% block title %}{% if invoice %}Edit Invoice{% else %}New Invoice{% endif %}{% endblock %}
+{% block content %}
+
+<div class="card panel-pad">
+  <h2 class="section-title">{% if invoice %}Edit Invoice — {{ invoice.invoice_no }}{% else %}New Invoice{% endif %}</h2>
+  <p class="section-sub">Customer aur items fill karein</p>
+
+  <form method="POST" id="invForm">
+    <div class="form-grid three">
+      <div class="field">
+        <label>Invoice No.</label>
+        <input type="text" name="invoice_no" id="f_invoiceNo" value="{{ invoice.invoice_no if invoice else next_invoice_no }}">
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="date" name="date" id="f_date" value="{{ invoice.date if invoice else today }}">
+      </div>
+      <div class="field">
+        <label>Payment Status</label>
+        <div class="status-pills" id="statusPills">
+          <div class="status-pill unpaid {% if not invoice or invoice.payment_status=='unpaid' %}active{% endif %}" data-status="unpaid">Unpaid</div>
+          <div class="status-pill partial {% if invoice and invoice.payment_status=='partial' %}active{% endif %}" data-status="partial">Partial</div>
+          <div class="status-pill paid {% if invoice and invoice.payment_status=='paid' %}active{% endif %}" data-status="paid">Paid</div>
+        </div>
+        <input type="hidden" name="payment_status" id="f_status" value="{{ invoice.payment_status if invoice else 'unpaid' }}">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Customer *</label>
+      <select id="f_customer" name="customer_id" required>
+        <option value="">-- Select Customer --</option>
+        {% for c in customers %}
+          <option value="{{ c.id }}" {% if invoice and invoice.customer_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <div style="font-size:12px;color:var(--ink-faint);">Naya customer? <a href="{{ url_for('customers') }}" target="_blank">Yahan add karein</a> aur is page ko refresh karein.</div>
+    </div>
+
+    <div class="divider"></div>
+    <h3 style="font-size:14px;margin-bottom:10px;">Items</h3>
+    <div class="table-wrap">
+      <table class="items-table">
+        <thead>
+          <tr><th style="width:26%">Item</th><th style="width:24%">Description</th><th style="width:12%">Qty</th><th style="width:12%">Unit</th><th style="width:13%">Rate</th><th style="width:13%">Amount</th><th></th></tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+    </div>
+    <button class="add-row-btn" type="button" id="addRowBtn">+ Add Item</button>
+
+    <div class="totals-box">
+      <div class="totals-inner">
+        <div class="totals-row"><span>Subtotal</span><span class="val mono" id="t_subtotal">₹0.00</span></div>
+        <div class="totals-row">
+          <span>Discount</span>
+          <span style="display:flex;gap:6px;">
+            <input type="number" id="f_discountVal" name="discount_value" value="{{ invoice.discount_value if invoice else 0 }}" min="0" step="0.01">
+            <select id="f_discountType" name="discount_type">
+              <option value="amount" {% if invoice and invoice.discount_type=='amount' %}selected{% endif %}>₹</option>
+              <option value="percent" {% if invoice and invoice.discount_type=='percent' %}selected{% endif %}>%</option>
+            </select>
+          </span>
+        </div>
+        <div class="totals-row"><span>Other Charges (freight/packing)</span><input type="number" id="f_otherCharges" name="other_charges" value="{{ invoice.other_charges if invoice else 0 }}" min="0" step="0.01"></div>
+        <div class="totals-row" id="amountReceivedRow" style="display:none;">
+          <span>Amount Received</span>
+          <input type="number" id="f_amountReceived" name="amount_received" value="{{ invoice.amount_received if invoice else 0 }}" min="0" step="0.01">
+        </div>
+        <div class="totals-row grand"><span>Grand Total</span><span class="val" id="t_grandTotal">₹0.00</span></div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:14px;">
+      <label>Notes / Terms (printed on invoice)</label>
+      <textarea name="notes">{{ invoice.notes if invoice else "" }}</textarea>
+    </div>
+
+    <input type="hidden" name="items_json" id="itemsJson">
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Save Invoice</button>
+      <a class="btn btn-ghost" href="{{ url_for('invoices') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<datalist id="unitList">
+  <option value="pcs"><option value="kg"><option value="box"><option value="set">
+  <option value="mtr"><option value="ltr"><option value="roll"><option value="sheet">
+</datalist>
+
+<script>
+let ITEM_MASTER = [];
+let rows = [];
+
+// Pre-fill rows when editing (gst_rate kept at 0 internally — not shown, used in Phase 2)
+{% if invoice %}
+rows = [
+  {% for li in invoice.items %}
+  {item_id: {{ li.item_id or 'null' }}, description: {{ li.description|tojson }}, qty: {{ li.qty }}, unit: {{ li.unit|tojson }}, rate: {{ li.rate }}, gst_rate: 0},
+  {% endfor %}
+];
+{% endif %}
+
+if(rows.length === 0){
+  rows = [{item_id:null, description:'', qty:1, unit:'pcs', rate:0, gst_rate:0}];
+}
+
+let currentStatus = {{ (invoice.payment_status if invoice else 'unpaid')|tojson }};
+
+function escapeAttr(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+async function loadItemMaster(){
+  try{
+    const res = await fetch("{{ url_for('api_items') }}");
+    ITEM_MASTER = await res.json();
+  }catch(e){ ITEM_MASTER = []; }
+  renderRows();
+}
+
+function renderRows(){
+  const body = document.getElementById('itemsBody');
+  body.innerHTML = '';
+  rows.forEach((r,i)=>{
+    const amount = (parseFloat(r.qty)||0)*(parseFloat(r.rate)||0);
+    const tr = document.createElement('tr');
+    const options = ['<option value="">-- custom --</option>'].concat(
+      ITEM_MASTER.map(it=>`<option value="${it.id}" ${String(r.item_id)===String(it.id)?'selected':''}>${escapeAttr(it.name)}</option>`)
+    ).join('');
+    tr.innerHTML = `
+      <td><select data-idx="${i}" data-field="item_id">${options}</select></td>
+      <td><input type="text" value="${escapeAttr(r.description)}" data-idx="${i}" data-field="description" placeholder="Item description"></td>
+      <td><input type="number" min="0" step="0.01" value="${r.qty}" data-idx="${i}" data-field="qty"></td>
+      <td><input type="text" list="unitList" value="${escapeAttr(r.unit)}" data-idx="${i}" data-field="unit"></td>
+      <td><input type="number" min="0" step="0.01" value="${r.rate}" data-idx="${i}" data-field="rate"></td>
+      <td class="num mono">₹${amount.toFixed(2)}</td>
+      <td><button class="icon-btn" type="button" data-remove="${i}">✕</button></td>
+    `;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll('select[data-field="item_id"]').forEach(sel=>{
+    sel.addEventListener('change', (e)=>{
+      const idx = parseInt(e.target.dataset.idx);
+      const itemId = e.target.value;
+      rows[idx].item_id = itemId || null;
+      if(itemId){
+        const it = ITEM_MASTER.find(x=>String(x.id)===String(itemId));
+        if(it){
+          rows[idx].description = it.name;
+          rows[idx].unit = it.unit;
+          rows[idx].rate = it.rate;
+        }
+      }
+      renderRows();
+      recalc();
+    });
+  });
+
+  body.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', (e)=>{
+      const idx = parseInt(e.target.dataset.idx);
+      const field = e.target.dataset.field;
+      let val = e.target.value;
+      if(field==='qty'||field==='rate') val = parseFloat(val)||0;
+      rows[idx][field] = val;
+      const amt = (parseFloat(rows[idx].qty)||0)*(parseFloat(rows[idx].rate)||0);
+      e.target.closest('tr').querySelector('td.num').textContent = '₹'+amt.toFixed(2);
+      recalc();
+    });
+  });
+
+  body.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      rows.splice(parseInt(btn.dataset.remove),1);
+      if(rows.length===0) rows.push({item_id:null, description:'', qty:1, unit:'pcs', rate:0, gst_rate:0});
+      renderRows();
+      recalc();
+    });
+  });
+}
+
+function recalc(){
+  let subtotal = 0;
+  rows.forEach(r=> subtotal += (parseFloat(r.qty)||0)*(parseFloat(r.rate)||0));
+
+  const discType = document.getElementById('f_discountType').value;
+  const discVal = parseFloat(document.getElementById('f_discountVal').value)||0;
+  const discountAmount = Math.min(subtotal, discType==='percent' ? subtotal*discVal/100 : discVal);
+  const otherCharges = parseFloat(document.getElementById('f_otherCharges').value)||0;
+
+  const grandTotal = Math.max(0, subtotal - discountAmount) + otherCharges;
+
+  document.getElementById('t_subtotal').textContent = '₹'+subtotal.toFixed(2);
+  document.getElementById('t_grandTotal').textContent = '₹'+grandTotal.toFixed(2);
+
+  if(currentStatus==='paid'){
+    document.getElementById('f_amountReceived').value = grandTotal.toFixed(2);
+  }
+  return grandTotal;
+}
+
+document.getElementById('addRowBtn').addEventListener('click', ()=>{
+  rows.push({item_id:null, description:'', qty:1, unit:'pcs', rate:0, gst_rate:0});
+  renderRows();
+});
+
+document.getElementById('f_discountVal').addEventListener('input', recalc);
+document.getElementById('f_discountType').addEventListener('change', recalc);
+document.getElementById('f_otherCharges').addEventListener('input', recalc);
+
+document.querySelectorAll('.status-pill').forEach(p=>{
+  p.addEventListener('click', ()=>{
+    currentStatus = p.dataset.status;
+    document.getElementById('f_status').value = currentStatus;
+    document.querySelectorAll('.status-pill').forEach(x=>x.classList.toggle('active', x===p));
+    document.getElementById('amountReceivedRow').style.display = currentStatus==='partial' ? 'flex' : 'none';
+    if(currentStatus==='unpaid') document.getElementById('f_amountReceived').value = 0;
+    recalc();
+  });
+});
+
+document.getElementById('invForm').addEventListener('submit', (e)=>{
+  const custSel = document.getElementById('f_customer');
+  if(!custSel.value){ alert('Customer select karein'); e.preventDefault(); return; }
+  const valid = rows.filter(r=> r.description && r.description.trim() && (parseFloat(r.qty)||0) > 0);
+  if(valid.length===0){ alert('Kam se kam ek valid item add karein'); e.preventDefault(); return; }
+  document.getElementById('itemsJson').value = JSON.stringify(rows);
+});
+
+loadItemMaster();
+</script>
+
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% set active = "users" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+  <h2 class="section-title">Add User</h2>
+  <p class="section-sub">Owner = full access. Staff = invoice/customer/item bana sakta hai, settings nahi dekh sakta.</p>
+  <form method="POST">
+    <div class="form-grid three">
+      <div class="field"><label>Name *</label><input type="text" name="name" required></div>
+      <div class="field"><label>Username *</label><input type="text" name="username" required></div>
+      <div class="field"><label>Password * (min 6 chars)</label><input type="password" name="password" required></div>
+    </div>
+    <div class="field" style="max-width:220px;">
+      <label>Role</label>
+      <select name="role">
+        <option value="staff">Staff</option>
+        <option value="owner">Owner</option>
+      </select>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" type="submit">Add User</button></div>
+  </form>
+</div>
+
+<div class="card panel-pad">
+  <h2 class="section-title">All Users</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.name }}</td>
+          <td class="mono">{{ u.username }}</td>
+          <td><span class="badge {{ u.role }}">{{ u.role }}</span></td>
+          <td><span class="badge {% if u.active %}staff{% else %}inactive{% endif %}">{{ 'Active' if u.active else 'Inactive' }}</span></td>
+          <td>
+            {% if u.id != current_user.id %}
+            <form method="POST" action="{{ url_for('toggle_user', uid=u.id) }}" style="display:inline;">
+              <button class="btn btn-ghost btn-sm" type="submit">{{ 'Deactivate' if u.active else 'Activate' }}</button>
+            </form>
+            {% else %}
+            <span style="font-size:12px;color:var(--ink-faint);">(you)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

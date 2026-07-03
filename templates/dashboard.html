@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="stat-grid">
+  <div class="card stat-card">
+    <div class="stat-label">Total Invoices</div>
+    <div class="stat-value mono">{{ count }}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-label">Total Billed</div>
+    <div class="stat-value mono">₹{{ "%.2f"|format(billed) }}</div>
+  </div>
+  <div class="card stat-card received">
+    <div class="stat-label">Received</div>
+    <div class="stat-value mono">₹{{ "%.2f"|format(received) }}</div>
+  </div>
+  <div class="card stat-card pending">
+    <div class="stat-label">Pending</div>
+    <div class="stat-value mono">₹{{ "%.2f"|format(pending) }}</div>
+  </div>
+</div>
+
+
+
+{% if low_stock %}
+<div class="card panel-pad" style="margin-bottom:20px;">
+  <h2 class="section-title">Low Stock Alert</h2>
+  <p class="section-sub">Reorder level se kam stock wale items</p>
+  {% for it in low_stock %}
+    <div class="low-stock-row">
+      <span>{{ it.name }}</span>
+      <span class="mono">{{ "%.2f"|format(it.current_stock) }} {{ it.unit }} (reorder at {{ "%.2f"|format(it.reorder_level) }})</span>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card panel-pad">
+  <h2 class="section-title">Recent Invoices</h2>
+  {% if recent %}
+    {% for inv in recent %}
+      <div class="low-stock-row">
+        <span>{{ inv.customer.name }} <span style="color:var(--ink-faint);">— {{ inv.invoice_no }} · {{ inv.date }}</span></span>
+        <span><span class="mono" style="font-weight:600;">₹{{ "%.2f"|format(inv.grand_total) }}</span> <span class="badge {{ inv.payment_status }}">{{ inv.payment_status }}</span></span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state"><div class="big">Koi invoice nahi hai abhi</div><div>"Invoices" tab se naya invoice banayein.</div></div>
+  {% endif %}
+</div>
+
+{% endblock %}
