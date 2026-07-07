@@ -18,7 +18,6 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key-in-production")
 
 db_url = os.environ.get("DATABASE_URL", "sqlite:///app.db")
-# Railway/Render sometimes give old-style postgres:// URLs; SQLAlchemy needs postgresql://
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
@@ -35,6 +34,10 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
+def t(key):
+    return get_text(session.get("lang", "en"), key)
+
+
 def owner_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -43,10 +46,6 @@ def owner_required(f):
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return wrapper
-
-
-def t(key):
-    return get_text(session.get("lang", "en"), key)
 
 
 @app.context_processor
@@ -63,7 +62,6 @@ def set_lang(code):
     return redirect(request.referrer or url_for("dashboard"))
 
 
-# ---------------- setup / auth ----------------
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
     if User.query.count() > 0:
@@ -106,7 +104,6 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ---------------- dashboard ----------------
 @app.route("/")
 @login_required
 def dashboard():
@@ -131,7 +128,6 @@ def dashboard():
     )
 
 
-# ---------------- customers ----------------
 @app.route("/customers", methods=["GET", "POST"])
 @login_required
 def customers():
@@ -187,9 +183,6 @@ def delete_customer(cid):
         db.session.commit()
         flash(t("flash_customer_deleted"), "success")
     return redirect(url_for("customers"))
-
-
-# ---------------- items ----------------
 @app.route("/items", methods=["GET", "POST"])
 @login_required
 def items():
@@ -280,9 +273,7 @@ def api_items():
     } for i in rows])
 
 
-# ---------------- GST calculation helper ----------------
 def calc_invoice_totals(line_items, discount_type, discount_value, other_charges, firm_state, customer_state):
-    """line_items: list of dicts with qty, rate, gst_rate. Returns computed totals + per-line tax."""
     subtotal = sum((li["qty"] * li["rate"]) for li in line_items)
     if discount_type == "percent":
         discount_amount = subtotal * (discount_value / 100.0)
@@ -325,7 +316,6 @@ def calc_invoice_totals(line_items, discount_type, discount_value, other_charges
     }
 
 
-# ---------------- invoices ----------------
 @app.route("/invoices")
 @login_required
 def invoices():
@@ -357,8 +347,6 @@ def edit_invoice(invid):
         return _save_invoice(inv, settings)
     return render_template("invoice_form.html", invoice=inv, next_invoice_no=inv.invoice_no,
                            customers=Customer.query.order_by(Customer.name).all())
-
-
 def _save_invoice(existing_invoice, settings):
     customer_id = request.form.get("customer_id")
     customer = Customer.query.get(int(customer_id)) if customer_id else None
@@ -404,7 +392,6 @@ def _save_invoice(existing_invoice, settings):
         amount_received = 0.0
 
     if existing_invoice:
-        # restore stock from old lines before replacing
         for old_li in existing_invoice.items:
             if old_li.item_id:
                 item = Item.query.get(old_li.item_id)
@@ -481,7 +468,6 @@ def print_invoice(invid):
     return render_template("invoice_print.html", inv=inv, settings=settings)
 
 
-# ---------------- settings & users (owner only) ----------------
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
 @owner_required
@@ -540,12 +526,7 @@ def toggle_user(uid):
         db.session.commit()
         flash(t("flash_user_status_updated"), "success")
     return redirect(url_for("users_page"))
-
-
-# ---------------- accounts module ----------------
-
 def customer_ledger_entries(customer):
-    """Merge invoices + payments into one chronological list with a running balance."""
     entries = []
     for inv in Invoice.query.filter_by(customer_id=customer.id).all():
         entries.append({
@@ -721,10 +702,26 @@ def reports_page():
         month_billed=month_billed, month_received=month_received, month_expense_total=month_expense_total,
         net_position=month_received - month_expense_total,
     )
+def _run_startup_migrations():
+    # db.create_all() only creates tables that do not exist yet. It will NOT add a
+    # new column to a table that already exists in production, e.g. the
+    # Customer.opening_balance column on an already-created customer table.
+    # This adds any missing columns safely on both SQLite and Postgres, then
+    # creates any brand-new tables.
+    from sqlalchemy import inspect, text
+    inspector = inspect(db.engine)
+    existing_tables = inspector.get_table_names()
+    if "customer" in existing_tables:
+        cols = [c["name"] for c in inspector.get_columns("customer")]
+        if "opening_balance" not in cols:
+            with db.engine.connect() as conn:
+                conn.execute(text("ALTER TABLE customer ADD COLUMN opening_balance FLOAT DEFAULT 0.0"))
+                conn.commit()
+    db.create_all()
 
 
 with app.app_context():
-    db.create_all()
+    _run_startup_migrations()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
