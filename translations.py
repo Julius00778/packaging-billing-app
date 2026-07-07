@@ -93,6 +93,17 @@ TRANSLATIONS = {
         "note_ph": "e.g. Purchase from supplier",
         "edit_item": "Edit Item",
         "current_stock_hint": "Use the \"+ Stock\" button on the Items page to adjust",
+        "manage_categories": "Manage Categories",
+        "categories": "Categories",
+        "add_category": "Add Category",
+        "add_category_sub": "Group items by product type, e.g. Foam Boxes, LD Pouches, Blister Packs, Bubble Wrap",
+        "category_name": "Category Name",
+        "all_categories": "All Categories",
+        "no_category": "-- No Category --",
+        "no_categories_yet": "No categories yet",
+        "no_categories_hint": "Add a category above to start grouping items.",
+        "unit_other": "Other (type below)",
+        "unit_other_label": "Custom Unit",
 
         # invoices
         "new_invoice": "New Invoice",
@@ -147,7 +158,6 @@ TRANSLATIONS = {
         "deactivate": "Deactivate",
         "activate": "Activate",
         "you_marker": "(you)",
-
         # accounts module
         "accounts": "Accounts",
         "customer_khata": "Customer Ledger",
@@ -229,6 +239,11 @@ TRANSLATIONS = {
         "flash_expense_saved": "Expense recorded.",
         "flash_expense_invalid": "Please enter a valid amount.",
         "flash_expense_deleted": "Expense entry deleted.",
+        "flash_category_name_required": "Category name is required.",
+        "flash_category_exists": "This category already exists.",
+        "flash_category_added": "Category added.",
+        "flash_category_in_use": "This category has items assigned and cannot be deleted.",
+        "flash_category_deleted": "Category deleted.",
     },
     "hi": {
         "tagline": "बिलिंग और इनवॉइस",
@@ -315,6 +330,17 @@ TRANSLATIONS = {
         "note_ph": "जैसे: सप्लायर से खरीद",
         "edit_item": "सामान संपादित करें",
         "current_stock_hint": "समायोजित करने के लिए सामान पेज पर \"+ स्टॉक\" बटन का उपयोग करें",
+        "manage_categories": "श्रेणियाँ प्रबंधित करें",
+        "categories": "श्रेणियाँ",
+        "add_category": "श्रेणी जोड़ें",
+        "add_category_sub": "सामान को प्रकार के अनुसार समूहित करें, जैसे फोम बॉक्स, एलडी पाउच, ब्लिस्टर पैक, बबल रैप",
+        "category_name": "श्रेणी का नाम",
+        "all_categories": "सभी श्रेणियाँ",
+        "no_category": "-- कोई श्रेणी नहीं --",
+        "no_categories_yet": "अभी तक कोई श्रेणी नहीं है",
+        "no_categories_hint": "सामान समूहित करने के लिए ऊपर श्रेणी जोड़ें।",
+        "unit_other": "अन्य (नीचे लिखें)",
+        "unit_other_label": "कस्टम इकाई",
 
         "new_invoice": "नया इनवॉइस",
         "edit_invoice": "इनवॉइस संपादित करें",
@@ -366,7 +392,6 @@ TRANSLATIONS = {
         "deactivate": "निष्क्रिय करें",
         "activate": "सक्रिय करें",
         "you_marker": "(आप)",
-
         "accounts": "खाता",
         "customer_khata": "ग्राहक खाता",
         "khata_sub": "हर ग्राहक का चालू बैलेंस — इनवॉइस, भुगतान, सब कुछ एक जगह",
@@ -446,6 +471,11 @@ TRANSLATIONS = {
         "flash_expense_saved": "खर्च दर्ज हो गया।",
         "flash_expense_invalid": "कृपया सही राशि डालें।",
         "flash_expense_deleted": "खर्च प्रविष्टि हटा दी गई।",
+        "flash_category_name_required": "श्रेणी का नाम आवश्यक है।",
+        "flash_category_exists": "यह श्रेणी पहले से मौजूद है।",
+        "flash_category_added": "श्रेणी जुड़ गई।",
+        "flash_category_in_use": "इस श्रेणी में सामान है, हटाया नहीं जा सकता।",
+        "flash_category_deleted": "श्रेणी हटा दी गई।",
     },
 }
 

@@ -79,17 +79,27 @@ class Customer(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class Category(db.Model):
+    """Product category/group, e.g. 'Foam Boxes', 'LD Pouches', 'Blister Packs', 'Bubble Wrap'."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     hsn_code = db.Column(db.String(20), default="")
     unit = db.Column(db.String(20), default="pcs")
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), nullable=True)
     gst_rate = db.Column(db.Float, default=18.0)
     sale_price = db.Column(db.Float, default=0.0)
     current_stock = db.Column(db.Float, default=0.0)
     reorder_level = db.Column(db.Float, default=0.0)
     track_stock = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    category = db.relationship("Category")
 
 
 class StockEntry(db.Model):
@@ -149,7 +159,7 @@ class InvoiceItem(db.Model):
     line_total = db.Column(db.Float, default=0.0)
 
 
-# ---------------- Accounts module (new) ----------------
+# ---------------- Accounts module ----------------
 
 class Payment(db.Model):
     """Customer receipts — can be linked to an invoice or stand-alone (advance / old udhaari)."""

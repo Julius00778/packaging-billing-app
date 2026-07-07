@@ -3,16 +3,20 @@ import json
 from datetime import datetime, date
 from functools import wraps
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort, session, send_file
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
 
 from models import (
     db, User, Settings, Customer, Item, StockEntry, Invoice, InvoiceItem,
-    Payment, Vendor, Expense, STATE_NAMES
+    Payment, Vendor, Expense, Category, STATE_NAMES
 )
 from translations import get_text
+
+# Common packaging-firm units. Item.unit stays a free-text column — this list just
+# drives the dropdown; "Other" in the form reveals a text box for anything not listed.
+COMMON_UNITS = ["pcs", "box", "bundle", "roll", "kg", "mtr", "ltr", "dozen", "set", "sheet"]
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key-in-production")
@@ -183,6 +187,19 @@ def delete_customer(cid):
         db.session.commit()
         flash(t("flash_customer_deleted"), "success")
     return redirect(url_for("customers"))
+def _resolve_unit(form):
+    """Unit select sends either a common unit value, or 'other' + a free-text field."""
+    unit = form.get("unit", "pcs").strip()
+    if unit == "other":
+        unit = form.get("unit_other", "").strip() or "pcs"
+    return unit
+
+
+def _resolve_category_id(form):
+    cid = form.get("category_id") or ""
+    return int(cid) if cid.isdigit() else None
+
+
 @app.route("/items", methods=["GET", "POST"])
 @login_required
 def items():
@@ -190,7 +207,8 @@ def items():
         it = Item(
             name=request.form.get("name", "").strip(),
             hsn_code=request.form.get("hsn_code", "").strip(),
-            unit=request.form.get("unit", "pcs").strip(),
+            unit=_resolve_unit(request.form),
+            category_id=_resolve_category_id(request.form),
             gst_rate=float(request.form.get("gst_rate") or 0),
             sale_price=float(request.form.get("sale_price") or 0),
             current_stock=float(request.form.get("current_stock") or 0),
@@ -206,10 +224,17 @@ def items():
         return redirect(url_for("items"))
 
     q = request.args.get("q", "").strip().lower()
+    cat_filter = request.args.get("cat") or ""
     rows = Item.query.order_by(Item.name).all()
     if q:
         rows = [i for i in rows if q in i.name.lower()]
-    return render_template("items.html", items=rows, q=q)
+    if cat_filter.isdigit():
+        rows = [i for i in rows if i.category_id == int(cat_filter)]
+    elif cat_filter == "none":
+        rows = [i for i in rows if not i.category_id]
+    categories = Category.query.order_by(Category.name).all()
+    return render_template("items.html", items=rows, q=q, categories=categories,
+                           cat_filter=cat_filter, common_units=COMMON_UNITS)
 
 
 @app.route("/items/<int:iid>/edit", methods=["GET", "POST"])
@@ -219,7 +244,8 @@ def edit_item(iid):
     if request.method == "POST":
         it.name = request.form.get("name", "").strip()
         it.hsn_code = request.form.get("hsn_code", "").strip()
-        it.unit = request.form.get("unit", "pcs").strip()
+        it.unit = _resolve_unit(request.form)
+        it.category_id = _resolve_category_id(request.form)
         it.gst_rate = float(request.form.get("gst_rate") or 0)
         it.sale_price = float(request.form.get("sale_price") or 0)
         it.reorder_level = float(request.form.get("reorder_level") or 0)
@@ -227,7 +253,41 @@ def edit_item(iid):
         db.session.commit()
         flash(t("flash_item_updated"), "success")
         return redirect(url_for("items"))
-    return render_template("item_form.html", item=it)
+    categories = Category.query.order_by(Category.name).all()
+    return render_template("item_form.html", item=it, categories=categories, common_units=COMMON_UNITS)
+
+
+@app.route("/items/categories", methods=["GET", "POST"])
+@login_required
+def categories_page():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if not name:
+            flash(t("flash_category_name_required"), "error")
+        elif Category.query.filter(db.func.lower(Category.name) == name.lower()).first():
+            flash(t("flash_category_exists"), "error")
+        else:
+            db.session.add(Category(name=name))
+            db.session.commit()
+            flash(t("flash_category_added"), "success")
+        return redirect(url_for("categories_page"))
+    cats = Category.query.order_by(Category.name).all()
+    counts = {c.id: Item.query.filter_by(category_id=c.id).count() for c in cats}
+    return render_template("categories.html", categories=cats, counts=counts)
+
+
+@app.route("/items/categories/<int:cid>/delete", methods=["POST"])
+@login_required
+@owner_required
+def delete_category(cid):
+    c = Category.query.get_or_404(cid)
+    if Item.query.filter_by(category_id=c.id).first():
+        flash(t("flash_category_in_use"), "error")
+    else:
+        db.session.delete(c)
+        db.session.commit()
+        flash(t("flash_category_deleted"), "success")
+    return redirect(url_for("categories_page"))
 
 
 @app.route("/items/<int:iid>/delete", methods=["POST"])
@@ -271,8 +331,6 @@ def api_items():
         "gst_rate": i.gst_rate, "hsn_code": i.hsn_code or "",
         "stock": i.current_stock, "track_stock": i.track_stock
     } for i in rows])
-
-
 def calc_invoice_totals(line_items, discount_type, discount_value, other_charges, firm_state, customer_state):
     subtotal = sum((li["qty"] * li["rate"]) for li in line_items)
     if discount_type == "percent":
@@ -347,6 +405,8 @@ def edit_invoice(invid):
         return _save_invoice(inv, settings)
     return render_template("invoice_form.html", invoice=inv, next_invoice_no=inv.invoice_no,
                            customers=Customer.query.order_by(Customer.name).all())
+
+
 def _save_invoice(existing_invoice, settings):
     customer_id = request.form.get("customer_id")
     customer = Customer.query.get(int(customer_id)) if customer_id else None
@@ -468,6 +528,15 @@ def print_invoice(invid):
     return render_template("invoice_print.html", inv=inv, settings=settings)
 
 
+@app.route("/invoices/<int:invid>/pdf")
+@login_required
+def invoice_pdf(invid):
+    inv = Invoice.query.get_or_404(invid)
+    settings = Settings.get()
+    from invoice_pdf import build_invoice_pdf
+    buf = build_invoice_pdf(inv, settings, t)
+    return send_file(buf, mimetype="application/pdf", as_attachment=True,
+                      download_name=f"{inv.invoice_no}.pdf")
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
 @owner_required
@@ -526,6 +595,8 @@ def toggle_user(uid):
         db.session.commit()
         flash(t("flash_user_status_updated"), "success")
     return redirect(url_for("users_page"))
+
+
 def customer_ledger_entries(customer):
     entries = []
     for inv in Invoice.query.filter_by(customer_id=customer.id).all():
@@ -630,8 +701,6 @@ def vendors_page():
             flash(t("flash_vendor_added"), "success")
         return redirect(url_for("vendors_page"))
     return render_template("vendors.html", vendors=Vendor.query.order_by(Vendor.name).all())
-
-
 @app.route("/accounts/expenses", methods=["GET", "POST"])
 @login_required
 def expenses_page():
@@ -702,22 +771,32 @@ def reports_page():
         month_billed=month_billed, month_received=month_received, month_expense_total=month_expense_total,
         net_position=month_received - month_expense_total,
     )
-def _run_startup_migrations():
-    # db.create_all() only creates tables that do not exist yet. It will NOT add a
-    # new column to a table that already exists in production, e.g. the
-    # Customer.opening_balance column on an already-created customer table.
-    # This adds any missing columns safely on both SQLite and Postgres, then
-    # creates any brand-new tables.
-    from sqlalchemy import inspect, text
-    inspector = inspect(db.engine)
+
+
+def _add_column_if_missing(inspector, table, column, ddl):
+    """db.create_all() only creates tables that do not exist yet — it will NOT add a
+    new column to a table that already exists in production. This adds one column
+    safely (idempotent) on both SQLite and Postgres."""
+    from sqlalchemy import text
     existing_tables = inspector.get_table_names()
-    if "customer" in existing_tables:
-        cols = [c["name"] for c in inspector.get_columns("customer")]
-        if "opening_balance" not in cols:
-            with db.engine.connect() as conn:
-                conn.execute(text("ALTER TABLE customer ADD COLUMN opening_balance FLOAT DEFAULT 0.0"))
-                conn.commit()
+    if table not in existing_tables:
+        return
+    cols = [c["name"] for c in inspector.get_columns(table)]
+    if column in cols:
+        return
+    with db.engine.connect() as conn:
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+        conn.commit()
+
+
+def _run_startup_migrations():
+    from sqlalchemy import inspect
+    # Create any brand-new tables first (e.g. category) so the item.category_id
+    # foreign key below has somewhere valid to point.
     db.create_all()
+    inspector = inspect(db.engine)
+    _add_column_if_missing(inspector, "customer", "opening_balance", "opening_balance FLOAT DEFAULT 0.0")
+    _add_column_if_missing(inspector, "item", "category_id", "category_id INTEGER")
 
 
 with app.app_context():
