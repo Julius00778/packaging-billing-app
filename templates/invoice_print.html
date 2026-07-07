@@ -7,14 +7,20 @@
 </head>
 <body>
 
+{% macro render_copy(copy_label) %}
+<div class="pinv-half">
 <div class="pinv">
 <div class="pinv-head">
 <div class="pinv-firm">
 <h2>{{ settings.firm_name or "My Firm" }}</h2>
 <p>{{ settings.address }}</p>
-<p>{% if settings.phone %}Phone: {{ settings.phone }}{% endif %}</p>
+<p>
+{% if settings.phone %}Phone: {{ settings.phone }}{% endif %}
+{% if settings.gstin %} &nbsp;|&nbsp; GSTIN: {{ settings.gstin }}{% endif %}
+</p>
 </div>
 <div class="pinv-meta">
+<div class="copy-label">{{ copy_label }}</div>
 <div class="lbl">Invoice No.</div>
 <div class="inv-no">{{ inv.invoice_no }}</div>
 <div class="lbl">Date</div>
@@ -29,6 +35,7 @@
 <div style="font-size:12px;color:#5B6378;">{{ inv.customer.address }}</div>
 <div style="font-size:12px;color:#5B6378;">
 {% if inv.customer.phone %}Ph: {{ inv.customer.phone }}{% endif %}
+{% if inv.customer.gstin %} &nbsp;GSTIN: {{ inv.customer.gstin }}{% endif %}
 </div>
 </div>
 <div class="stamp {{ inv.payment_status }}">{{ inv.payment_status }}</div>
@@ -72,9 +79,18 @@
 </div>
 </div>
 </div>
+</div>
+{% endmacro %}
+
+<div class="pinv-page">
+{{ render_copy("PARTY COPY") }}
+<div class="cut-line no-print"><span>- - - - - - - - - - - - cut here - - - - - - - - - - - -</span></div>
+{{ render_copy("OFFICE COPY") }}
+</div>
 
 <div class="print-trigger no-print">
-<button class="btn btn-primary" onclick="window.print()">Print / Save as PDF</button>
+<button class="btn btn-primary" onclick="window.print()">Print (2 copies / A4)</button>
+<a class="btn btn-primary" href="{{ url_for('invoice_pdf', invid=inv.id) }}">Download PDF</a>
 <a class="btn btn-ghost" href="{{ url_for('invoices') }}">Back to Invoices</a>
 </div>
 

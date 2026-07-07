@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% set active = "items" %}
+{% block title %}{{ t('categories') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('items') }}">← {{ t('nav_items') }}</a>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('add_category') }}</h2>
+<p class="section-sub">{{ t('add_category_sub') }}</p>
+<form method="POST" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+<div class="field" style="flex:1;min-width:220px;"><label>{{ t('category_name') }} *</label><input type="text" name="name" required></div>
+<div class="btn-row" style="margin:0;"><button class="btn btn-primary" type="submit">{{ t('add_category') }}</button></div>
+</form>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('categories') }}</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('category_name') }}</th><th>{{ t('nav_items') }}</th><th></th></tr></thead>
+<tbody>
+{% for c in categories %}
+<tr>
+<td>{{ c.name }}</td>
+<td class="num">{{ counts.get(c.id, 0) }}</td>
+<td>
+{% if current_user.is_owner %}
+<form method="POST" action="{{ url_for('delete_category', cid=c.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('confirm_delete') }}');">
+<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
+</form>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not categories %}
+<div class="empty-state"><div class="big">{{ t('no_categories_yet') }}</div><div>{{ t('no_categories_hint') }}</div></div>
+{% endif %}
+</div>
+
+{% endblock %}

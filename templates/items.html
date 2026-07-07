@@ -4,26 +4,48 @@
 {% block content %}
 
 <div class="card panel-pad" style="margin-bottom:20px;">
-<h2 class="section-title">{{ t('add_item') }}</h2>
+<div class="toolbar" style="margin-bottom:2px;">
+<h2 class="section-title" style="flex:1;">{{ t('add_item') }}</h2>
+<a class="btn btn-ghost btn-sm" href="{{ url_for('categories_page') }}">{{ t('manage_categories') }}</a>
+</div>
 <p class="section-sub">{{ t('add_item_sub') }}</p>
 <form method="POST">
 <div class="form-grid three">
 <div class="field"><label>{{ t('item_name') }} *</label><input type="text" name="name" required></div>
-<div class="field"><label>{{ t('unit') }}</label><input type="text" name="unit" value="pcs" list="unitList"></div>
+<div class="field">
+<label>{{ t('category') }}</label>
+<select name="category_id">
+<option value="">{{ t('no_category') }}</option>
+{% for c in categories %}
+<option value="{{ c.id }}">{{ c.name }}</option>
+{% endfor %}
+</select>
+</div>
 <div class="field"><label>{{ t('sale_price') }}</label><input type="number" step="0.01" name="sale_price" value="0"></div>
 </div>
 <div class="form-grid three">
+<div class="field">
+<label>{{ t('unit') }}</label>
+<select name="unit" id="unitSelectAdd" onchange="document.getElementById('unitOtherWrapAdd').style.display = this.value==='other' ? 'block' : 'none';">
+{% for u in common_units %}
+<option value="{{ u }}" {% if u == 'pcs' %}selected{% endif %}>{{ u }}</option>
+{% endfor %}
+<option value="other">{{ t('unit_other') }}</option>
+</select>
+</div>
+<div class="field" id="unitOtherWrapAdd" style="display:none;">
+<label>{{ t('unit_other_label') }}</label>
+<input type="text" name="unit_other">
+</div>
 <div class="field"><label>{{ t('opening_stock') }}</label><input type="number" step="0.01" name="current_stock" value="0"></div>
+</div>
+<div class="form-grid three">
 <div class="field"><label>{{ t('reorder_level') }}</label><input type="number" step="0.01" name="reorder_level" value="0"></div>
 <div class="checkbox-row" style="margin-top:28px;">
 <input type="checkbox" name="track_stock" id="track_stock" checked>
 <label for="track_stock" style="margin:0;">{{ t('track_stock_label') }}</label>
 </div>
 </div>
-<datalist id="unitList">
-<option value="pcs"><option value="kg"><option value="box"><option value="set">
-<option value="mtr"><option value="ltr"><option value="roll"><option value="sheet">
-</datalist>
 <div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('add_item') }}</button></div>
 </form>
 </div>
@@ -31,18 +53,26 @@
 <div class="card panel-pad">
 <h2 class="section-title">{{ t('all_items') }}</h2>
 <div class="toolbar">
-<form method="GET" style="display:flex;gap:10px;flex:1;">
+<form method="GET" style="display:flex;gap:10px;flex:1;flex-wrap:wrap;">
 <input type="text" name="q" value="{{ q }}" placeholder="{{ t('search_item_ph') }}">
+<select name="cat" onchange="this.form.submit()">
+<option value="">{{ t('all_categories') }}</option>
+<option value="none" {% if cat_filter == 'none' %}selected{% endif %}>{{ t('no_category') }}</option>
+{% for c in categories %}
+<option value="{{ c.id }}" {% if cat_filter == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+{% endfor %}
+</select>
 <button class="btn btn-ghost" type="submit">{{ t('search') }}</button>
 </form>
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('name') }}</th><th>{{ t('unit') }}</th><th>{{ t('price') }}</th><th>{{ t('stock') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('name') }}</th><th>{{ t('category') }}</th><th>{{ t('unit') }}</th><th>{{ t('price') }}</th><th>{{ t('stock') }}</th><th></th></tr></thead>
 <tbody>
 {% for it in items %}
 <tr>
 <td>{{ it.name }}</td>
+<td>{{ it.category.name if it.category else "—" }}</td>
 <td>{{ it.unit }}</td>
 <td class="num">₹{{ "%.2f"|format(it.sale_price) }}</td>
 <td class="num {% if it.track_stock and it.current_stock <= it.reorder_level %}badge unpaid{% endif %}">

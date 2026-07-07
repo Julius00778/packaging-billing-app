@@ -7,10 +7,33 @@
 <form method="POST">
 <div class="form-grid three">
 <div class="field"><label>{{ t('item_name') }} *</label><input type="text" name="name" value="{{ item.name }}" required></div>
-<div class="field"><label>{{ t('unit') }}</label><input type="text" name="unit" value="{{ item.unit }}"></div>
+<div class="field">
+<label>{{ t('category') }}</label>
+<select name="category_id">
+<option value="">{{ t('no_category') }}</option>
+{% for c in categories %}
+<option value="{{ c.id }}" {% if item.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+{% endfor %}
+</select>
+</div>
 <div class="field"><label>{{ t('sale_price') }}</label><input type="number" step="0.01" name="sale_price" value="{{ item.sale_price }}"></div>
 </div>
-<div class="field" style="max-width:220px;"><label>{{ t('reorder_level') }}</label><input type="number" step="0.01" name="reorder_level" value="{{ item.reorder_level }}"></div>
+<div class="form-grid three">
+<div class="field">
+<label>{{ t('unit') }}</label>
+<select name="unit" id="unitSelect" onchange="document.getElementById('unitOtherWrap').style.display = this.value==='other' ? 'block' : 'none';">
+{% for u in common_units %}
+<option value="{{ u }}" {% if item.unit == u %}selected{% endif %}>{{ u }}</option>
+{% endfor %}
+<option value="other" {% if item.unit not in common_units %}selected{% endif %}>{{ t('unit_other') }}</option>
+</select>
+</div>
+<div class="field" id="unitOtherWrap" style="{% if item.unit in common_units %}display:none;{% endif %}">
+<label>{{ t('unit_other_label') }}</label>
+<input type="text" name="unit_other" value="{% if item.unit not in common_units %}{{ item.unit }}{% endif %}">
+</div>
+<div class="field"><label>{{ t('reorder_level') }}</label><input type="number" step="0.01" name="reorder_level" value="{{ item.reorder_level }}"></div>
+</div>
 <div class="checkbox-row">
 <input type="checkbox" name="track_stock" id="track_stock" {% if item.track_stock %}checked{% endif %}>
 <label for="track_stock" style="margin:0;">{{ t('track_stock_label') }}</label>
