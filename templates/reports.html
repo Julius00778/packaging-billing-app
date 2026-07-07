@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('reports') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('accounts_home') }}">← {{ t('accounts') }}</a>
+<form method="GET" style="display:flex;gap:10px;align-items:center;">
+<input type="date" name="date" value="{{ sel_date }}" onchange="this.form.submit()">
+</form>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('day_book') }} — {{ sel_date }}</h2>
+<p class="section-sub">{{ t('day_book_sub') }}</p>
+<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">
+<div class="card stat-card received"><div class="stat-label">{{ t('money_in') }}</div><div class="stat-value mono">₹{{ "%.2f"|format(money_in) }}</div></div>
+<div class="card stat-card pending"><div class="stat-label">{{ t('money_out') }}</div><div class="stat-value mono">₹{{ "%.2f"|format(money_out) }}</div></div>
+<div class="card stat-card"><div class="stat-label">{{ t('net') }}</div><div class="stat-value mono">₹{{ "%.2f"|format(money_in - money_out) }}</div></div>
+</div>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h3 style="font-size:14px;margin-bottom:10px;">{{ t('nav_invoices') }} — {{ sel_date }}</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('invoice_no') }}</th><th>{{ t('customer') }}</th><th>{{ t('amount') }}</th><th>{{ t('status') }}</th></tr></thead>
+<tbody>
+{% for inv in day_invoices %}
+<tr><td class="mono">{{ inv.invoice_no }}</td><td>{{ inv.customer.name }}</td><td class="num">₹{{ "%.2f"|format(inv.grand_total) }}</td><td><span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span></td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not day_invoices %}<div class="empty-state">{{ t('no_invoices_yet') }}</div>{% endif %}
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h3 style="font-size:14px;margin-bottom:10px;">{{ t('recent_payments') }} — {{ sel_date }}</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('customer') }}</th><th>{{ t('amount') }}</th><th>{{ t('method') }}</th></tr></thead>
+<tbody>
+{% for p in day_payments %}
+<tr><td>{{ p.customer.name }}</td><td class="num">₹{{ "%.2f"|format(p.amount) }}</td><td>{{ t(p.method) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not day_payments %}<div class="empty-state">{{ t('no_payments_yet') }}</div>{% endif %}
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h3 style="font-size:14px;margin-bottom:10px;">{{ t('expenses_purchases') }} — {{ sel_date }}</h3>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('category') }}</th><th>{{ t('description') }}</th><th>{{ t('amount') }}</th></tr></thead>
+<tbody>
+{% for e in day_expenses %}
+<tr><td>{{ t('cat_' + e.category) }}</td><td>{{ e.description }}</td><td class="num">₹{{ "%.2f"|format(e.amount) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not day_expenses %}<div class="empty-state">{{ t('no_expenses_yet') }}</div>{% endif %}
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('this_month') }}</h2>
+<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">
+<div class="card stat-card"><div class="stat-label">{{ t('total_billed') }}</div><div class="stat-value mono">₹{{ "%.2f"|format(month_billed) }}</div></div>
+<div class="card stat-card received"><div class="stat-label">{{ t('received') }}</div><div class="stat-value mono">₹{{ "%.2f"|format(month_received) }}</div></div>
+<div class="card stat-card pending"><div class="stat-label">{{ t('total_expenses') }}</div><div class="stat-value mono">₹{{ "%.2f"|format(month_expense_total) }}</div></div>
+</div>
+<div class="stat-grid" style="grid-template-columns:1fr;margin-top:14px;">
+<div class="card stat-card {% if net_position >= 0 %}received{% else %}pending{% endif %}">
+<div class="stat-label">{{ t('net_position') }}</div>
+<div class="stat-value mono">₹{{ "%.2f"|format(net_position) }}</div>
+</div>
+</div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('customer_khata') }} — {{ customer.name }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('accounts_home') }}">← {{ t('accounts') }}</a>
+</div>
+
+<div class="stat-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px;">
+<div class="card stat-card">
+<div class="stat-label">{{ t('customer') }}</div>
+<div class="stat-value" style="font-size:17px;">{{ customer.name }}</div>
+</div>
+<div class="card stat-card {% if balance > 0 %}pending{% elif balance < 0 %}received{% endif %}">
+<div class="stat-label">{{ t('current_balance') }}</div>
+<div class="stat-value mono">₹{{ "%.2f"|format(balance) }}</div>
+</div>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('ledger') }}</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('description') }}</th><th>{{ t('amount') }}</th><th>{{ t('current_balance') }}</th></tr></thead>
+<tbody>
+{% if customer.opening_balance %}
+<tr>
+<td>—</td>
+<td>{{ t('opening_balance') }}</td>
+<td class="num">₹{{ "%.2f"|format(customer.opening_balance) }}</td>
+<td class="num"></td>
+</tr>
+{% endif %}
+{% for e in entries %}
+<tr>
+<td>{{ e.date }}</td>
+<td>{% if e.link %}<a href="{{ e.link }}" target="_blank">{{ e.ref }}</a>{% else %}{{ e.ref }}{% endif %}</td>
+<td class="num {% if e.debit %}badge unpaid{% else %}badge paid{% endif %}">
+{% if e.debit %}+₹{{ "%.2f"|format(e.debit) }}{% else %}-₹{{ "%.2f"|format(e.credit) }}{% endif %}
+</td>
+<td class="num mono">₹{{ "%.2f"|format(e.balance) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not entries %}
+<div class="empty-state"><div class="big">{{ t('no_invoices_yet') }}</div></div>
+{% endif %}
+</div>
+
+{% endblock %}

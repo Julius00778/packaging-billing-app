@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('vendors') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('accounts_home') }}">← {{ t('accounts') }}</a>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('add_vendor') }}</h2>
+<form method="POST">
+<div class="form-grid three">
+<div class="field"><label>{{ t('vendor_name') }} *</label><input type="text" name="name" required></div>
+<div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone"></div>
+<div class="field"><label>GSTIN</label><input type="text" name="gstin"></div>
+</div>
+<div class="field"><label>{{ t('address') }}</label><input type="text" name="address"></div>
+<div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('add_vendor') }}</button></div>
+</form>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('vendors') }}</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('name') }}</th><th>{{ t('phone') }}</th><th>{{ t('address') }}</th></tr></thead>
+<tbody>
+{% for v in vendors %}
+<tr><td>{{ v.name }}</td><td>{{ v.phone }}</td><td>{{ v.address }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+
+{% endblock %}

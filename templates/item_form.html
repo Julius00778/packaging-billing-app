@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 {% set active = "items" %}
-{% block title %}Edit Item{% endblock %}
+{% block title %}{{ t('edit_item') }}{% endblock %}
 {% block content %}
 <div class="card panel-pad">
-  <h2 class="section-title">Edit Item</h2>
-  <form method="POST">
-    <div class="form-grid three">
-      <div class="field"><label>Item Name *</label><input type="text" name="name" value="{{ item.name }}" required></div>
-      <div class="field"><label>Unit</label><input type="text" name="unit" value="{{ item.unit }}"></div>
-      <div class="field"><label>Sale Price (₹)</label><input type="number" step="0.01" name="sale_price" value="{{ item.sale_price }}"></div>
-    </div>
-    <div class="field" style="max-width:220px;"><label>Reorder Level</label><input type="number" step="0.01" name="reorder_level" value="{{ item.reorder_level }}"></div>
-    <div class="checkbox-row">
-      <input type="checkbox" name="track_stock" id="track_stock" {% if item.track_stock %}checked{% endif %}>
-      <label for="track_stock" style="margin:0;">Track stock for this item</label>
-    </div>
-    <p class="section-sub">Current stock: {{ "%.2f"|format(item.current_stock) }} {{ item.unit }} (use "+ Stock" button on Items page to adjust)</p>
-    <div class="btn-row">
-      <button class="btn btn-primary" type="submit">Save Changes</button>
-      <a class="btn btn-ghost" href="{{ url_for('items') }}">Cancel</a>
-    </div>
-  </form>
+<h2 class="section-title">{{ t('edit_item') }}</h2>
+<form method="POST">
+<div class="form-grid three">
+<div class="field"><label>{{ t('item_name') }} *</label><input type="text" name="name" value="{{ item.name }}" required></div>
+<div class="field"><label>{{ t('unit') }}</label><input type="text" name="unit" value="{{ item.unit }}"></div>
+<div class="field"><label>{{ t('sale_price') }}</label><input type="number" step="0.01" name="sale_price" value="{{ item.sale_price }}"></div>
+</div>
+<div class="field" style="max-width:220px;"><label>{{ t('reorder_level') }}</label><input type="number" step="0.01" name="reorder_level" value="{{ item.reorder_level }}"></div>
+<div class="checkbox-row">
+<input type="checkbox" name="track_stock" id="track_stock" {% if item.track_stock %}checked{% endif %}>
+<label for="track_stock" style="margin:0;">{{ t('track_stock_label') }}</label>
+</div>
+<p class="section-sub">{{ t('stock') }}: {{ "%.2f"|format(item.current_stock) }} {{ item.unit }} — {{ t('current_stock_hint') }}</p>
+<div class="btn-row">
+<button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+<a class="btn btn-ghost" href="{{ url_for('items') }}">{{ t('cancel') }}</a>
+</div>
+</form>
 </div>
 {% endblock %}

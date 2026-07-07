@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('accounts') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('payments_page') }}">{{ t('record_payment') }}</a>
+<a class="btn btn-ghost" href="{{ url_for('expenses_page') }}">{{ t('expenses_purchases') }}</a>
+<a class="btn btn-ghost" href="{{ url_for('vendors_page') }}">{{ t('vendors') }}</a>
+<a class="btn btn-primary" href="{{ url_for('reports_page') }}">{{ t('reports') }}</a>
+</div>
+
+<div class="stat-grid" style="grid-template-columns:1fr;margin-bottom:20px;">
+<div class="card stat-card {% if total_outstanding > 0 %}pending{% else %}received{% endif %}">
+<div class="stat-label">{{ t('total_received_all') if total_outstanding <= 0 else t('pending') }}</div>
+<div class="stat-value mono">₹{{ "%.2f"|format(total_outstanding|abs) }}</div>
+</div>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('customer_khata') }}</h2>
+<p class="section-sub">{{ t('khata_sub') }}</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('customer') }}</th><th>{{ t('phone') }}</th><th>{{ t('current_balance') }}</th><th></th></tr></thead>
+<tbody>
+{% for row in rows %}
+<tr>
+<td>{{ row.customer.name }}</td>
+<td>{{ row.customer.phone }}</td>
+<td class="num {% if row.balance > 0 %}badge unpaid{% elif row.balance < 0 %}badge paid{% endif %}">₹{{ "%.2f"|format(row.balance) }}</td>
+<td><a class="btn btn-ghost btn-sm" href="{{ url_for('customer_khata', cid=row.customer.id) }}">{{ t('ledger') }}</a></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not rows %}
+<div class="empty-state"><div class="big">{{ t('no_customers_yet') }}</div></div>
+{% endif %}
+</div>
+
+{% endblock %}

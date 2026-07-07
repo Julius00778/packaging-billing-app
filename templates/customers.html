@@ -1,64 +1,65 @@
 {% extends "base.html" %}
 {% set active = "customers" %}
-{% block title %}Customers{% endblock %}
+{% block title %}{{ t('nav_customers') }}{% endblock %}
 {% block content %}
 
 <div class="card panel-pad" style="margin-bottom:20px;">
-  <h2 class="section-title">Add Customer</h2>
-  <form method="POST">
-    <div class="form-grid three">
-      <div class="field"><label>Customer Name *</label><input type="text" name="name" required></div>
-      <div class="field"><label>Phone</label><input type="text" name="phone"></div>
-      <div class="field"><label>GSTIN (optional)</label><input type="text" name="gstin"></div>
-    </div>
-    <div class="form-grid">
-      <div class="field"><label>Address</label><input type="text" name="address"></div>
-      <div class="field">
-        <label>State</label>
-        <select name="state">
-          <option value="">-- Select State --</option>
-          {% for st in state_names %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
-        </select>
-      </div>
-    </div>
-    <div class="btn-row"><button class="btn btn-primary" type="submit">Add Customer</button></div>
-  </form>
+<h2 class="section-title">{{ t('add_customer') }}</h2>
+<form method="POST">
+<div class="form-grid three">
+<div class="field"><label>{{ t('customer_name') }} *</label><input type="text" name="name" required></div>
+<div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone"></div>
+<div class="field"><label>{{ t('gstin_optional') }}</label><input type="text" name="gstin"></div>
+</div>
+<div class="form-grid">
+<div class="field"><label>{{ t('address') }}</label><input type="text" name="address"></div>
+<div class="field">
+<label>{{ t('state') }}</label>
+<select name="state">
+<option value="">{{ t('select_state') }}</option>
+{% for st in state_names %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+</select>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('add_customer') }}</button></div>
+</form>
 </div>
 
 <div class="card panel-pad">
-  <h2 class="section-title">All Customers</h2>
-  <div class="toolbar">
-    <form method="GET" style="display:flex;gap:10px;flex:1;">
-      <input type="text" name="q" value="{{ q }}" placeholder="Search by name or phone...">
-      <button class="btn btn-ghost" type="submit">Search</button>
-    </form>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Name</th><th>Phone</th><th>State</th><th>GSTIN</th><th></th></tr></thead>
-      <tbody>
-        {% for c in customers %}
-        <tr>
-          <td>{{ c.name }}</td>
-          <td>{{ c.phone }}</td>
-          <td>{{ c.state }}</td>
-          <td class="mono">{{ c.gstin }}</td>
-          <td>
-            <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_customer', cid=c.id) }}">Edit</a>
-            {% if current_user.is_owner %}
-            <form method="POST" action="{{ url_for('delete_customer', cid=c.id) }}" style="display:inline;" onsubmit="return confirm('Delete this customer?');">
-              <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% if not customers %}
-    <div class="empty-state"><div class="big">Koi customer nahi hai abhi</div><div>Upar form se naya customer add karein.</div></div>
-  {% endif %}
+<h2 class="section-title">{{ t('all_customers') }}</h2>
+<div class="toolbar">
+<form method="GET" style="display:flex;gap:10px;flex:1;">
+<input type="text" name="q" value="{{ q }}" placeholder="{{ t('search_customer_ph') }}">
+<button class="btn btn-ghost" type="submit">{{ t('search') }}</button>
+</form>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('name') }}</th><th>{{ t('phone') }}</th><th>{{ t('state') }}</th><th>GSTIN</th><th></th></tr></thead>
+<tbody>
+{% for c in customers %}
+<tr>
+<td>{{ c.name }}</td>
+<td>{{ c.phone }}</td>
+<td>{{ c.state }}</td>
+<td class="mono">{{ c.gstin }}</td>
+<td>
+<a class="btn btn-ghost btn-sm" href="{{ url_for('customer_khata', cid=c.id) }}">{{ t('ledger') }}</a>
+<a class="btn btn-ghost btn-sm" href="{{ url_for('edit_customer', cid=c.id) }}">{{ t('edit') }}</a>
+{% if current_user.is_owner %}
+<form method="POST" action="{{ url_for('delete_customer', cid=c.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('confirm_delete') }}');">
+<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
+</form>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not customers %}
+<div class="empty-state"><div class="big">{{ t('no_customers_yet') }}</div><div>{{ t('no_customers_hint') }}</div></div>
+{% endif %}
 </div>
 
 {% endblock %}

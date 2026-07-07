@@ -1,28 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_lang }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Setup — Firm Billing</title>
+<title>{{ t('setup_title') }} — Firm Billing</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="auth-wrap">
-  <div class="card">
-    <h1>Pehla Owner Account Banayein</h1>
-    <p class="sub">Ye account aapko full access dega — settings, users, sab kuch.</p>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="flash {{ category }}">{{ message }}</div>
-      {% endfor %}
-    {% endwith %}
-    <form method="POST">
-      <div class="field"><label>Aapka Naam</label><input type="text" name="name" required></div>
-      <div class="field"><label>Username</label><input type="text" name="username" required></div>
-      <div class="field"><label>Password (min 6 characters)</label><input type="password" name="password" required></div>
-      <div class="btn-row"><button class="btn btn-primary" type="submit" style="width:100%;">Account Banayein</button></div>
-    </form>
-  </div>
+<div class="lang-switch" style="justify-content:center;margin-bottom:14px;">
+<a href="{{ url_for('set_lang', code='en') }}" class="{% if current_lang=='en' %}active{% endif %}">EN</a>
+<span>/</span>
+<a href="{{ url_for('set_lang', code='hi') }}" class="{% if current_lang=='hi' %}active{% endif %}">हिं</a>
+</div>
+<div class="card">
+<h1>{{ t('setup_title') }}</h1>
+<p class="sub">{{ t('setup_sub') }}</p>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+{% endwith %}
+<form method="POST">
+<div class="field"><label>{{ t('your_name') }}</label><input type="text" name="name" required></div>
+<div class="field"><label>{{ t('username') }}</label><input type="text" name="username" required></div>
+<div class="field"><label>{{ t('password_min') }}</label><input type="password" name="password" required></div>
+<div class="btn-row"><button class="btn btn-primary" type="submit" style="width:100%;">{{ t('create_account_btn') }}</button></div>
+</form>
+</div>
 </div>
 </body>
 </html>

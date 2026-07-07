@@ -1,27 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_lang }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login — Firm Billing</title>
+<title>{{ t('login_title') }} — Firm Billing</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <div class="auth-wrap">
-  <div class="card">
-    <h1>Login</h1>
-    <p class="sub">Apne username aur password se login karein.</p>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="flash {{ category }}">{{ message }}</div>
-      {% endfor %}
-    {% endwith %}
-    <form method="POST">
-      <div class="field"><label>Username</label><input type="text" name="username" required autofocus></div>
-      <div class="field"><label>Password</label><input type="password" name="password" required></div>
-      <div class="btn-row"><button class="btn btn-primary" type="submit" style="width:100%;">Login</button></div>
-    </form>
-  </div>
+<div class="lang-switch" style="justify-content:center;margin-bottom:14px;">
+<a href="{{ url_for('set_lang', code='en') }}" class="{% if current_lang=='en' %}active{% endif %}">EN</a>
+<span>/</span>
+<a href="{{ url_for('set_lang', code='hi') }}" class="{% if current_lang=='hi' %}active{% endif %}">हिं</a>
+</div>
+<div class="card">
+<h1>{{ t('login_title') }}</h1>
+<p class="sub">{{ t('login_sub') }}</p>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+{% endwith %}
+<form method="POST">
+<div class="field"><label>{{ t('username') }}</label><input type="text" name="username" required autofocus></div>
+<div class="field"><label>{{ t('password') }}</label><input type="password" name="password" required></div>
+<div class="btn-row"><button class="btn btn-primary" type="submit" style="width:100%;">{{ t('login_btn') }}</button></div>
+</form>
+</div>
 </div>
 </body>
 </html>

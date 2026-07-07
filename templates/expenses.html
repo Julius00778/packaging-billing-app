@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('expenses_purchases') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('accounts_home') }}">← {{ t('accounts') }}</a>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('record_expense') }}</h2>
+<form method="POST">
+<div class="form-grid three">
+<div class="field"><label>{{ t('date') }}</label><input type="date" name="date" value="{{ today }}"></div>
+<div class="field">
+<label>{{ t('category') }}</label>
+<select name="category">
+<option value="raw_material">{{ t('cat_raw_material') }}</option>
+<option value="rent">{{ t('cat_rent') }}</option>
+<option value="salary">{{ t('cat_salary') }}</option>
+<option value="utility">{{ t('cat_utility') }}</option>
+<option value="transport">{{ t('cat_transport') }}</option>
+<option value="general">{{ t('cat_general') }}</option>
+</select>
+</div>
+<div class="field">
+<label>{{ t('vendor_optional') }}</label>
+<select name="vendor_id">
+<option value="">{{ t('no_vendor') }}</option>
+{% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+</select>
+</div>
+</div>
+<div class="field"><label>{{ t('description') }}</label><input type="text" name="description"></div>
+<div class="form-grid three">
+<div class="field"><label>{{ t('amount') }} *</label><input type="number" step="0.01" min="0.01" name="amount" required></div>
+<div class="field">
+<label>{{ t('status') }}</label>
+<select name="payment_status" id="expStatus">
+<option value="paid">{{ t('paid') }}</option>
+<option value="unpaid">{{ t('unpaid') }}</option>
+<option value="partial">{{ t('partial') }}</option>
+</select>
+</div>
+<div class="field">
+<label>{{ t('method') }}</label>
+<select name="method">
+<option value="cash">{{ t('cash') }}</option>
+<option value="bank">{{ t('bank') }}</option>
+<option value="upi">{{ t('upi') }}</option>
+<option value="cheque">{{ t('cheque') }}</option>
+<option value="other">{{ t('other') }}</option>
+</select>
+</div>
+</div>
+<div class="field" id="amtPaidField" style="max-width:220px;display:none;">
+<label>{{ t('amount_paid') }}</label><input type="number" step="0.01" name="amount_paid" value="0">
+</div>
+<div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('save') }}</button></div>
+</form>
+</div>
+<script>
+document.getElementById('expStatus').addEventListener('change', function(){
+    document.getElementById('amtPaidField').style.display = this.value === 'partial' ? 'block' : 'none';
+});
+</script>
+
+<div class="card panel-pad">
+<div class="toolbar" style="margin-bottom:6px;">
+<form method="GET" style="display:flex;gap:10px;flex:1;">
+<input type="text" name="q" value="{{ q }}" placeholder="{{ t('search') }}...">
+<button class="btn btn-ghost" type="submit">{{ t('search') }}</button>
+</form>
+</div>
+<h2 class="section-title">{{ t('recent_expenses') }} <span style="font-weight:400;color:var(--ink-soft);font-size:13px;">({{ t('total_expenses') }}: ₹{{ "%.2f"|format(total) }})</span></h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('category') }}</th><th>{{ t('vendor') }}</th><th>{{ t('description') }}</th><th>{{ t('amount') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
+<tbody>
+{% for e in expenses %}
+<tr>
+<td>{{ e.date }}</td>
+<td>{{ t('cat_' + e.category) }}</td>
+<td>{{ e.vendor.name if e.vendor else '—' }}</td>
+<td>{{ e.description }}</td>
+<td class="num">₹{{ "%.2f"|format(e.amount) }}</td>
+<td><span class="badge {{ e.payment_status }}">{{ t(e.payment_status) }}</span></td>
+<td>
+{% if current_user.is_owner %}
+<form method="POST" action="{{ url_for('delete_expense', eid=e.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">
+<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
+</form>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if not expenses %}
+<div class="empty-state"><div class="big">{{ t('no_expenses_yet') }}</div></div>
+{% endif %}
+</div>
+
+{% endblock %}
