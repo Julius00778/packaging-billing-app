@@ -75,6 +75,7 @@ class Customer(db.Model):
     phone = db.Column(db.String(40), default="")
     gstin = db.Column(db.String(20), default="")
     state = db.Column(db.String(80), default="")
+    opening_balance = db.Column(db.Float, default=0.0)  # +ve = customer owes firm
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -94,7 +95,7 @@ class Item(db.Model):
 class StockEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.Integer, db.ForeignKey("item.id"), nullable=False)
-    qty = db.Column(db.Float, nullable=False)          # positive number
+    qty = db.Column(db.Float, nullable=False)  # positive number
     entry_type = db.Column(db.String(10), nullable=False)  # 'in' or 'adjust'
     note = db.Column(db.String(200), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -146,3 +147,47 @@ class InvoiceItem(db.Model):
     sgst_amount = db.Column(db.Float, default=0.0)
     igst_amount = db.Column(db.Float, default=0.0)
     line_total = db.Column(db.Float, default=0.0)
+
+
+# ---------------- Accounts module (new) ----------------
+
+class Payment(db.Model):
+    """Customer receipts — can be linked to an invoice or stand-alone (advance / old udhaari)."""
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey("customer.id"), nullable=False)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True)
+    date = db.Column(db.String(10), nullable=False)
+    amount = db.Column(db.Float, nullable=False, default=0.0)
+    method = db.Column(db.String(20), default="cash")  # cash/bank/upi/cheque/other
+    note = db.Column(db.String(300), default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+
+    customer = db.relationship("Customer")
+    invoice = db.relationship("Invoice")
+
+
+class Vendor(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    phone = db.Column(db.String(40), default="")
+    address = db.Column(db.String(300), default="")
+    gstin = db.Column(db.String(20), default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Expense(db.Model):
+    """Purchases / raw material / general business expenses (money going out)."""
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    category = db.Column(db.String(60), default="general")  # raw_material/rent/salary/utility/transport/general
+    vendor_id = db.Column(db.Integer, db.ForeignKey("vendor.id"), nullable=True)
+    description = db.Column(db.String(300), default="")
+    amount = db.Column(db.Float, nullable=False, default=0.0)
+    payment_status = db.Column(db.String(10), default="paid")  # paid/unpaid/partial
+    amount_paid = db.Column(db.Float, default=0.0)
+    method = db.Column(db.String(20), default="cash")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+
+    vendor = db.relationship("Vendor")

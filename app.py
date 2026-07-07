@@ -3,15 +3,16 @@ import json
 from datetime import datetime, date
 from functools import wraps
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort, session
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
 
 from models import (
     db, User, Settings, Customer, Item, StockEntry, Invoice, InvoiceItem,
-    STATE_NAMES
+    Payment, Vendor, Expense, STATE_NAMES
 )
+from translations import get_text
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key-in-production")
@@ -38,16 +39,28 @@ def owner_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not current_user.is_authenticated or not current_user.is_owner:
-            flash("Sirf Owner is page ko access kar sakta hai.", "error")
+            flash(t("flash_owner_only"), "error")
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return wrapper
 
 
+def t(key):
+    return get_text(session.get("lang", "en"), key)
+
+
 @app.context_processor
 def inject_globals():
     settings = Settings.get()
-    return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat())
+    return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
+                t=t, current_lang=session.get("lang", "en"))
+
+
+@app.route("/lang/<code>")
+def set_lang(code):
+    if code in ("en", "hi"):
+        session["lang"] = code
+    return redirect(request.referrer or url_for("dashboard"))
 
 
 # ---------------- setup / auth ----------------
@@ -60,13 +73,13 @@ def setup():
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
         if not name or not username or len(password) < 6:
-            flash("Sab fields fill karein, password kam se kam 6 character ka ho.", "error")
+            flash(t("flash_setup_fields"), "error")
             return render_template("setup.html")
         u = User(name=name, username=username, role="owner")
         u.set_password(password)
         db.session.add(u)
         db.session.commit()
-        flash("Owner account ban gaya. Ab login karein.", "success")
+        flash(t("flash_owner_created"), "success")
         return redirect(url_for("login"))
     return render_template("setup.html")
 
@@ -82,7 +95,7 @@ def login():
         if user and user.active and user.check_password(password):
             login_user(user)
             return redirect(url_for("dashboard"))
-        flash("Username ya password galat hai.", "error")
+        flash(t("flash_bad_login"), "error")
     return render_template("login.html")
 
 
@@ -131,11 +144,11 @@ def customers():
             state=request.form.get("state", "").strip(),
         )
         if not c.name:
-            flash("Customer name zaroori hai.", "error")
+            flash(t("flash_customer_name_required"), "error")
         else:
             db.session.add(c)
             db.session.commit()
-            flash("Customer add ho gaya.", "success")
+            flash(t("flash_customer_added"), "success")
         return redirect(url_for("customers"))
 
     q = request.args.get("q", "").strip().lower()
@@ -155,8 +168,9 @@ def edit_customer(cid):
         c.phone = request.form.get("phone", "").strip()
         c.gstin = request.form.get("gstin", "").strip()
         c.state = request.form.get("state", "").strip()
+        c.opening_balance = float(request.form.get("opening_balance") or 0)
         db.session.commit()
-        flash("Customer update ho gaya.", "success")
+        flash(t("flash_customer_updated"), "success")
         return redirect(url_for("customers"))
     return render_template("customer_form.html", customer=c)
 
@@ -167,11 +181,11 @@ def edit_customer(cid):
 def delete_customer(cid):
     c = Customer.query.get_or_404(cid)
     if Invoice.query.filter_by(customer_id=c.id).first():
-        flash("Ye customer kisi invoice me use ho raha hai, delete nahi ho sakta.", "error")
+        flash(t("flash_customer_in_use"), "error")
     else:
         db.session.delete(c)
         db.session.commit()
-        flash("Customer delete ho gaya.", "success")
+        flash(t("flash_customer_deleted"), "success")
     return redirect(url_for("customers"))
 
 
@@ -191,11 +205,11 @@ def items():
             track_stock=bool(request.form.get("track_stock")),
         )
         if not it.name:
-            flash("Item name zaroori hai.", "error")
+            flash(t("flash_item_name_required"), "error")
         else:
             db.session.add(it)
             db.session.commit()
-            flash("Item add ho gaya.", "success")
+            flash(t("flash_item_added"), "success")
         return redirect(url_for("items"))
 
     q = request.args.get("q", "").strip().lower()
@@ -218,7 +232,7 @@ def edit_item(iid):
         it.reorder_level = float(request.form.get("reorder_level") or 0)
         it.track_stock = bool(request.form.get("track_stock"))
         db.session.commit()
-        flash("Item update ho gaya.", "success")
+        flash(t("flash_item_updated"), "success")
         return redirect(url_for("items"))
     return render_template("item_form.html", item=it)
 
@@ -229,11 +243,11 @@ def edit_item(iid):
 def delete_item(iid):
     it = Item.query.get_or_404(iid)
     if InvoiceItem.query.filter_by(item_id=it.id).first():
-        flash("Ye item kisi invoice me use ho raha hai, delete nahi ho sakta.", "error")
+        flash(t("flash_item_in_use"), "error")
     else:
         db.session.delete(it)
         db.session.commit()
-        flash("Item delete ho gaya.", "success")
+        flash(t("flash_item_deleted"), "success")
     return redirect(url_for("items"))
 
 
@@ -244,14 +258,14 @@ def add_stock(iid):
     qty = float(request.form.get("qty") or 0)
     note = request.form.get("note", "").strip()
     if qty == 0:
-        flash("Quantity 0 nahi ho sakti.", "error")
+        flash(t("flash_qty_nonzero"), "error")
         return redirect(url_for("items"))
     it.current_stock = (it.current_stock or 0) + qty
     entry = StockEntry(item_id=it.id, qty=qty, entry_type="in" if qty > 0 else "adjust",
                         note=note, created_by=current_user.id)
     db.session.add(entry)
     db.session.commit()
-    flash(f"Stock update ho gaya. Naya stock: {it.current_stock} {it.unit}", "success")
+    flash(f"{t('flash_stock_updated')} {it.current_stock} {it.unit}", "success")
     return redirect(url_for("items"))
 
 
@@ -331,7 +345,7 @@ def new_invoice():
 
     next_no = f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}"
     return render_template("invoice_form.html", invoice=None, next_invoice_no=next_no,
-                            customers=Customer.query.order_by(Customer.name).all())
+                           customers=Customer.query.order_by(Customer.name).all())
 
 
 @app.route("/invoices/<int:invid>/edit", methods=["GET", "POST"])
@@ -342,14 +356,14 @@ def edit_invoice(invid):
     if request.method == "POST":
         return _save_invoice(inv, settings)
     return render_template("invoice_form.html", invoice=inv, next_invoice_no=inv.invoice_no,
-                            customers=Customer.query.order_by(Customer.name).all())
+                           customers=Customer.query.order_by(Customer.name).all())
 
 
 def _save_invoice(existing_invoice, settings):
     customer_id = request.form.get("customer_id")
     customer = Customer.query.get(int(customer_id)) if customer_id else None
     if not customer:
-        flash("Customer select karein.", "error")
+        flash(t("flash_select_customer"), "error")
         return redirect(request.referrer or url_for("new_invoice"))
 
     try:
@@ -371,7 +385,7 @@ def _save_invoice(existing_invoice, settings):
             "gst_rate": float(li.get("gst_rate") or 0),
         })
     if not line_items:
-        flash("Kam se kam ek valid item add karein.", "error")
+        flash(t("flash_valid_item_required"), "error")
         return redirect(request.referrer or url_for("new_invoice"))
 
     discount_type = request.form.get("discount_type", "amount")
@@ -439,7 +453,7 @@ def _save_invoice(existing_invoice, settings):
         ))
 
     db.session.commit()
-    flash("Invoice save ho gaya.", "success")
+    flash(t("flash_invoice_saved"), "success")
     return redirect(url_for("invoices"))
 
 
@@ -455,7 +469,7 @@ def delete_invoice(invid):
                 item.current_stock = (item.current_stock or 0) + li.qty
     db.session.delete(inv)
     db.session.commit()
-    flash("Invoice delete ho gaya.", "success")
+    flash(t("flash_invoice_deleted"), "success")
     return redirect(url_for("invoices"))
 
 
@@ -486,7 +500,7 @@ def settings_page():
         s.invoice_prefix = request.form.get("invoice_prefix", "INV").strip() or "INV"
         s.next_invoice_no = int(request.form.get("next_invoice_no") or 1)
         db.session.commit()
-        flash("Settings save ho gayi.", "success")
+        flash(t("flash_settings_saved"), "success")
         return redirect(url_for("settings_page"))
     return render_template("settings.html", s=s)
 
@@ -501,15 +515,15 @@ def users_page():
         password = request.form.get("password", "")
         role = request.form.get("role", "staff")
         if not username or not name or len(password) < 6:
-            flash("Sab fields fill karein, password kam se kam 6 character.", "error")
+            flash(t("flash_users_fields"), "error")
         elif User.query.filter_by(username=username).first():
-            flash("Ye username already use ho raha hai.", "error")
+            flash(t("flash_username_taken"), "error")
         else:
             u = User(username=username, name=name, role=role)
             u.set_password(password)
             db.session.add(u)
             db.session.commit()
-            flash("User add ho gaya.", "success")
+            flash(t("flash_user_added"), "success")
         return redirect(url_for("users_page"))
     return render_template("users.html", users=User.query.order_by(User.created_at).all())
 
@@ -520,17 +534,197 @@ def users_page():
 def toggle_user(uid):
     u = User.query.get_or_404(uid)
     if u.id == current_user.id:
-        flash("Apne hi account ko deactivate nahi kar sakte.", "error")
+        flash(t("flash_self_deactivate"), "error")
     else:
         u.active = not u.active
         db.session.commit()
-        flash("User status update ho gaya.", "success")
+        flash(t("flash_user_status_updated"), "success")
     return redirect(url_for("users_page"))
+
+
+# ---------------- accounts module ----------------
+
+def customer_ledger_entries(customer):
+    """Merge invoices + payments into one chronological list with a running balance."""
+    entries = []
+    for inv in Invoice.query.filter_by(customer_id=customer.id).all():
+        entries.append({
+            "date": inv.date, "kind": "invoice", "ref": inv.invoice_no,
+            "debit": inv.grand_total, "credit": 0.0, "sort_key": (inv.date, inv.created_at),
+            "link": url_for("print_invoice", invid=inv.id),
+        })
+        if inv.amount_received:
+            entries.append({
+                "date": inv.date, "kind": "invoice_payment", "ref": f"{inv.invoice_no} ({t('paid')})",
+                "debit": 0.0, "credit": inv.amount_received, "sort_key": (inv.date, inv.created_at),
+                "link": None,
+            })
+    for p in Payment.query.filter_by(customer_id=customer.id, invoice_id=None).all():
+        entries.append({
+            "date": p.date, "kind": "payment", "ref": p.note or t("record_payment"),
+            "debit": 0.0, "credit": p.amount, "sort_key": (p.date, p.created_at), "id": p.id,
+            "link": None,
+        })
+    entries.sort(key=lambda e: e["sort_key"])
+    balance = customer.opening_balance or 0.0
+    for e in entries:
+        balance += e["debit"] - e["credit"]
+        e["balance"] = balance
+    return entries, balance
+
+
+@app.route("/accounts")
+@login_required
+def accounts_home():
+    customers = Customer.query.order_by(Customer.name).all()
+    rows = []
+    total_outstanding = 0.0
+    for c in customers:
+        _, balance = customer_ledger_entries(c)
+        rows.append({"customer": c, "balance": balance})
+        total_outstanding += balance
+    rows.sort(key=lambda r: -abs(r["balance"]))
+    return render_template("accounts_home.html", rows=rows, total_outstanding=total_outstanding)
+
+
+@app.route("/accounts/customer/<int:cid>")
+@login_required
+def customer_khata(cid):
+    c = Customer.query.get_or_404(cid)
+    entries, balance = customer_ledger_entries(c)
+    entries.reverse()
+    return render_template("customer_khata.html", customer=c, entries=entries, balance=balance)
+
+
+@app.route("/accounts/payments", methods=["GET", "POST"])
+@login_required
+def payments_page():
+    if request.method == "POST":
+        customer_id = request.form.get("customer_id")
+        amount = float(request.form.get("amount") or 0)
+        customer = Customer.query.get(int(customer_id)) if customer_id else None
+        if not customer or amount <= 0:
+            flash(t("flash_payment_invalid"), "error")
+        else:
+            p = Payment(
+                customer_id=customer.id, date=request.form.get("date") or date.today().isoformat(),
+                amount=amount, method=request.form.get("method", "cash"),
+                note=request.form.get("note", "").strip(), created_by=current_user.id,
+            )
+            db.session.add(p)
+            db.session.commit()
+            flash(t("flash_payment_saved"), "success")
+        return redirect(url_for("payments_page"))
+
+    recent = Payment.query.filter_by(invoice_id=None).order_by(Payment.created_at.desc()).limit(50).all()
+    return render_template("payments.html", customers=Customer.query.order_by(Customer.name).all(), payments=recent)
+
+
+@app.route("/accounts/payments/<int:pid>/delete", methods=["POST"])
+@login_required
+@owner_required
+def delete_payment(pid):
+    p = Payment.query.get_or_404(pid)
+    db.session.delete(p)
+    db.session.commit()
+    flash(t("flash_payment_deleted"), "success")
+    return redirect(request.referrer or url_for("payments_page"))
+
+
+@app.route("/accounts/vendors", methods=["GET", "POST"])
+@login_required
+def vendors_page():
+    if request.method == "POST":
+        v = Vendor(
+            name=request.form.get("name", "").strip(),
+            phone=request.form.get("phone", "").strip(),
+            address=request.form.get("address", "").strip(),
+            gstin=request.form.get("gstin", "").strip(),
+        )
+        if not v.name:
+            flash(t("flash_vendor_name_required"), "error")
+        else:
+            db.session.add(v)
+            db.session.commit()
+            flash(t("flash_vendor_added"), "success")
+        return redirect(url_for("vendors_page"))
+    return render_template("vendors.html", vendors=Vendor.query.order_by(Vendor.name).all())
+
+
+@app.route("/accounts/expenses", methods=["GET", "POST"])
+@login_required
+def expenses_page():
+    if request.method == "POST":
+        amount = float(request.form.get("amount") or 0)
+        if amount <= 0:
+            flash(t("flash_expense_invalid"), "error")
+        else:
+            vendor_id = request.form.get("vendor_id") or None
+            payment_status = request.form.get("payment_status", "paid")
+            amount_paid = amount if payment_status == "paid" else float(request.form.get("amount_paid") or 0)
+            e = Expense(
+                date=request.form.get("date") or date.today().isoformat(),
+                category=request.form.get("category", "general"),
+                vendor_id=int(vendor_id) if vendor_id else None,
+                description=request.form.get("description", "").strip(),
+                amount=amount, payment_status=payment_status, amount_paid=amount_paid,
+                method=request.form.get("method", "cash"), created_by=current_user.id,
+            )
+            db.session.add(e)
+            db.session.commit()
+            flash(t("flash_expense_saved"), "success")
+        return redirect(url_for("expenses_page"))
+
+    q = request.args.get("q", "").strip().lower()
+    rows = Expense.query.order_by(Expense.date.desc(), Expense.created_at.desc()).all()
+    if q:
+        rows = [e for e in rows if q in (e.description or "").lower() or (e.vendor and q in e.vendor.name.lower())]
+    total = sum(e.amount for e in rows)
+    return render_template("expenses.html", expenses=rows, vendors=Vendor.query.order_by(Vendor.name).all(),
+                           q=q, total=total)
+
+
+@app.route("/accounts/expenses/<int:eid>/delete", methods=["POST"])
+@login_required
+@owner_required
+def delete_expense(eid):
+    e = Expense.query.get_or_404(eid)
+    db.session.delete(e)
+    db.session.commit()
+    flash(t("flash_expense_deleted"), "success")
+    return redirect(url_for("expenses_page"))
+
+
+@app.route("/accounts/reports")
+@login_required
+def reports_page():
+    sel_date = request.args.get("date") or date.today().isoformat()
+
+    day_invoices = Invoice.query.filter_by(date=sel_date).all()
+    day_payments = Payment.query.filter_by(date=sel_date).all()
+    day_expenses = Expense.query.filter_by(date=sel_date).all()
+
+    money_in = sum(i.amount_received for i in day_invoices) + sum(p.amount for p in day_payments if p.invoice_id is None)
+    money_out = sum(e.amount_paid for e in day_expenses)
+
+    this_month = sel_date[:7]
+    month_invoices = Invoice.query.filter(Invoice.date.startswith(this_month)).all()
+    month_expenses = Expense.query.filter(Expense.date.startswith(this_month)).all()
+    month_billed = sum(i.grand_total for i in month_invoices)
+    month_received = sum(i.amount_received for i in month_invoices)
+    month_expense_total = sum(e.amount for e in month_expenses)
+
+    return render_template(
+        "reports.html", sel_date=sel_date,
+        day_invoices=day_invoices, day_payments=[p for p in day_payments if p.invoice_id is None],
+        day_expenses=day_expenses, money_in=money_in, money_out=money_out,
+        month_billed=month_billed, month_received=month_received, month_expense_total=month_expense_total,
+        net_position=month_received - month_expense_total,
+    )
 
 
 with app.app_context():
     db.create_all()
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
