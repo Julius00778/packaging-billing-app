@@ -151,4 +151,34 @@ tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:mi
 .pinv-totals .row.grand{font-weight:700;font-size:16px;border-top:2px solid #1C2541;margin-top:4px;padding-top:8px;font-family:'IBM Plex Mono',monospace;}
 .pinv-footer{display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #D9DCD0;padding-top:16px;}
 .pinv-footer .terms{font-size:11px;color:#5B6378;max-width:320px;line-height:1.5;}
-.print-trigger{text-align:center;margin:20px 0;}
+.print-trigger{text-align:center;margin:20px 0;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+
+/* two-copy invoice print (Party Copy + Office Copy on one A4 page) */
+.copy-label{font-size:11px;font-weight:700;letter-spacing:0.06em;color:#A8722E;text-transform:uppercase;margin-bottom:6px;}
+.pinv-half{background:#fff;}
+.cut-line{text-align:center;font-size:11px;color:#8C93A3;margin:10px 0;letter-spacing:0.03em;}
+
+@media print{
+@page{size:A4;margin:8mm;}
+body{margin:0;}
+.pinv-page{display:flex;flex-direction:column;height:281mm;}
+.pinv-half{flex:1 1 50%;overflow:hidden;min-height:0;}
+.pinv-half .pinv{max-width:100%;padding:10px 16px;margin:0;}
+.pinv-half .pinv-head{padding-bottom:8px;margin-bottom:8px;}
+.pinv-half .pinv-firm h2{font-size:16px;}
+.pinv-half .pinv-firm p{font-size:9px;margin:1px 0;max-width:420px;}
+.pinv-half .pinv-meta{font-size:10px;}
+.pinv-half .pinv-meta .inv-no{font-size:13px;margin:1px 0 6px;}
+.pinv-half .copy-label{font-size:10px;margin-bottom:4px;}
+.pinv-half .pinv-billto{margin-bottom:8px;}
+.pinv-half .pinv-billto .lbl{font-size:9px;}
+.pinv-half table{margin-bottom:4px;}
+.pinv-half .pinv thead th{font-size:8px;padding:4px 6px;}
+.pinv-half .pinv tbody td{font-size:9px;padding:4px 6px;}
+.pinv-half .pinv-totals{margin-bottom:8px;}
+.pinv-half .pinv-totals .inner{width:220px;}
+.pinv-half .pinv-totals .row{font-size:10px;padding:2px 0;}
+.pinv-half .pinv-totals .row.grand{font-size:12px;padding-top:4px;}
+.pinv-half .pinv-footer{padding-top:8px;}
+.pinv-half .pinv-footer .terms{font-size:9px;}
+}
