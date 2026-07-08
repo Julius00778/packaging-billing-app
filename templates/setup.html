@@ -22,6 +22,14 @@
 {% endfor %}
 {% endwith %}
 <form method="POST">
+<h3 class="settings-sec-title" style="margin-top:0;">{{ t('firm_account_section') }}</h3>
+<div class="field"><label>{{ t('firm_name') }}</label><input type="text" name="firm_name" required></div>
+<div class="field"><label>{{ t('address') }}</label><input type="text" name="address"></div>
+<div class="field"><label>{{ t('gstin_optional') }}</label><input type="text" name="gstin"></div>
+<div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone"></div>
+
+<div class="divider"></div>
+<h3 class="settings-sec-title">{{ t('owner_login_section') }}</h3>
 <div class="field"><label>{{ t('your_name') }}</label><input type="text" name="name" required></div>
 <div class="field"><label>{{ t('username') }}</label><input type="text" name="username" required></div>
 <div class="field"><label>{{ t('password_min') }}</label><input type="password" name="password" required></div>
