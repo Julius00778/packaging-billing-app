@@ -511,13 +511,24 @@ def _save_invoice(existing_invoice, settings):
         manual_no = request.form.get("invoice_no", inv.invoice_no).strip()
         inv.invoice_no = manual_no or inv.invoice_no
     else:
+        # The Invoice No. field on the New Invoice form is always pre-filled with the
+        # "next" number computed at page-load time, so it is almost never actually blank.
+        # If the same loaded page gets submitted twice (browser back button, double
+        # click, etc.) that pre-filled number can be stale and already taken — resolve
+        # to a guaranteed-free number instead of letting a duplicate-key crash the request.
         manual_no = request.form.get("invoice_no", "").strip()
-        if manual_no:
+        prefix = settings.challan_prefix if hide_pricing else settings.invoice_prefix
+        counter_attr = "next_challan_no" if hide_pricing else "next_invoice_no"
+        auto_suggestion = f"{prefix}-{str(getattr(settings, counter_attr) or 1).zfill(4)}"
+        if manual_no and manual_no != auto_suggestion and not Invoice.query.filter_by(invoice_no=manual_no).first():
+            # A genuinely custom number the user typed themselves, and it's free.
             inv = Invoice(invoice_no=manual_no)
-        elif hide_pricing:
-            inv = Invoice(invoice_no=f"{settings.challan_prefix}-{str(settings.next_challan_no).zfill(4)}")
         else:
-            inv = Invoice(invoice_no=f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}")
+            n = getattr(settings, counter_attr) or 1
+            while Invoice.query.filter_by(invoice_no=f"{prefix}-{str(n).zfill(4)}").first():
+                n += 1
+            inv = Invoice(invoice_no=f"{prefix}-{str(n).zfill(4)}")
+            setattr(settings, counter_attr, n + 1)
         inv.created_by = current_user.id
 
     inv.date = request.form.get("date") or date.today().isoformat()
@@ -539,11 +550,6 @@ def _save_invoice(existing_invoice, settings):
 
     if not existing_invoice:
         db.session.add(inv)
-        if not manual_no:
-            if hide_pricing:
-                settings.next_challan_no = (settings.next_challan_no or 1) + 1
-            else:
-                settings.next_invoice_no = (settings.next_invoice_no or 1) + 1
     db.session.flush()
 
     for li in totals["lines"]:
@@ -624,14 +630,17 @@ def consolidate_challans():
             flash(t("flash_select_challans"), "error")
             return redirect(url_for("consolidate_challans"))
 
-        new_no = f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}"
+        n = settings.next_invoice_no or 1
+        while Invoice.query.filter_by(invoice_no=f"{settings.invoice_prefix}-{str(n).zfill(4)}").first():
+            n += 1
+        new_no = f"{settings.invoice_prefix}-{str(n).zfill(4)}"
         inv = Invoice(
             invoice_no=new_no, date=date.today().isoformat(), customer_id=customer.id,
             created_by=current_user.id, payment_status="unpaid", hide_pricing=False,
             notes=t("consolidated_from_note") + " " + ", ".join(c.invoice_no for c in challans),
         )
         db.session.add(inv)
-        settings.next_invoice_no = (settings.next_invoice_no or 1) + 1
+        settings.next_invoice_no = n + 1
         db.session.flush()
 
         line_items = []
