@@ -312,6 +312,9 @@ TRANSLATIONS = {
         "flash_challan_consolidated_locked": "This challan has already been consolidated into an invoice and can't be edited.",
         "pending_challans_alert": "Challans waiting to be billed",
         "pending_challans_sub": "delivery challan(s) have no rate yet — consolidate them into a priced invoice when ready.",
+        "data_backup": "Data Backup",
+        "data_backup_hint": "Download a full backup of your customers, items, invoices, payments and expenses as a JSON file — keep it somewhere safe before testing new features or making bulk changes.",
+        "download_backup_btn": "Download Backup",
     },
     "hi": {
         "tagline": "बिलिंग और इनवॉइस",
@@ -612,6 +615,9 @@ TRANSLATIONS = {
         "flash_challan_consolidated_locked": "यह चालान पहले ही एक इनवॉइस में जोड़ा जा चुका है और इसे बदला नहीं जा सकता।",
         "pending_challans_alert": "बिल होने के लिए बाकी चालान",
         "pending_challans_sub": "डिलीवरी चालान का अभी रेट नहीं जुड़ा है — तैयार होने पर इन्हें एक इनवॉइस में मिलाएं।",
+        "data_backup": "डेटा बैकअप",
+        "data_backup_hint": "अपने ग्राहक, सामान, इनवॉइस, भुगतान और खर्च का पूरा बैकअप JSON फाइल में डाउनलोड करें — नई सुविधाओं को आज़माने या बड़े बदलाव करने से पहले इसे सुरक्षित रखें।",
+        "download_backup_btn": "बैकअप डाउनलोड करें",
     },
 }
 

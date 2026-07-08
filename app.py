@@ -3,7 +3,7 @@ import json
 from datetime import datetime, date
 from functools import wraps
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort, session, send_file, Response
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
@@ -737,6 +737,48 @@ def settings_page():
         flash(t("flash_settings_saved"), "success")
         return redirect(url_for("settings_page"))
     return render_template("settings.html", s=s, common_units=COMMON_UNITS, invoice_fonts=INVOICE_FONTS)
+
+
+def _row_to_dict(row):
+    """Serialize a db.Model instance to a plain dict using its own column list —
+    keeps this generic so new columns/tables get picked up automatically without
+    hand-maintaining a field list per model."""
+    out = {}
+    for col in row.__table__.columns:
+        val = getattr(row, col.name)
+        if isinstance(val, (datetime, date)):
+            val = val.isoformat()
+        out[col.name] = val
+    return out
+
+
+@app.route("/settings/backup")
+@login_required
+@owner_required
+def backup_export():
+    """One-click full data export (JSON) — a safety net before testing changes or
+    just for periodic offline backup. Owner-only. Excludes password hashes."""
+    data = {
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "firm": Settings.get().firm_name,
+        "customers": [_row_to_dict(r) for r in Customer.query.all()],
+        "categories": [_row_to_dict(r) for r in Category.query.all()],
+        "items": [_row_to_dict(r) for r in Item.query.all()],
+        "stock_entries": [_row_to_dict(r) for r in StockEntry.query.all()],
+        "invoices": [_row_to_dict(r) for r in Invoice.query.all()],
+        "invoice_items": [_row_to_dict(r) for r in InvoiceItem.query.all()],
+        "payments": [_row_to_dict(r) for r in Payment.query.all()],
+        "vendors": [_row_to_dict(r) for r in Vendor.query.all()],
+        "expenses": [_row_to_dict(r) for r in Expense.query.all()],
+        "settings": [_row_to_dict(r) for r in Settings.query.all()],
+        "users": [{k: v for k, v in _row_to_dict(r).items() if k != "password_hash"} for r in User.query.all()],
+    }
+    body = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+    fname = f"backup_{date.today().isoformat()}.json"
+    return Response(
+        body, mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename={fname}"}
+    )
 
 
 @app.route("/users", methods=["GET", "POST"])
