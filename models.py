@@ -23,6 +23,15 @@ STATES = [
 ]
 STATE_NAMES = [s[1] for s in STATES]
 
+# Small safe font choices — kept to Base14 PDF fonts (Helvetica/Times/Courier) so the
+# same choice works for both the HTML print view and the reportlab PDF without extra
+# font files (avoids the past non-ASCII-glyph PDF breakage).
+INVOICE_FONTS = {
+    "helvetica": {"label": "Helvetica (Clean)", "css": "'Inter','Noto Sans Devanagari',system-ui,sans-serif", "pdf": "Helvetica", "pdf_bold": "Helvetica-Bold"},
+    "times": {"label": "Times (Classic)", "css": "'Times New Roman',Georgia,serif", "pdf": "Times-Roman", "pdf_bold": "Times-Bold"},
+    "courier": {"label": "Courier (Typewriter)", "css": "'Courier New',monospace", "pdf": "Courier", "pdf_bold": "Courier-Bold"},
+}
+
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,6 +67,31 @@ class Settings(db.Model):
     invoice_prefix = db.Column(db.String(20), default="INV")
     next_invoice_no = db.Column(db.Integer, default=1)
 
+    # --- Invoice / print settings ---
+    show_gstin_on_invoice = db.Column(db.Boolean, default=True)
+    default_print_copies = db.Column(db.String(4), default="2")  # "1" or "2"
+    invoice_default_notes = db.Column(db.String(500), default="")
+    challan_prefix = db.Column(db.String(20), default="DC")
+    next_challan_no = db.Column(db.Integer, default=1)
+
+    # --- Item / stock defaults ---
+    default_unit = db.Column(db.String(20), default="pcs")
+    default_gst_rate = db.Column(db.Float, default=18.0)
+    default_reorder_level = db.Column(db.Float, default=0.0)
+
+    # --- Party (customer/vendor) defaults ---
+    default_customer_state = db.Column(db.String(80), default="")
+    default_credit_days = db.Column(db.Integer, default=30)
+
+    # --- Appearance ---
+    invoice_font = db.Column(db.String(20), default="helvetica")
+    theme_color = db.Column(db.String(10), default="#A8722E")
+
+    # --- Staff permissions (global policy toggles) ---
+    staff_can_edit_price = db.Column(db.Boolean, default=True)
+    staff_can_give_discount = db.Column(db.Boolean, default=True)
+    staff_can_edit_invoice = db.Column(db.Boolean, default=True)
+
     @staticmethod
     def get():
         s = Settings.query.first()
@@ -76,6 +110,7 @@ class Customer(db.Model):
     gstin = db.Column(db.String(20), default="")
     state = db.Column(db.String(80), default="")
     opening_balance = db.Column(db.Float, default=0.0)  # +ve = customer owes firm
+    credit_days = db.Column(db.Integer, default=30)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -137,9 +172,20 @@ class Invoice(db.Model):
     notes = db.Column(db.String(500), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    customer = db.relationship("Customer")
+    # Delivery-challan support: goods sent to a party without pricing shown, rate
+    # added later when the batch is billed (common in this business — payment for
+    # a customer's total deliveries is settled 1-2 months after dispatch).
+    hide_pricing = db.Column(db.Boolean, default=False)
+    consolidated_into_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True)
+
+    customer = db.relationship("Customer", foreign_keys=[customer_id])
     creator = db.relationship("User")
     items = db.relationship("InvoiceItem", backref="invoice", cascade="all, delete-orphan")
+    consolidated_into = db.relationship("Invoice", remote_side=[id], foreign_keys=[consolidated_into_id])
+
+    @property
+    def is_challan(self):
+        return bool(self.hide_pricing)
 
 
 class InvoiceItem(db.Model):
@@ -174,7 +220,7 @@ class Payment(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
 
     customer = db.relationship("Customer")
-    invoice = db.relationship("Invoice")
+    invoice = db.relationship("Invoice", foreign_keys=[invoice_id])
 
 
 class Vendor(db.Model):

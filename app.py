@@ -10,7 +10,7 @@ from flask_login import (
 
 from models import (
     db, User, Settings, Customer, Item, StockEntry, Invoice, InvoiceItem,
-    Payment, Vendor, Expense, Category, STATE_NAMES
+    Payment, Vendor, Expense, Category, STATE_NAMES, INVOICE_FONTS
 )
 from translations import get_text
 
@@ -52,11 +52,23 @@ def owner_required(f):
     return wrapper
 
 
+def _can_edit_price(settings):
+    return current_user.is_owner or bool(settings.staff_can_edit_price)
+
+
+def _can_give_discount(settings):
+    return current_user.is_owner or bool(settings.staff_can_give_discount)
+
+
+def _can_edit_invoice(settings):
+    return current_user.is_owner or bool(settings.staff_can_edit_invoice)
+
+
 @app.context_processor
 def inject_globals():
     settings = Settings.get()
     return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
-                t=t, current_lang=session.get("lang", "en"))
+                t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS)
 
 
 @app.route("/lang/<code>")
@@ -125,23 +137,27 @@ def dashboard():
 
     recent = sorted(invoices, key=lambda i: i.created_at, reverse=True)[:8]
     low_stock = Item.query.filter(Item.track_stock == True, Item.current_stock <= Item.reorder_level).all()
+    pending_challans = Invoice.query.filter_by(hide_pricing=True, consolidated_into_id=None).count()
 
     return render_template(
         "dashboard.html", count=count, billed=billed, received=received, pending=pending,
-        cgst=cgst, sgst=sgst, igst=igst, recent=recent, low_stock=low_stock
+        cgst=cgst, sgst=sgst, igst=igst, recent=recent, low_stock=low_stock,
+        pending_challans=pending_challans
     )
 
 
 @app.route("/customers", methods=["GET", "POST"])
 @login_required
 def customers():
+    settings = Settings.get()
     if request.method == "POST":
         c = Customer(
             name=request.form.get("name", "").strip(),
             address=request.form.get("address", "").strip(),
             phone=request.form.get("phone", "").strip(),
             gstin=request.form.get("gstin", "").strip(),
-            state=request.form.get("state", "").strip(),
+            state=request.form.get("state", "").strip() or settings.default_customer_state,
+            credit_days=settings.default_credit_days or 30,
         )
         if not c.name:
             flash(t("flash_customer_name_required"), "error")
@@ -155,7 +171,7 @@ def customers():
     items = Customer.query.order_by(Customer.name).all()
     if q:
         items = [c for c in items if q in c.name.lower() or q in (c.phone or "")]
-    return render_template("customers.html", customers=items, q=q)
+    return render_template("customers.html", customers=items, q=q, settings=settings)
 
 
 @app.route("/customers/<int:cid>/edit", methods=["GET", "POST"])
@@ -169,6 +185,7 @@ def edit_customer(cid):
         c.gstin = request.form.get("gstin", "").strip()
         c.state = request.form.get("state", "").strip()
         c.opening_balance = float(request.form.get("opening_balance") or 0)
+        c.credit_days = int(request.form.get("credit_days") or 30)
         db.session.commit()
         flash(t("flash_customer_updated"), "success")
         return redirect(url_for("customers"))
@@ -187,6 +204,8 @@ def delete_customer(cid):
         db.session.commit()
         flash(t("flash_customer_deleted"), "success")
     return redirect(url_for("customers"))
+
+
 def _resolve_unit(form):
     """Unit select sends either a common unit value, or 'other' + a free-text field."""
     unit = form.get("unit", "pcs").strip()
@@ -203,16 +222,20 @@ def _resolve_category_id(form):
 @app.route("/items", methods=["GET", "POST"])
 @login_required
 def items():
+    settings = Settings.get()
     if request.method == "POST":
+        sale_price = float(request.form.get("sale_price") or 0)
+        if not _can_edit_price(settings):
+            sale_price = 0.0
         it = Item(
             name=request.form.get("name", "").strip(),
             hsn_code=request.form.get("hsn_code", "").strip(),
             unit=_resolve_unit(request.form),
             category_id=_resolve_category_id(request.form),
-            gst_rate=float(request.form.get("gst_rate") or 0),
-            sale_price=float(request.form.get("sale_price") or 0),
+            gst_rate=float(request.form.get("gst_rate") or settings.default_gst_rate or 0),
+            sale_price=sale_price,
             current_stock=float(request.form.get("current_stock") or 0),
-            reorder_level=float(request.form.get("reorder_level") or 0),
+            reorder_level=float(request.form.get("reorder_level") or settings.default_reorder_level or 0),
             track_stock=bool(request.form.get("track_stock")),
         )
         if not it.name:
@@ -234,27 +257,32 @@ def items():
         rows = [i for i in rows if not i.category_id]
     categories = Category.query.order_by(Category.name).all()
     return render_template("items.html", items=rows, q=q, categories=categories,
-                           cat_filter=cat_filter, common_units=COMMON_UNITS)
+                           cat_filter=cat_filter, common_units=COMMON_UNITS, settings=settings,
+                           can_edit_price=_can_edit_price(settings))
 
 
 @app.route("/items/<int:iid>/edit", methods=["GET", "POST"])
 @login_required
 def edit_item(iid):
     it = Item.query.get_or_404(iid)
+    settings = Settings.get()
+    can_price = _can_edit_price(settings)
     if request.method == "POST":
         it.name = request.form.get("name", "").strip()
         it.hsn_code = request.form.get("hsn_code", "").strip()
         it.unit = _resolve_unit(request.form)
         it.category_id = _resolve_category_id(request.form)
         it.gst_rate = float(request.form.get("gst_rate") or 0)
-        it.sale_price = float(request.form.get("sale_price") or 0)
+        if can_price:
+            it.sale_price = float(request.form.get("sale_price") or 0)
         it.reorder_level = float(request.form.get("reorder_level") or 0)
         it.track_stock = bool(request.form.get("track_stock"))
         db.session.commit()
         flash(t("flash_item_updated"), "success")
         return redirect(url_for("items"))
     categories = Category.query.order_by(Category.name).all()
-    return render_template("item_form.html", item=it, categories=categories, common_units=COMMON_UNITS)
+    return render_template("item_form.html", item=it, categories=categories, common_units=COMMON_UNITS,
+                           can_edit_price=can_price)
 
 
 @app.route("/items/categories", methods=["GET", "POST"])
@@ -331,6 +359,8 @@ def api_items():
         "gst_rate": i.gst_rate, "hsn_code": i.hsn_code or "",
         "stock": i.current_stock, "track_stock": i.track_stock
     } for i in rows])
+
+
 def calc_invoice_totals(line_items, discount_type, discount_value, other_charges, firm_state, customer_state):
     subtotal = sum((li["qty"] * li["rate"]) for li in line_items)
     if discount_type == "percent":
@@ -378,10 +408,15 @@ def calc_invoice_totals(line_items, discount_type, discount_value, other_charges
 @login_required
 def invoices():
     q = request.args.get("q", "").strip().lower()
+    filt = request.args.get("type", "")  # '', 'challan', 'invoice'
     rows = Invoice.query.order_by(Invoice.created_at.desc()).all()
     if q:
         rows = [i for i in rows if q in i.invoice_no.lower() or q in i.customer.name.lower() or q in i.date]
-    return render_template("invoices.html", invoices=rows, q=q)
+    if filt == "challan":
+        rows = [i for i in rows if i.hide_pricing]
+    elif filt == "invoice":
+        rows = [i for i in rows if not i.hide_pricing]
+    return render_template("invoices.html", invoices=rows, q=q, filt=filt)
 
 
 @app.route("/invoices/new", methods=["GET", "POST"])
@@ -392,8 +427,11 @@ def new_invoice():
         return _save_invoice(None, settings)
 
     next_no = f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}"
+    next_challan_no = f"{settings.challan_prefix}-{str(settings.next_challan_no).zfill(4)}"
     return render_template("invoice_form.html", invoice=None, next_invoice_no=next_no,
-                           customers=Customer.query.order_by(Customer.name).all())
+                           next_challan_no=next_challan_no,
+                           customers=Customer.query.order_by(Customer.name).all(),
+                           can_give_discount=_can_give_discount(settings))
 
 
 @app.route("/invoices/<int:invid>/edit", methods=["GET", "POST"])
@@ -401,10 +439,18 @@ def new_invoice():
 def edit_invoice(invid):
     inv = Invoice.query.get_or_404(invid)
     settings = Settings.get()
+    if inv.consolidated_into_id:
+        flash(t("flash_challan_consolidated_locked"), "error")
+        return redirect(url_for("invoices"))
+    if not _can_edit_invoice(settings):
+        flash(t("flash_owner_only"), "error")
+        return redirect(url_for("invoices"))
     if request.method == "POST":
         return _save_invoice(inv, settings)
     return render_template("invoice_form.html", invoice=inv, next_invoice_no=inv.invoice_no,
-                           customers=Customer.query.order_by(Customer.name).all())
+                           next_challan_no=inv.invoice_no,
+                           customers=Customer.query.order_by(Customer.name).all(),
+                           can_give_discount=_can_give_discount(settings))
 
 
 def _save_invoice(existing_invoice, settings):
@@ -438,7 +484,10 @@ def _save_invoice(existing_invoice, settings):
 
     discount_type = request.form.get("discount_type", "amount")
     discount_value = float(request.form.get("discount_value") or 0)
+    if not _can_give_discount(settings):
+        discount_value = 0.0
     other_charges = float(request.form.get("other_charges") or 0)
+    hide_pricing = bool(request.form.get("hide_pricing"))
 
     totals = calc_invoice_totals(line_items, discount_type, discount_value, other_charges,
                                   settings.state, customer.state)
@@ -459,10 +508,16 @@ def _save_invoice(existing_invoice, settings):
                     item.current_stock = (item.current_stock or 0) + old_li.qty
         InvoiceItem.query.filter_by(invoice_id=existing_invoice.id).delete()
         inv = existing_invoice
-        inv.invoice_no = request.form.get("invoice_no", inv.invoice_no).strip()
+        manual_no = request.form.get("invoice_no", inv.invoice_no).strip()
+        inv.invoice_no = manual_no or inv.invoice_no
     else:
-        inv = Invoice(invoice_no=request.form.get("invoice_no", "").strip() or
-                      f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}")
+        manual_no = request.form.get("invoice_no", "").strip()
+        if manual_no:
+            inv = Invoice(invoice_no=manual_no)
+        elif hide_pricing:
+            inv = Invoice(invoice_no=f"{settings.challan_prefix}-{str(settings.next_challan_no).zfill(4)}")
+        else:
+            inv = Invoice(invoice_no=f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}")
         inv.created_by = current_user.id
 
     inv.date = request.form.get("date") or date.today().isoformat()
@@ -480,10 +535,15 @@ def _save_invoice(existing_invoice, settings):
     inv.payment_status = payment_status
     inv.amount_received = amount_received
     inv.notes = request.form.get("notes", "").strip()
+    inv.hide_pricing = hide_pricing
 
     if not existing_invoice:
         db.session.add(inv)
-        settings.next_invoice_no = (settings.next_invoice_no or 1) + 1
+        if not manual_no:
+            if hide_pricing:
+                settings.next_challan_no = (settings.next_challan_no or 1) + 1
+            else:
+                settings.next_invoice_no = (settings.next_invoice_no or 1) + 1
     db.session.flush()
 
     for li in totals["lines"]:
@@ -537,6 +597,88 @@ def invoice_pdf(invid):
     buf = build_invoice_pdf(inv, settings, t)
     return send_file(buf, mimetype="application/pdf", as_attachment=True,
                       download_name=f"{inv.invoice_no}.pdf")
+
+
+@app.route("/invoices/consolidate", methods=["GET", "POST"])
+@login_required
+def consolidate_challans():
+    """Merge several no-rate delivery challans for one customer into a single, fully
+    priced Invoice — matches the business's 1-2 month billing cadence: goods go out
+    without a rate, and get billed together once payment is due."""
+    settings = Settings.get()
+    if request.method == "POST":
+        customer_id = request.form.get("customer_id")
+        challan_ids = request.form.getlist("challan_ids")
+        customer = Customer.query.get(int(customer_id)) if customer_id else None
+        if not customer or not challan_ids:
+            flash(t("flash_select_challans"), "error")
+            return redirect(url_for("consolidate_challans"))
+
+        challans = Invoice.query.filter(
+            Invoice.id.in_([int(x) for x in challan_ids]),
+            Invoice.customer_id == customer.id,
+            Invoice.hide_pricing == True,
+            Invoice.consolidated_into_id.is_(None),
+        ).all()
+        if not challans:
+            flash(t("flash_select_challans"), "error")
+            return redirect(url_for("consolidate_challans"))
+
+        new_no = f"{settings.invoice_prefix}-{str(settings.next_invoice_no).zfill(4)}"
+        inv = Invoice(
+            invoice_no=new_no, date=date.today().isoformat(), customer_id=customer.id,
+            created_by=current_user.id, payment_status="unpaid", hide_pricing=False,
+            notes=t("consolidated_from_note") + " " + ", ".join(c.invoice_no for c in challans),
+        )
+        db.session.add(inv)
+        settings.next_invoice_no = (settings.next_invoice_no or 1) + 1
+        db.session.flush()
+
+        line_items = []
+        for ch in challans:
+            for li in ch.items:
+                item = Item.query.get(li.item_id) if li.item_id else None
+                rate = li.rate or (item.sale_price if item else 0.0)
+                gst_rate = li.gst_rate or (item.gst_rate if item else 0.0)
+                line_items.append({
+                    "item_id": li.item_id, "description": li.description, "hsn_code": li.hsn_code,
+                    "unit": li.unit, "qty": li.qty, "rate": rate, "gst_rate": gst_rate,
+                })
+            ch.consolidated_into_id = inv.id
+
+        totals = calc_invoice_totals(line_items, "amount", 0, 0, settings.state, customer.state)
+        inv.subtotal = totals["subtotal"]
+        inv.discount_amount = 0
+        inv.taxable_amount = totals["taxable_amount"]
+        inv.cgst_amount = totals["cgst_amount"]
+        inv.sgst_amount = totals["sgst_amount"]
+        inv.igst_amount = totals["igst_amount"]
+        inv.grand_total = totals["grand_total"]
+
+        for li in totals["lines"]:
+            db.session.add(InvoiceItem(
+                invoice_id=inv.id, item_id=li.get("item_id"),
+                description=li["description"], hsn_code=li.get("hsn_code", ""),
+                qty=li["qty"], unit=li.get("unit", "pcs"), rate=li["rate"], gst_rate=li["gst_rate"],
+                taxable_amount=li["taxable_amount"], cgst_amount=li["cgst_amount"],
+                sgst_amount=li["sgst_amount"], igst_amount=li["igst_amount"], line_total=li["line_total"]
+            ))
+        db.session.commit()
+        flash(t("flash_consolidated_ok"), "success")
+        return redirect(url_for("edit_invoice", invid=inv.id))
+
+    customer_id = request.args.get("customer_id")
+    customer = Customer.query.get(int(customer_id)) if customer_id and customer_id.isdigit() else None
+    pending_by_customer = {}
+    for ch in Invoice.query.filter_by(hide_pricing=True, consolidated_into_id=None).all():
+        pending_by_customer.setdefault(ch.customer_id, []).append(ch)
+    customers_with_pending = Customer.query.filter(Customer.id.in_(pending_by_customer.keys())).order_by(Customer.name).all()
+    selected_challans = pending_by_customer.get(customer.id, []) if customer else []
+    return render_template("invoice_consolidate.html", customers_with_pending=customers_with_pending,
+                           pending_by_customer=pending_by_customer, customer=customer,
+                           selected_challans=selected_challans)
+
+
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
 @owner_required
@@ -554,10 +696,38 @@ def settings_page():
         s.ifsc = request.form.get("ifsc", "").strip()
         s.invoice_prefix = request.form.get("invoice_prefix", "INV").strip() or "INV"
         s.next_invoice_no = int(request.form.get("next_invoice_no") or 1)
+
+        # Invoice / print settings
+        s.show_gstin_on_invoice = bool(request.form.get("show_gstin_on_invoice"))
+        s.default_print_copies = request.form.get("default_print_copies", "2")
+        s.invoice_default_notes = request.form.get("invoice_default_notes", "").strip()
+        s.challan_prefix = request.form.get("challan_prefix", "DC").strip() or "DC"
+        s.next_challan_no = int(request.form.get("next_challan_no") or 1)
+
+        # Item / stock defaults
+        s.default_unit = request.form.get("default_unit", "pcs").strip() or "pcs"
+        s.default_gst_rate = float(request.form.get("default_gst_rate") or 0)
+        s.default_reorder_level = float(request.form.get("default_reorder_level") or 0)
+
+        # Party defaults
+        s.default_customer_state = request.form.get("default_customer_state", "").strip()
+        s.default_credit_days = int(request.form.get("default_credit_days") or 30)
+
+        # Appearance
+        s.invoice_font = request.form.get("invoice_font", "helvetica")
+        if s.invoice_font not in INVOICE_FONTS:
+            s.invoice_font = "helvetica"
+        s.theme_color = request.form.get("theme_color", "#A8722E").strip() or "#A8722E"
+
+        # Staff permissions
+        s.staff_can_edit_price = bool(request.form.get("staff_can_edit_price"))
+        s.staff_can_give_discount = bool(request.form.get("staff_can_give_discount"))
+        s.staff_can_edit_invoice = bool(request.form.get("staff_can_edit_invoice"))
+
         db.session.commit()
         flash(t("flash_settings_saved"), "success")
         return redirect(url_for("settings_page"))
-    return render_template("settings.html", s=s)
+    return render_template("settings.html", s=s, common_units=COMMON_UNITS, invoice_fonts=INVOICE_FONTS)
 
 
 @app.route("/users", methods=["GET", "POST"])
@@ -600,6 +770,8 @@ def toggle_user(uid):
 def customer_ledger_entries(customer):
     entries = []
     for inv in Invoice.query.filter_by(customer_id=customer.id).all():
+        if inv.hide_pricing:
+            continue  # challans carry no price yet — they only enter the ledger once consolidated into a priced invoice
         entries.append({
             "date": inv.date, "kind": "invoice", "ref": inv.invoice_no,
             "debit": inv.grand_total, "credit": 0.0, "sort_key": (inv.date, inv.created_at),
@@ -701,6 +873,8 @@ def vendors_page():
             flash(t("flash_vendor_added"), "success")
         return redirect(url_for("vendors_page"))
     return render_template("vendors.html", vendors=Vendor.query.order_by(Vendor.name).all())
+
+
 @app.route("/accounts/expenses", methods=["GET", "POST"])
 @login_required
 def expenses_page():
@@ -750,7 +924,7 @@ def delete_expense(eid):
 def reports_page():
     sel_date = request.args.get("date") or date.today().isoformat()
 
-    day_invoices = Invoice.query.filter_by(date=sel_date).all()
+    day_invoices = Invoice.query.filter_by(date=sel_date, hide_pricing=False).all()
     day_payments = Payment.query.filter_by(date=sel_date).all()
     day_expenses = Expense.query.filter_by(date=sel_date).all()
 
@@ -758,7 +932,7 @@ def reports_page():
     money_out = sum(e.amount_paid for e in day_expenses)
 
     this_month = sel_date[:7]
-    month_invoices = Invoice.query.filter(Invoice.date.startswith(this_month)).all()
+    month_invoices = Invoice.query.filter(Invoice.date.startswith(this_month), Invoice.hide_pricing == False).all()
     month_expenses = Expense.query.filter(Expense.date.startswith(this_month)).all()
     month_billed = sum(i.grand_total for i in month_invoices)
     month_received = sum(i.amount_received for i in month_invoices)
@@ -796,7 +970,27 @@ def _run_startup_migrations():
     db.create_all()
     inspector = inspect(db.engine)
     _add_column_if_missing(inspector, "customer", "opening_balance", "opening_balance FLOAT DEFAULT 0.0")
+    _add_column_if_missing(inspector, "customer", "credit_days", "credit_days INTEGER DEFAULT 30")
     _add_column_if_missing(inspector, "item", "category_id", "category_id INTEGER")
+
+    _add_column_if_missing(inspector, "settings", "show_gstin_on_invoice", "show_gstin_on_invoice BOOLEAN DEFAULT TRUE")
+    _add_column_if_missing(inspector, "settings", "default_print_copies", "default_print_copies VARCHAR(4) DEFAULT '2'")
+    _add_column_if_missing(inspector, "settings", "invoice_default_notes", "invoice_default_notes VARCHAR(500) DEFAULT ''")
+    _add_column_if_missing(inspector, "settings", "challan_prefix", "challan_prefix VARCHAR(20) DEFAULT 'DC'")
+    _add_column_if_missing(inspector, "settings", "next_challan_no", "next_challan_no INTEGER DEFAULT 1")
+    _add_column_if_missing(inspector, "settings", "default_unit", "default_unit VARCHAR(20) DEFAULT 'pcs'")
+    _add_column_if_missing(inspector, "settings", "default_gst_rate", "default_gst_rate FLOAT DEFAULT 18.0")
+    _add_column_if_missing(inspector, "settings", "default_reorder_level", "default_reorder_level FLOAT DEFAULT 0.0")
+    _add_column_if_missing(inspector, "settings", "default_customer_state", "default_customer_state VARCHAR(80) DEFAULT ''")
+    _add_column_if_missing(inspector, "settings", "default_credit_days", "default_credit_days INTEGER DEFAULT 30")
+    _add_column_if_missing(inspector, "settings", "invoice_font", "invoice_font VARCHAR(20) DEFAULT 'helvetica'")
+    _add_column_if_missing(inspector, "settings", "theme_color", "theme_color VARCHAR(10) DEFAULT '#A8722E'")
+    _add_column_if_missing(inspector, "settings", "staff_can_edit_price", "staff_can_edit_price BOOLEAN DEFAULT TRUE")
+    _add_column_if_missing(inspector, "settings", "staff_can_give_discount", "staff_can_give_discount BOOLEAN DEFAULT TRUE")
+    _add_column_if_missing(inspector, "settings", "staff_can_edit_invoice", "staff_can_edit_invoice BOOLEAN DEFAULT TRUE")
+
+    _add_column_if_missing(inspector, "invoice", "hide_pricing", "hide_pricing BOOLEAN DEFAULT FALSE")
+    _add_column_if_missing(inspector, "invoice", "consolidated_into_id", "consolidated_into_id INTEGER")
 
 
 with app.app_context():

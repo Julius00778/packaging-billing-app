@@ -36,6 +36,7 @@ def _wrap(text, font, size, max_width):
 
 
 def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
+    hide_pricing = bool(getattr(inv, "hide_pricing", False))
     margin = 26
     x0, x1 = margin, page_w - margin
     y = y_top - 20
@@ -54,7 +55,7 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
     meta_bits = []
     if settings.phone:
         meta_bits.append(f"Ph: {settings.phone}")
-    if settings.gstin:
+    if settings.gstin and getattr(settings, "show_gstin_on_invoice", True):
         meta_bits.append(f"GSTIN: {settings.gstin}")
     if meta_bits:
         c.drawString(x0, y2, "   ".join(meta_bits))
@@ -65,7 +66,7 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
     c.drawRightString(x1, y, label)
     c.setFont("Helvetica", 7.5)
     c.setFillColor(INK_SOFT)
-    c.drawRightString(x1, y - 12, "Invoice No.")
+    c.drawRightString(x1, y - 12, "Challan No." if hide_pricing else "Invoice No.")
     c.setFont("Helvetica-Bold", 10)
     c.setFillColor(INK)
     c.drawRightString(x1, y - 23, inv.invoice_no)
@@ -81,14 +82,14 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
     y = y_head_bottom - 12
     c.setFont("Helvetica", 6.5)
     c.setFillColor(INK_SOFT)
-    c.drawString(x0, y, "BILL TO")
+    c.drawString(x0, y, "DELIVER TO" if hide_pricing else "BILL TO")
     y -= 10
     c.setFont("Helvetica-Bold", 8.5)
     c.setFillColor(INK)
     c.drawString(x0, y, inv.customer.name)
     c.setFont("Helvetica-Bold", 7.5)
     c.setFillColor(ACCENT)
-    c.drawRightString(x1, y, STATUS_LABEL.get(inv.payment_status, ""))
+    c.drawRightString(x1, y, "CHALLAN — RATE TO FOLLOW" if hide_pricing else STATUS_LABEL.get(inv.payment_status, ""))
     y -= 9
     c.setFont("Helvetica", 7)
     c.setFillColor(INK_SOFT)
@@ -98,7 +99,7 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
     extra = []
     if inv.customer.phone:
         extra.append(f"Ph: {inv.customer.phone}")
-    if inv.customer.gstin:
+    if inv.customer.gstin and getattr(settings, "show_gstin_on_invoice", True):
         extra.append(f"GSTIN: {inv.customer.gstin}")
     if extra:
         c.drawString(x0, y, "   ".join(extra))
@@ -114,19 +115,22 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 6.8)
     c.drawString(x0 + 3, table_top - 9, "DESCRIPTION")
-    c.drawRightString(col_rate_x - 4, table_top - 9, "QTY")
-    c.drawRightString(col_amt_x - 4, table_top - 9, "RATE")
-    c.drawRightString(x1 - 3, table_top - 9, "AMOUNT")
+    if hide_pricing:
+        c.drawRightString(x1 - 3, table_top - 9, "QTY")
+    else:
+        c.drawRightString(col_rate_x - 4, table_top - 9, "QTY")
+        c.drawRightString(col_amt_x - 4, table_top - 9, "RATE")
+        c.drawRightString(x1 - 3, table_top - 9, "AMOUNT")
 
     row_h = 11.5
     y = table_top - 12
-    reserved_bottom = y_bottom + 78
+    reserved_bottom = y_bottom + (36 if hide_pricing else 78)
     c.setFont("Helvetica", 7)
     for li in inv.items:
         if y - row_h <= reserved_bottom:
             c.setFont("Helvetica-Oblique", 6.5)
             c.setFillColor(INK_SOFT)
-            c.drawString(x0 + 3, y - 9, "... (see full invoice in system for more lines)")
+            c.drawString(x0 + 3, y - 9, "... (see full document in system for more lines)")
             y -= row_h
             break
         y -= row_h
@@ -136,13 +140,24 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
         c.setFont("Helvetica", 7)
         c.setFillColor(INK)
         c.drawString(x0 + 3, y + 3, li.description[:44])
-        c.drawRightString(col_rate_x - 4, y + 3, f"{li.qty:g} {li.unit}")
-        c.drawRightString(col_amt_x - 4, y + 3, f"{li.rate:,.2f}")
-        c.drawRightString(x1 - 3, y + 3, f"{li.line_total:,.2f}")
+        if hide_pricing:
+            c.drawRightString(x1 - 3, y + 3, f"{li.qty:g} {li.unit}")
+        else:
+            c.drawRightString(col_rate_x - 4, y + 3, f"{li.qty:g} {li.unit}")
+            c.drawRightString(col_amt_x - 4, y + 3, f"{li.rate:,.2f}")
+            c.drawRightString(x1 - 3, y + 3, f"{li.line_total:,.2f}")
 
     c.setStrokeColor(INK)
     c.setLineWidth(0.8)
     c.line(x0, y, x1, y)
+
+    if hide_pricing:
+        c.setFont("Helvetica-Oblique", 6.8)
+        c.setFillColor(INK_SOFT)
+        c.drawString(x0, y - 11, "Rate & total to be billed later.")
+        if inv.notes:
+            c.drawString(x0, y_bottom + 8, ("Note: " + inv.notes)[:95])
+        return
 
     ty = [y - 11]
 
@@ -173,7 +188,8 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
 
 
 def build_invoice_pdf(inv, settings, t=None):
-    """Returns a BytesIO containing a one-page A4 PDF with two copies of the invoice."""
+    """Returns a BytesIO containing a one-page A4 PDF with two copies of the invoice
+    (or delivery challan, if inv.hide_pricing is set)."""
     buf = io.BytesIO()
     page_w, page_h = A4
     c = canvas.Canvas(buf, pagesize=A4)
