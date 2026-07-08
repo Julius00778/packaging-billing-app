@@ -182,3 +182,11 @@ body{margin:0;}
 .pinv-half .pinv-footer{padding-top:8px;}
 .pinv-half .pinv-footer .terms{font-size:9px;}
 }
+
+/* --- settings page section headers --- */
+.settings-sec-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:12px;}
+
+/* --- challan (delivery, rate-hidden) badges/stamps --- */
+.badge.challan{background:var(--accent-soft);color:var(--accent-deep);margin-left:6px;}
+.stamp.challan{color:var(--accent-deep);font-size:10px;}
+.btn-ghost.active{background:var(--ink);color:#fff;border-color:var(--ink);}
