@@ -780,7 +780,16 @@ def customer_ledger_entries(customer):
     entries = []
     for inv in Invoice.query.filter_by(customer_id=customer.id).all():
         if inv.hide_pricing:
-            continue  # challans carry no price yet — they only enter the ledger once consolidated into a priced invoice
+            # Challans carry no price yet, so they never move the running balance —
+            # but still show them so pending deliveries are visible right here in
+            # the ledger, not just on the separate Invoices page.
+            entries.append({
+                "date": inv.date, "kind": "challan", "ref": inv.invoice_no,
+                "debit": 0.0, "credit": 0.0, "sort_key": (inv.date, inv.created_at),
+                "link": url_for("print_invoice", invid=inv.id),
+                "consolidated": bool(inv.consolidated_into_id),
+            })
+            continue
         entries.append({
             "date": inv.date, "kind": "invoice", "ref": inv.invoice_no,
             "debit": inv.grand_total, "credit": 0.0, "sort_key": (inv.date, inv.created_at),
@@ -826,7 +835,9 @@ def customer_khata(cid):
     c = Customer.query.get_or_404(cid)
     entries, balance = customer_ledger_entries(c)
     entries.reverse()
-    return render_template("customer_khata.html", customer=c, entries=entries, balance=balance)
+    pending_challans = Invoice.query.filter_by(customer_id=c.id, hide_pricing=True, consolidated_into_id=None).count()
+    return render_template("customer_khata.html", customer=c, entries=entries, balance=balance,
+                           pending_challans=pending_challans)
 
 
 @app.route("/accounts/payments", methods=["GET", "POST"])
