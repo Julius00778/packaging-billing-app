@@ -249,6 +249,7 @@ TRANSLATIONS = {
         "invoice_print_settings": "Invoice / Print Settings",
         "challan_prefix": "Challan Prefix",
         "challan_prefix_hint": "Used for delivery challans (rate hidden). Keep different from Invoice Prefix.",
+        "next_challan_no": "Next Challan Number",
         "show_gstin_on_invoice": "Show GSTIN on invoice print/PDF",
         "default_print_copies": "Default print copies",
         "copies_2": "2 copies (Party + Office)",
@@ -551,6 +552,7 @@ TRANSLATIONS = {
         # settings — expanded sections
         "invoice_print_settings": "इनवॉइस / प्रिंट सेटिंग्स",
         "challan_prefix": "चालान प्रीफ़िक्स",
+        "next_challan_no": "अगला चालान नंबर",
         "challan_prefix_hint": "डिलीवरी चालान (रेट छिपा हुआ) के लिए प्रयोग होता है। इनवॉइस प्रीफ़िक्स से अलग रखें।",
         "show_gstin_on_invoice": "इनवॉइस प्रिंट/PDF पर GSTIN दिखाएं",
         "default_print_copies": "डिफ़ॉल्ट प्रिंट कॉपियां",
