@@ -128,4 +128,10 @@
 </form>
 </div>
 
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('data_backup') }}</h2>
+<p class="section-sub">{{ t('data_backup_hint') }}</p>
+<div class="btn-row"><a class="btn btn-ghost" href="{{ url_for('backup_export') }}">{{ t('download_backup_btn') }}</a></div>
+</div>
+
 {% endblock %}
