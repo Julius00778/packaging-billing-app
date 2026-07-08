@@ -5,6 +5,9 @@
 
 <div class="toolbar">
 <a class="btn btn-ghost" href="{{ url_for('accounts_home') }}">← {{ t('accounts') }}</a>
+{% if pending_challans %}
+<a class="btn btn-primary" href="{{ url_for('consolidate_challans', customer_id=customer.id) }}">{{ t('consolidate_link') }} ({{ pending_challans }})</a>
+{% endif %}
 </div>
 
 <div class="stat-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px;">
@@ -35,10 +38,17 @@
 {% for e in entries %}
 <tr>
 <td>{{ e.date }}</td>
-<td>{% if e.link %}<a href="{{ e.link }}" target="_blank">{{ e.ref }}</a>{% else %}{{ e.ref }}{% endif %}</td>
+<td>
+{% if e.link %}<a href="{{ e.link }}">{{ e.ref }}</a>{% else %}{{ e.ref }}{% endif %}
+{% if e.kind == 'challan' %}<span class="badge challan">{{ t('converted') if e.consolidated else t('pending_rate') }}</span>{% endif %}
+</td>
+{% if e.kind == 'challan' %}
+<td class="num">—</td>
+{% else %}
 <td class="num {% if e.debit %}badge unpaid{% else %}badge paid{% endif %}">
 {% if e.debit %}+₹{{ "%.2f"|format(e.debit) }}{% else %}-₹{{ "%.2f"|format(e.credit) }}{% endif %}
 </td>
+{% endif %}
 <td class="num mono">₹{{ "%.2f"|format(e.balance) }}</td>
 </tr>
 {% endfor %}

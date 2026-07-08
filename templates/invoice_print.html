@@ -112,7 +112,7 @@
 <div class="print-trigger no-print">
 <button class="btn btn-primary" onclick="window.print()">{{ t('print_2copy_btn') }}</button>
 <a class="btn btn-primary" href="{{ url_for('invoice_pdf', invid=inv.id) }}">{{ t('download_pdf_btn') }}</a>
-<a class="btn btn-ghost" href="{{ url_for('invoices') }}">{{ t('back_to_invoices') }}</a>
+<button class="btn btn-ghost" type="button" onclick="if(document.referrer && document.referrer.indexOf(window.location.host) !== -1){history.back();}else{window.location='{{ url_for('invoices') }}';}">{{ t('back_to_invoices') }}</button>
 </div>
 
 </body>
