@@ -83,12 +83,21 @@ def setup():
     if User.query.count() > 0:
         return redirect(url_for("login"))
     if request.method == "POST":
+        firm_name = request.form.get("firm_name", "").strip()
+        firm_address = request.form.get("address", "").strip()
+        firm_gstin = request.form.get("gstin", "").strip()  # optional — not every party is GST-registered
+        firm_phone = request.form.get("phone", "").strip()
         name = request.form.get("name", "").strip()
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
-        if not name or not username or len(password) < 6:
+        if not firm_name or not name or not username or len(password) < 6:
             flash(t("flash_setup_fields"), "error")
             return render_template("setup.html")
+        settings = Settings.get()
+        settings.firm_name = firm_name
+        settings.address = firm_address
+        settings.gstin = firm_gstin
+        settings.phone = firm_phone
         u = User(name=name, username=username, role="owner")
         u.set_password(password)
         db.session.add(u)
@@ -105,8 +114,19 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
+        role = request.form.get("role", "owner")  # "owner" (Admin) or "staff" — selected on the login form
         user = User.query.filter_by(username=username).first()
         if user and user.active and user.check_password(password):
+            # Extra guard the user asked for: the login form makes you pick Admin vs
+            # Staff up front, and it must match the account's real role — avoids a
+            # staff member accidentally landing on (or being told they're on) the
+            # wrong side, and vice versa.
+            if role == "owner" and not user.is_owner:
+                flash(t("flash_role_is_staff"), "error")
+                return render_template("login.html")
+            if role == "staff" and user.is_owner:
+                flash(t("flash_role_is_admin"), "error")
+                return render_template("login.html")
             login_user(user)
             return redirect(url_for("dashboard"))
         flash(t("flash_bad_login"), "error")
