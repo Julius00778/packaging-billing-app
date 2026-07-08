@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ firm_settings.firm_name or "Firm Billing" }} — {% block title %}{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+:root{
+--accent: {{ firm_settings.theme_color or '#A8722E' }};
+--accent-deep: {{ firm_settings.theme_color or '#A8722E' }};
+}
+body{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }
+</style>
 </head>
 <body>
 

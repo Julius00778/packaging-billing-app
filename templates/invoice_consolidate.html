@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% set active = "invoices" %}
+{% block title %}{{ t('consolidate_title') }}{% endblock %}
+{% block content %}
+
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('consolidate_title') }}</h2>
+<p class="section-sub">{{ t('consolidate_sub') }}</p>
+
+<form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+<div class="field" style="max-width:320px;">
+<label>{{ t('select_customer_with_pending') }}</label>
+<select name="customer_id" onchange="this.form.submit()">
+<option value="">{{ t('choose') }}</option>
+{% for c in customers_with_pending %}
+<option value="{{ c.id }}" {% if customer and customer.id==c.id %}selected{% endif %}>{{ c.name }} ({{ pending_by_customer[c.id]|length }})</option>
+{% endfor %}
+</select>
+</div>
+</form>
+
+{% if not customers_with_pending %}
+<div class="empty-state" style="margin-top:20px;"><div class="big">{{ t('no_pending_challans') }}</div><div>{{ t('no_pending_challans_hint') }}</div></div>
+{% endif %}
+</div>
+
+{% if customer %}
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('pending_challans_for') }} {{ customer.name }}</h2>
+{% if selected_challans %}
+<form method="POST">
+<input type="hidden" name="customer_id" value="{{ customer.id }}">
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th>{{ t('challan_no_label') }}</th><th>{{ t('date') }}</th><th>{{ t('items_label') }}</th></tr></thead>
+<tbody>
+{% for ch in selected_challans %}
+<tr>
+<td><input type="checkbox" name="challan_ids" value="{{ ch.id }}" checked></td>
+<td class="mono">{{ ch.invoice_no }}</td>
+<td>{{ ch.date }}</td>
+<td>{% for li in ch.items %}{{ li.description }} ({{ li.qty }} {{ li.unit }}){% if not loop.last %}, {% endif %}{% endfor %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<p class="section-sub">{{ t('consolidate_rate_hint') }}</p>
+<div class="btn-row">
+<button class="btn btn-primary" type="submit">{{ t('consolidate_btn') }}</button>
+</div>
+</form>
+{% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

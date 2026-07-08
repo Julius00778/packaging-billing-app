@@ -16,7 +16,11 @@
 {% endfor %}
 </select>
 </div>
-<div class="field"><label>{{ t('sale_price') }}</label><input type="number" step="0.01" name="sale_price" value="{{ item.sale_price }}"></div>
+<div class="field">
+<label>{{ t('sale_price') }}</label>
+<input type="number" step="0.01" name="sale_price" value="{{ item.sale_price }}" {% if not can_edit_price %}disabled{% endif %}>
+{% if not can_edit_price %}<div style="font-size:11px;color:var(--ink-faint);">{{ t('price_locked_hint') }}</div>{% endif %}
+</div>
 </div>
 <div class="form-grid three">
 <div class="field">

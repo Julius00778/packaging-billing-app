@@ -7,6 +7,17 @@
 <h2 class="section-title">{% if invoice %}{{ t('edit_invoice') }} — {{ invoice.invoice_no }}{% else %}{{ t('new_invoice') }}{% endif %}</h2>
 
 <form method="POST" id="invForm">
+<div class="checkbox-row" style="background:var(--accent-soft);padding:10px 12px;border-radius:8px;">
+<input type="checkbox" name="hide_pricing" id="f_hidePricing" {% if invoice and invoice.hide_pricing %}checked{% endif %} {% if invoice %}disabled{% endif %}>
+<label for="f_hidePricing" style="margin:0;font-weight:600;color:var(--accent-deep);">{{ t('hide_pricing_label') }}</label>
+</div>
+{% if invoice %}
+<input type="hidden" name="hide_pricing" value="{{ '1' if invoice.hide_pricing else '' }}">
+<p class="section-sub" style="margin-top:-8px;">{{ t('hide_pricing_locked_hint') }}</p>
+{% else %}
+<p class="section-sub" style="margin-top:6px;">{{ t('hide_pricing_hint') }}</p>
+{% endif %}
+
 <div class="form-grid three">
 <div class="field">
 <label>{{ t('invoice_no') }}</label>
@@ -56,13 +67,16 @@
 <div class="totals-row">
 <span>{{ t('discount') }}</span>
 <span style="display:flex;gap:6px;">
-<input type="number" id="f_discountVal" name="discount_value" value="{{ invoice.discount_value if invoice else 0 }}" min="0" step="0.01">
-<select id="f_discountType" name="discount_type">
+<input type="number" id="f_discountVal" name="discount_value" value="{{ invoice.discount_value if invoice else 0 }}" min="0" step="0.01" {% if not can_give_discount %}disabled{% endif %}>
+<select id="f_discountType" name="discount_type" {% if not can_give_discount %}disabled{% endif %}>
 <option value="amount" {% if invoice and invoice.discount_type=='amount' %}selected{% endif %}>₹</option>
 <option value="percent" {% if invoice and invoice.discount_type=='percent' %}selected{% endif %}>%</option>
 </select>
 </span>
 </div>
+{% if not can_give_discount %}
+<div style="font-size:11.5px;color:var(--ink-faint);text-align:right;margin-top:-4px;">{{ t('discount_disabled_hint') }}</div>
+{% endif %}
 <div class="totals-row"><span>{{ t('other_charges') }}</span><input type="number" id="f_otherCharges" name="other_charges" value="{{ invoice.other_charges if invoice else 0 }}" min="0" step="0.01"></div>
 <div class="totals-row" id="amountReceivedRow" style="display:none;">
 <span>{{ t('amount_received') }}</span>
@@ -74,7 +88,7 @@
 
 <div class="field" style="margin-top:14px;">
 <label>{{ t('notes_print_hint') }}</label>
-<textarea name="notes">{{ invoice.notes if invoice else "" }}</textarea>
+<textarea name="notes">{{ invoice.notes if invoice else (firm_settings.invoice_default_notes or "") }}</textarea>
 </div>
 
 <input type="hidden" name="items_json" id="itemsJson">
@@ -108,6 +122,9 @@ if(rows.length === 0){
 }
 
 let currentStatus = {{ (invoice.payment_status if invoice else 'unpaid')|tojson }};
+const NEXT_INVOICE_NO = {{ next_invoice_no|tojson }};
+const NEXT_CHALLAN_NO = {{ next_challan_no|tojson }};
+const IS_EDIT = {{ 'true' if invoice else 'false' }};
 
 function escapeAttr(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
@@ -220,6 +237,13 @@ document.querySelectorAll('.status-pill').forEach(p=>{
         recalc();
     });
 });
+
+if(!IS_EDIT){
+    const hideChk = document.getElementById('f_hidePricing');
+    hideChk.addEventListener('change', ()=>{
+        document.getElementById('f_invoiceNo').value = hideChk.checked ? NEXT_CHALLAN_NO : NEXT_INVOICE_NO;
+    });
+}
 
 document.getElementById('invForm').addEventListener('submit', (e)=>{
     const custSel = document.getElementById('f_customer');

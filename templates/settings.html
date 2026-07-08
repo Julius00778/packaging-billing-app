@@ -3,7 +3,7 @@
 {% block title %}{{ t('nav_settings') }}{% endblock %}
 {% block content %}
 
-<div class="card panel-pad">
+<div class="card panel-pad" style="margin-bottom:20px;">
 <h2 class="section-title">{{ t('firm_settings') }}</h2>
 <p class="section-sub">{{ t('settings_sub') }}</p>
 <form method="POST">
@@ -30,11 +30,100 @@
 <div class="field"><label>{{ t('account_no') }}</label><input type="text" name="bank_acc" value="{{ s.bank_acc }}"></div>
 <div class="field"><label>{{ t('ifsc') }}</label><input type="text" name="ifsc" value="{{ s.ifsc }}"></div>
 </div>
+
 <div class="divider"></div>
+<h3 class="settings-sec-title">{{ t('invoice_print_settings') }}</h3>
 <div class="form-grid">
 <div class="field"><label>{{ t('invoice_prefix') }}</label><input type="text" name="invoice_prefix" value="{{ s.invoice_prefix }}"></div>
 <div class="field"><label>{{ t('next_invoice_no') }}</label><input type="number" name="next_invoice_no" value="{{ s.next_invoice_no }}"></div>
 </div>
+<div class="form-grid">
+<div class="field">
+<label>{{ t('challan_prefix') }}</label>
+<input type="text" name="challan_prefix" value="{{ s.challan_prefix }}">
+<div style="font-size:12px;color:var(--ink-faint);margin-top:4px;">{{ t('challan_prefix_hint') }}</div>
+</div>
+<div class="field"><label>{{ t('next_challan_no') }}</label><input type="number" name="next_challan_no" value="{{ s.next_challan_no }}"></div>
+</div>
+<div class="checkbox-row">
+<input type="checkbox" name="show_gstin_on_invoice" id="show_gstin_on_invoice" {% if s.show_gstin_on_invoice %}checked{% endif %}>
+<label for="show_gstin_on_invoice" style="margin:0;">{{ t('show_gstin_on_invoice') }}</label>
+</div>
+<div class="field" style="max-width:260px;">
+<label>{{ t('default_print_copies') }}</label>
+<select name="default_print_copies">
+<option value="2" {% if s.default_print_copies=='2' %}selected{% endif %}>{{ t('copies_2') }}</option>
+<option value="1" {% if s.default_print_copies=='1' %}selected{% endif %}>{{ t('copies_1') }}</option>
+</select>
+</div>
+<div class="field"><label>{{ t('invoice_default_notes') }}</label><input type="text" name="invoice_default_notes" value="{{ s.invoice_default_notes }}" placeholder="{{ t('invoice_default_notes_ph') }}"></div>
+
+<div class="divider"></div>
+<h3 class="settings-sec-title">{{ t('item_stock_defaults') }}</h3>
+<div class="form-grid three">
+<div class="field">
+<label>{{ t('default_unit') }}</label>
+<select name="default_unit">
+{% for u in common_units %}
+<option value="{{ u }}" {% if s.default_unit==u %}selected{% endif %}>{{ u }}</option>
+{% endfor %}
+</select>
+</div>
+<div class="field"><label>{{ t('default_gst_rate') }} (%)</label><input type="number" step="0.01" name="default_gst_rate" value="{{ s.default_gst_rate }}"></div>
+<div class="field"><label>{{ t('default_reorder_level') }}</label><input type="number" step="0.01" name="default_reorder_level" value="{{ s.default_reorder_level }}"></div>
+</div>
+
+<div class="divider"></div>
+<h3 class="settings-sec-title">{{ t('party_defaults') }}</h3>
+<div class="form-grid">
+<div class="field">
+<label>{{ t('default_customer_state') }}</label>
+<select name="default_customer_state">
+<option value="">{{ t('select_state') }}</option>
+{% for st in state_names %}
+<option value="{{ st }}" {% if st==s.default_customer_state %}selected{% endif %}>{{ st }}</option>
+{% endfor %}
+</select>
+</div>
+<div class="field"><label>{{ t('default_credit_days') }}</label><input type="number" name="default_credit_days" value="{{ s.default_credit_days }}"></div>
+</div>
+
+<div class="divider"></div>
+<h3 class="settings-sec-title">{{ t('staff_permissions') }}</h3>
+<p class="section-sub" style="margin-bottom:10px;">{{ t('staff_permissions_sub') }}</p>
+<div class="checkbox-row">
+<input type="checkbox" name="staff_can_edit_price" id="staff_can_edit_price" {% if s.staff_can_edit_price %}checked{% endif %}>
+<label for="staff_can_edit_price" style="margin:0;">{{ t('staff_can_edit_price') }}</label>
+</div>
+<div class="checkbox-row">
+<input type="checkbox" name="staff_can_give_discount" id="staff_can_give_discount" {% if s.staff_can_give_discount %}checked{% endif %}>
+<label for="staff_can_give_discount" style="margin:0;">{{ t('staff_can_give_discount') }}</label>
+</div>
+<div class="checkbox-row">
+<input type="checkbox" name="staff_can_edit_invoice" id="staff_can_edit_invoice" {% if s.staff_can_edit_invoice %}checked{% endif %}>
+<label for="staff_can_edit_invoice" style="margin:0;">{{ t('staff_can_edit_invoice') }}</label>
+</div>
+
+<div class="divider"></div>
+<h3 class="settings-sec-title">{{ t('appearance') }}</h3>
+<div class="form-grid">
+<div class="field">
+<label>{{ t('invoice_font') }}</label>
+<select name="invoice_font">
+{% for key, f in invoice_fonts.items() %}
+<option value="{{ key }}" {% if s.invoice_font==key %}selected{% endif %}>{{ f.label }}</option>
+{% endfor %}
+</select>
+</div>
+<div class="field">
+<label>{{ t('theme_color') }}</label>
+<div style="display:flex;gap:10px;align-items:center;">
+<input type="color" name="theme_color" value="{{ s.theme_color }}" style="width:52px;height:40px;padding:2px;border:1px solid var(--border);border-radius:7px;">
+<span style="font-size:12px;color:var(--ink-faint);">{{ t('theme_color_hint') }}</span>
+</div>
+</div>
+</div>
+
 <div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('save_settings') }}</button></div>
 </form>
 </div>

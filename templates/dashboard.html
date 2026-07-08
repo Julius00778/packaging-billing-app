@@ -22,6 +22,18 @@
 </div>
 </div>
 
+{% if pending_challans %}
+<div class="card panel-pad" style="margin-bottom:20px;">
+<div class="toolbar" style="margin:0;">
+<div style="flex:1;">
+<h2 class="section-title" style="margin-bottom:4px;">{{ t('pending_challans_alert') }}</h2>
+<p class="section-sub" style="margin-bottom:0;">{{ pending_challans }} {{ t('pending_challans_sub') }}</p>
+</div>
+<a class="btn btn-primary btn-sm" href="{{ url_for('consolidate_challans') }}">{{ t('consolidate_link') }}</a>
+</div>
+</div>
+{% endif %}
+
 {% if low_stock %}
 <div class="card panel-pad" style="margin-bottom:20px;">
 <h2 class="section-title">{{ t('low_stock_alert') }}</h2>

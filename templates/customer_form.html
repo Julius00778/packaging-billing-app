@@ -22,7 +22,10 @@
 </select>
 </div>
 </div>
-<div class="field" style="max-width:220px;"><label>{{ t('opening_balance') }} (₹)</label><input type="number" step="0.01" name="opening_balance" value="{{ customer.opening_balance }}"></div>
+<div class="form-grid">
+<div class="field"><label>{{ t('opening_balance') }} (₹)</label><input type="number" step="0.01" name="opening_balance" value="{{ customer.opening_balance }}"></div>
+<div class="field"><label>{{ t('default_credit_days') }}</label><input type="number" name="credit_days" value="{{ customer.credit_days }}"></div>
+</div>
 <div class="btn-row">
 <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
 <a class="btn btn-ghost" href="{{ url_for('customers') }}">{{ t('cancel') }}</a>

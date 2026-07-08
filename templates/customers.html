@@ -17,7 +17,7 @@
 <label>{{ t('state') }}</label>
 <select name="state">
 <option value="">{{ t('select_state') }}</option>
-{% for st in state_names %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+{% for st in state_names %}<option value="{{ st }}" {% if settings and st==settings.default_customer_state %}selected{% endif %}>{{ st }}</option>{% endfor %}
 </select>
 </div>
 </div>
@@ -35,7 +35,7 @@
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('name') }}</th><th>{{ t('phone') }}</th><th>{{ t('state') }}</th><th>GSTIN</th><th></th></tr></thead>
+<thead><tr><th>{{ t('name') }}</th><th>{{ t('phone') }}</th><th>{{ t('state') }}</th><th>GSTIN</th><th>{{ t('default_credit_days') }}</th><th></th></tr></thead>
 <tbody>
 {% for c in customers %}
 <tr>
@@ -43,6 +43,7 @@
 <td>{{ c.phone }}</td>
 <td>{{ c.state }}</td>
 <td class="mono">{{ c.gstin }}</td>
+<td class="num">{{ c.credit_days }}</td>
 <td>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('customer_khata', cid=c.id) }}">{{ t('ledger') }}</a>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_customer', cid=c.id) }}">{{ t('edit') }}</a>

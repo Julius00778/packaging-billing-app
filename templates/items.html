@@ -21,14 +21,18 @@
 {% endfor %}
 </select>
 </div>
-<div class="field"><label>{{ t('sale_price') }}</label><input type="number" step="0.01" name="sale_price" value="0"></div>
+<div class="field">
+<label>{{ t('sale_price') }}</label>
+<input type="number" step="0.01" name="sale_price" value="0" {% if not can_edit_price %}disabled{% endif %}>
+{% if not can_edit_price %}<div style="font-size:11px;color:var(--ink-faint);">{{ t('price_locked_hint') }}</div>{% endif %}
+</div>
 </div>
 <div class="form-grid three">
 <div class="field">
 <label>{{ t('unit') }}</label>
 <select name="unit" id="unitSelectAdd" onchange="document.getElementById('unitOtherWrapAdd').style.display = this.value==='other' ? 'block' : 'none';">
 {% for u in common_units %}
-<option value="{{ u }}" {% if u == 'pcs' %}selected{% endif %}>{{ u }}</option>
+<option value="{{ u }}" {% if u == (settings.default_unit or 'pcs') %}selected{% endif %}>{{ u }}</option>
 {% endfor %}
 <option value="other">{{ t('unit_other') }}</option>
 </select>
@@ -40,7 +44,7 @@
 <div class="field"><label>{{ t('opening_stock') }}</label><input type="number" step="0.01" name="current_stock" value="0"></div>
 </div>
 <div class="form-grid three">
-<div class="field"><label>{{ t('reorder_level') }}</label><input type="number" step="0.01" name="reorder_level" value="0"></div>
+<div class="field"><label>{{ t('reorder_level') }}</label><input type="number" step="0.01" name="reorder_level" value="{{ settings.default_reorder_level or 0 }}"></div>
 <div class="checkbox-row" style="margin-top:28px;">
 <input type="checkbox" name="track_stock" id="track_stock" checked>
 <label for="track_stock" style="margin:0;">{{ t('track_stock_label') }}</label>

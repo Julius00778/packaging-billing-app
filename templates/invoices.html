@@ -6,9 +6,17 @@
 <div class="toolbar">
 <form method="GET" style="display:flex;gap:10px;flex:1;">
 <input type="text" name="q" value="{{ q }}" placeholder="{{ t('search_invoice_ph') }}">
+<input type="hidden" name="type" value="{{ filt }}">
 <button class="btn btn-ghost" type="submit">{{ t('search') }}</button>
 </form>
+<a class="btn btn-ghost" href="{{ url_for('consolidate_challans') }}">{{ t('consolidate_link') }}</a>
 <a class="btn btn-primary" href="{{ url_for('new_invoice') }}">+ {{ t('new_invoice') }}</a>
+</div>
+
+<div class="toolbar" style="margin-top:-8px;">
+<a class="btn btn-ghost btn-sm {% if not filt %}active{% endif %}" href="{{ url_for('invoices', q=q) }}">{{ t('filter_all') }}</a>
+<a class="btn btn-ghost btn-sm {% if filt=='invoice' %}active{% endif %}" href="{{ url_for('invoices', q=q, type='invoice') }}">{{ t('filter_invoices') }}</a>
+<a class="btn btn-ghost btn-sm {% if filt=='challan' %}active{% endif %}" href="{{ url_for('invoices', q=q, type='challan') }}">{{ t('filter_challans') }}</a>
 </div>
 
 <div class="card panel-pad">
@@ -18,14 +26,19 @@
 <tbody>
 {% for inv in invoices %}
 <tr>
-<td class="mono">{{ inv.invoice_no }}</td>
+<td class="mono">{{ inv.invoice_no }}
+{% if inv.hide_pricing %}<span class="badge challan">{{ t('challan_badge') }}</span>{% endif %}
+{% if inv.consolidated_into_id %}<div style="font-size:11px;color:var(--ink-faint);margin-top:2px;">{{ t('converted_to') }} {{ inv.consolidated_into.invoice_no }}</div>{% endif %}
+</td>
 <td>{{ inv.date }}</td>
 <td>{{ inv.customer.name }}</td>
-<td class="num">₹{{ "%.2f"|format(inv.grand_total) }}</td>
-<td><span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span></td>
+<td class="num">{% if inv.hide_pricing %}—{% else %}₹{{ "%.2f"|format(inv.grand_total) }}{% endif %}</td>
+<td>{% if inv.hide_pricing %}<span class="badge challan">{{ t('pending_rate') if not inv.consolidated_into_id else t('converted') }}</span>{% else %}<span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span>{% endif %}</td>
 <td>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=inv.id) }}" target="_blank">{{ t('print') }}</a>
+{% if not inv.consolidated_into_id %}
 <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_invoice', invid=inv.id) }}">{{ t('edit') }}</a>
+{% endif %}
 {% if current_user.is_owner %}
 <form method="POST" action="{{ url_for('delete_invoice', invid=inv.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('stock_restore_confirm') }}');">
 <button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
