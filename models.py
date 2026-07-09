@@ -221,6 +221,7 @@ class Payment(db.Model):
 
     customer = db.relationship("Customer")
     invoice = db.relationship("Invoice", foreign_keys=[invoice_id])
+    creator = db.relationship("User")
 
 
 class Vendor(db.Model):
@@ -247,3 +248,4 @@ class Expense(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
 
     vendor = db.relationship("Vendor")
+    creator = db.relationship("User")

@@ -166,6 +166,14 @@ def dashboard():
     )
 
 
+@app.route("/entry")
+@login_required
+def new_entry():
+    """Unified voucher-type picker — Tally-style single starting point for every
+    kind of transaction (Sale, Purchase, Payment Received, Payment Made)."""
+    return render_template("entry_new.html")
+
+
 @app.route("/customers", methods=["GET", "POST"])
 @login_required
 def customers():
@@ -926,6 +934,21 @@ def payments_page():
     return render_template("payments.html", customers=Customer.query.order_by(Customer.name).all(), payments=recent)
 
 
+@app.route("/accounts/payments/<int:pid>")
+@login_required
+def view_payment(pid):
+    p = Payment.query.get_or_404(pid)
+    return render_template("payment_view.html", p=p)
+
+
+@app.route("/accounts/payments/<int:pid>/print")
+@login_required
+def print_payment(pid):
+    p = Payment.query.get_or_404(pid)
+    settings = Settings.get()
+    return render_template("payment_print.html", p=p, settings=settings)
+
+
 @app.route("/accounts/payments/<int:pid>/delete", methods=["POST"])
 @login_required
 @owner_required
@@ -990,6 +1013,21 @@ def expenses_page():
                            q=q, total=total)
 
 
+@app.route("/accounts/expenses/<int:eid>")
+@login_required
+def view_expense(eid):
+    e = Expense.query.get_or_404(eid)
+    return render_template("expense_view.html", e=e)
+
+
+@app.route("/accounts/expenses/<int:eid>/print")
+@login_required
+def print_expense(eid):
+    e = Expense.query.get_or_404(eid)
+    settings = Settings.get()
+    return render_template("expense_print.html", e=e, settings=settings)
+
+
 @app.route("/accounts/expenses/<int:eid>/delete", methods=["POST"])
 @login_required
 @owner_required
@@ -1007,11 +1045,43 @@ def reports_page():
     sel_date = request.args.get("date") or date.today().isoformat()
 
     day_invoices = Invoice.query.filter_by(date=sel_date, hide_pricing=False).all()
-    day_payments = Payment.query.filter_by(date=sel_date).all()
+    day_challans = Invoice.query.filter_by(date=sel_date, hide_pricing=True).all()
+    day_payments = [p for p in Payment.query.filter_by(date=sel_date).all() if p.invoice_id is None]
     day_expenses = Expense.query.filter_by(date=sel_date).all()
 
-    money_in = sum(i.amount_received for i in day_invoices) + sum(p.amount for p in day_payments if p.invoice_id is None)
+    money_in = sum(i.amount_received for i in day_invoices) + sum(p.amount for p in day_payments)
     money_out = sum(e.amount_paid for e in day_expenses)
+
+    # Tally-style Day Book: every voucher of every type for the day, in one
+    # chronological list. Each row links to that voucher's own view page — from
+    # there the user can Print; we never print directly off this list.
+    day_book_entries = []
+    for inv in day_invoices:
+        day_book_entries.append({
+            "kind": "sale", "ref": inv.invoice_no, "party": inv.customer.name,
+            "amount": inv.grand_total, "sort_key": inv.created_at,
+            "view_url": url_for("edit_invoice", invid=inv.id),
+        })
+    for ch in day_challans:
+        day_book_entries.append({
+            "kind": "challan", "ref": ch.invoice_no, "party": ch.customer.name,
+            "amount": None, "sort_key": ch.created_at,
+            "view_url": url_for("edit_invoice", invid=ch.id),
+        })
+    for p in day_payments:
+        day_book_entries.append({
+            "kind": "receipt", "ref": f"PMT-{p.id}", "party": p.customer.name,
+            "amount": p.amount, "sort_key": p.created_at,
+            "view_url": url_for("view_payment", pid=p.id),
+        })
+    for e in day_expenses:
+        kind = "purchase" if e.category == "raw_material" else "payment_made"
+        day_book_entries.append({
+            "kind": kind, "ref": f"EXP-{e.id}", "party": e.vendor.name if e.vendor else "—",
+            "amount": e.amount, "sort_key": e.created_at,
+            "view_url": url_for("view_expense", eid=e.id),
+        })
+    day_book_entries.sort(key=lambda x: x["sort_key"])
 
     this_month = sel_date[:7]
     month_invoices = Invoice.query.filter(Invoice.date.startswith(this_month), Invoice.hide_pricing == False).all()
@@ -1021,9 +1091,8 @@ def reports_page():
     month_expense_total = sum(e.amount for e in month_expenses)
 
     return render_template(
-        "reports.html", sel_date=sel_date,
-        day_invoices=day_invoices, day_payments=[p for p in day_payments if p.invoice_id is None],
-        day_expenses=day_expenses, money_in=money_in, money_out=money_out,
+        "reports.html", sel_date=sel_date, day_book_entries=day_book_entries,
+        money_in=money_in, money_out=money_out,
         month_billed=month_billed, month_received=month_received, month_expense_total=month_expense_total,
         net_position=month_received - month_expense_total,
     )
