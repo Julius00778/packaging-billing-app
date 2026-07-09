@@ -75,6 +75,16 @@ tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:mi
 .badge.owner{background:var(--accent-soft);color:var(--accent-deep);}
 .badge.staff{background:var(--success-soft);color:var(--success);}
 .badge.inactive{background:var(--danger-soft);color:var(--danger);}
+.badge.sale{background:var(--accent-soft);color:var(--accent-deep);}
+.badge.receipt{background:var(--success-soft);color:var(--success);}
+.badge.purchase{background:var(--danger-soft);color:var(--danger);}
+.badge.payment_made{background:var(--danger-soft);color:var(--danger);}
+
+.entry-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-top:16px;}
+.entry-tile{display:block;padding:20px;border:1px solid var(--border);border-radius:12px;text-decoration:none;background:#FCFCFA;transition:border-color .15s, transform .15s;}
+.entry-tile:hover{border-color:var(--accent);transform:translateY(-2px);}
+.entry-tile h3{font-size:15px;color:var(--ink);margin-bottom:6px;}
+.entry-tile p{font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin:0;}
 
 .toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
 .toolbar input[type=text]{flex:1;min-width:200px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#FCFCFA;}
