@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('record_expense') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('expenses_page') }}">← {{ t('recent_expenses') }}</a>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">
+{% if request.args.get('voucher') == 'purchase' %}{{ t('voucher_purchase') }}{% elif request.args.get('voucher') == 'payment' %}{{ t('voucher_payment_made') }}{% else %}{{ t('record_expense') }}{% endif %}
+</h2>
+<form method="POST">
+<div class="form-grid three">
+<div class="field"><label>{{ t('date') }}</label><input type="date" name="date" value="{{ today }}"></div>
+<div class="field">
+<label>{{ t('category') }}</label>
+{% set default_cat = 'raw_material' if request.args.get('voucher') == 'purchase' else 'general' %}
+<select name="category">
+<option value="raw_material" {% if default_cat=='raw_material' %}selected{% endif %}>{{ t('cat_raw_material') }}</option>
+<option value="rent" {% if default_cat=='rent' %}selected{% endif %}>{{ t('cat_rent') }}</option>
+<option value="salary" {% if default_cat=='salary' %}selected{% endif %}>{{ t('cat_salary') }}</option>
+<option value="utility" {% if default_cat=='utility' %}selected{% endif %}>{{ t('cat_utility') }}</option>
+<option value="transport" {% if default_cat=='transport' %}selected{% endif %}>{{ t('cat_transport') }}</option>
+<option value="general" {% if default_cat=='general' %}selected{% endif %}>{{ t('cat_general') }}</option>
+</select>
+</div>
+<div class="field">
+<label>{{ t('vendor_optional') }}</label>
+<select name="vendor_id">
+<option value="">{{ t('no_vendor') }}</option>
+{% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+</select>
+</div>
+</div>
+<div class="field"><label>{{ t('description') }}</label><input type="text" name="description"></div>
+<div class="form-grid three">
+<div class="field"><label>{{ t('amount') }} *</label><input type="number" step="0.01" min="0.01" name="amount" required></div>
+<div class="field">
+<label>{{ t('status') }}</label>
+<select name="payment_status" id="expStatus">
+<option value="paid">{{ t('paid') }}</option>
+<option value="unpaid">{{ t('unpaid') }}</option>
+<option value="partial">{{ t('partial') }}</option>
+</select>
+</div>
+<div class="field">
+<label>{{ t('method') }}</label>
+<select name="method">
+<option value="cash">{{ t('cash') }}</option>
+<option value="bank">{{ t('bank') }}</option>
+<option value="upi">{{ t('upi') }}</option>
+<option value="cheque">{{ t('cheque') }}</option>
+<option value="other">{{ t('other') }}</option>
+</select>
+</div>
+</div>
+<div class="field" id="amtPaidField" style="max-width:220px;display:none;">
+<label>{{ t('amount_paid') }}</label><input type="number" step="0.01" name="amount_paid" value="0">
+</div>
+<div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('save') }}</button></div>
+</form>
+</div>
+<script>
+document.getElementById('expStatus').addEventListener('change', function(){
+    document.getElementById('amtPaidField').style.display = this.value === 'partial' ? 'block' : 'none';
+});
+</script>
+
+{% endblock %}

@@ -12,15 +12,15 @@
 <h3>{{ t('voucher_sale') }}</h3>
 <p>{{ t('voucher_sale_hint') }}</p>
 </a>
-<a class="entry-tile" href="{{ url_for('expenses_page') }}?voucher=purchase">
+<a class="entry-tile" href="{{ url_for('new_expense_entry') }}?voucher=purchase">
 <h3>{{ t('voucher_purchase') }}</h3>
 <p>{{ t('voucher_purchase_hint') }}</p>
 </a>
-<a class="entry-tile" href="{{ url_for('payments_page') }}">
+<a class="entry-tile" href="{{ url_for('new_payment_entry') }}">
 <h3>{{ t('voucher_payment_received') }}</h3>
 <p>{{ t('voucher_payment_received_hint') }}</p>
 </a>
-<a class="entry-tile" href="{{ url_for('expenses_page') }}?voucher=payment">
+<a class="entry-tile" href="{{ url_for('new_expense_entry') }}?voucher=payment">
 <h3>{{ t('voucher_payment_made') }}</h3>
 <p>{{ t('voucher_payment_made_hint') }}</p>
 </a>
