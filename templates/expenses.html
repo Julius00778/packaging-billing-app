@@ -8,19 +8,22 @@
 </div>
 
 <div class="card panel-pad" style="margin-bottom:20px;">
-<h2 class="section-title">{{ t('record_expense') }}</h2>
+<h2 class="section-title">
+{% if request.args.get('voucher') == 'purchase' %}{{ t('voucher_purchase') }}{% elif request.args.get('voucher') == 'payment' %}{{ t('voucher_payment_made') }}{% else %}{{ t('record_expense') }}{% endif %}
+</h2>
 <form method="POST">
 <div class="form-grid three">
 <div class="field"><label>{{ t('date') }}</label><input type="date" name="date" value="{{ today }}"></div>
 <div class="field">
 <label>{{ t('category') }}</label>
+{% set default_cat = 'raw_material' if request.args.get('voucher') == 'purchase' else 'general' %}
 <select name="category">
-<option value="raw_material">{{ t('cat_raw_material') }}</option>
-<option value="rent">{{ t('cat_rent') }}</option>
-<option value="salary">{{ t('cat_salary') }}</option>
-<option value="utility">{{ t('cat_utility') }}</option>
-<option value="transport">{{ t('cat_transport') }}</option>
-<option value="general">{{ t('cat_general') }}</option>
+<option value="raw_material" {% if default_cat=='raw_material' %}selected{% endif %}>{{ t('cat_raw_material') }}</option>
+<option value="rent" {% if default_cat=='rent' %}selected{% endif %}>{{ t('cat_rent') }}</option>
+<option value="salary" {% if default_cat=='salary' %}selected{% endif %}>{{ t('cat_salary') }}</option>
+<option value="utility" {% if default_cat=='utility' %}selected{% endif %}>{{ t('cat_utility') }}</option>
+<option value="transport" {% if default_cat=='transport' %}selected{% endif %}>{{ t('cat_transport') }}</option>
+<option value="general" {% if default_cat=='general' %}selected{% endif %}>{{ t('cat_general') }}</option>
 </select>
 </div>
 <div class="field">

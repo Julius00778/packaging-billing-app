@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{{ t('receipt_voucher_title') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('payments_page') }}">← {{ t('recent_payments') }}</a>
+<a class="btn btn-primary" href="{{ url_for('print_payment', pid=p.id) }}" target="_blank">{{ t('print') }}</a>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('receipt_voucher_title') }} — PMT-{{ p.id }}</h2>
+<div class="form-grid three">
+<div class="field"><label>{{ t('date') }}</label><div>{{ p.date }}</div></div>
+<div class="field"><label>{{ t('party') }}</label><div>{{ p.customer.name }}</div></div>
+<div class="field"><label>{{ t('amount') }}</label><div class="mono">₹{{ "%.2f"|format(p.amount) }}</div></div>
+</div>
+<div class="form-grid">
+<div class="field"><label>{{ t('method') }}</label><div>{{ t(p.method) }}</div></div>
+<div class="field"><label>{{ t('note') }}</label><div>{{ p.note or '—' }}</div></div>
+</div>
+{% if current_user.is_owner %}
+<div class="divider"></div>
+<div class="btn-row">
+<form method="POST" action="{{ url_for('delete_payment', pid=p.id) }}" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">
+<button class="btn btn-ghost" type="submit">{{ t('delete') }}</button>
+</form>
+</div>
+{% endif %}
+</div>
+
+{% endblock %}

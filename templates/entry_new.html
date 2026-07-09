@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set active = "entry" %}
+{% block title %}{{ t('new_entry') }}{% endblock %}
+{% block content %}
+
+<div class="card panel-pad">
+<h2 class="section-title">{{ t('new_entry') }}</h2>
+<p class="section-sub">{{ t('new_entry_sub') }}</p>
+
+<div class="entry-grid">
+<a class="entry-tile" href="{{ url_for('new_invoice') }}">
+<h3>{{ t('voucher_sale') }}</h3>
+<p>{{ t('voucher_sale_hint') }}</p>
+</a>
+<a class="entry-tile" href="{{ url_for('expenses_page') }}?voucher=purchase">
+<h3>{{ t('voucher_purchase') }}</h3>
+<p>{{ t('voucher_purchase_hint') }}</p>
+</a>
+<a class="entry-tile" href="{{ url_for('payments_page') }}">
+<h3>{{ t('voucher_payment_received') }}</h3>
+<p>{{ t('voucher_payment_received_hint') }}</p>
+</a>
+<a class="entry-tile" href="{{ url_for('expenses_page') }}?voucher=payment">
+<h3>{{ t('voucher_payment_made') }}</h3>
+<p>{{ t('voucher_payment_made_hint') }}</p>
+</a>
+</div>
+</div>
+
+{% endblock %}

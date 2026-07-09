@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{% if e.category == 'raw_material' %}{{ t('purchase_voucher_title') }}{% else %}{{ t('payment_voucher_title') }}{% endif %} EXP-{{ e.id }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="pinv">
+<div class="pinv-head">
+<div class="pinv-firm">
+<h2>{{ settings.firm_name or "My Firm" }}</h2>
+<p>{{ settings.address }}</p>
+<p>{% if settings.phone %}Phone: {{ settings.phone }}{% endif %}</p>
+</div>
+<div class="pinv-meta">
+<div class="copy-label">{% if e.category == 'raw_material' %}{{ t('purchase_voucher_title') }}{% else %}{{ t('payment_voucher_title') }}{% endif %}</div>
+<div class="lbl">{{ t('voucher_no') }}</div>
+<div class="inv-no">EXP-{{ e.id }}</div>
+<div class="lbl">{{ t('date') }}</div>
+<div>{{ e.date }}</div>
+</div>
+</div>
+
+<div class="pinv-billto">
+<div>
+<div class="lbl">{{ t('party') }}</div>
+<div style="font-weight:600;">{{ e.vendor.name if e.vendor else '—' }}</div>
+{% if e.vendor %}
+<div style="font-size:12px;color:#5B6378;">{{ e.vendor.address }}</div>
+<div style="font-size:12px;color:#5B6378;">{% if e.vendor.phone %}Ph: {{ e.vendor.phone }}{% endif %}</div>
+{% endif %}
+</div>
+<div class="stamp {{ e.payment_status }}">{{ e.payment_status }}</div>
+</div>
+
+<table>
+<thead><tr><th>{{ t('category') }}</th><th>{{ t('description') }}</th><th class="amt">{{ t('method') }}</th><th class="amt">{{ t('amount') }}</th></tr></thead>
+<tbody>
+<tr><td>{{ t('cat_' + e.category) }}</td><td>{{ e.description or '—' }}</td><td class="amt">{{ t(e.method) }}</td><td class="amt">₹{{ "%.2f"|format(e.amount) }}</td></tr>
+</tbody>
+</table>
+
+<div class="pinv-totals">
+<div class="inner">
+<div class="row"><span>{{ t('amount') }}</span><span>₹{{ "%.2f"|format(e.amount) }}</span></div>
+{% if e.payment_status == 'partial' %}
+<div class="row"><span>{{ t('amount_paid') }}</span><span>₹{{ "%.2f"|format(e.amount_paid) }}</span></div>
+<div class="row grand"><span>{{ t('balance_due') }}</span><span>₹{{ "%.2f"|format(e.amount - e.amount_paid) }}</span></div>
+{% else %}
+<div class="row grand"><span>{{ t('amount_paid') }}</span><span>₹{{ "%.2f"|format(e.amount_paid) }}</span></div>
+{% endif %}
+</div>
+</div>
+
+<div class="pinv-footer">
+<div class="terms">{{ t('recorded_by') }}: {{ e.creator.name if e.creator else '—' }}</div>
+</div>
+</div>
+
+<div class="print-trigger no-print">
+<button class="btn btn-primary" onclick="window.print()">{{ t('print') }}</button>
+<button class="btn btn-ghost" type="button" onclick="if(document.referrer && document.referrer.indexOf(window.location.host) !== -1){history.back();}else{window.location='{{ url_for('expenses_page') }}';}">{{ t('back') }}</button>
+</div>
+
+</body>
+</html>

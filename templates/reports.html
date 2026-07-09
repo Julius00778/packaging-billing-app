@@ -21,48 +21,24 @@
 </div>
 
 <div class="card panel-pad" style="margin-bottom:20px;">
-<h3 style="font-size:14px;margin-bottom:10px;">{{ t('nav_invoices') }} — {{ sel_date }}</h3>
+<h3 style="font-size:14px;margin-bottom:10px;">{{ t('day_book_entries') }} — {{ sel_date }}</h3>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('invoice_no') }}</th><th>{{ t('customer') }}</th><th>{{ t('amount') }}</th><th>{{ t('status') }}</th></tr></thead>
+<thead><tr><th>{{ t('entry_type') }}</th><th>{{ t('voucher_no') }}</th><th>{{ t('party') }}</th><th>{{ t('amount') }}</th><th></th></tr></thead>
 <tbody>
-{% for inv in day_invoices %}
-<tr><td class="mono">{{ inv.invoice_no }}</td><td>{{ inv.customer.name }}</td><td class="num">₹{{ "%.2f"|format(inv.grand_total) }}</td><td><span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span></td></tr>
+{% for entry in day_book_entries %}
+<tr>
+<td><span class="badge {{ entry.kind }}">{% if entry.kind == 'challan' %}{{ t('challan_badge') }}{% else %}{{ t('kind_' + entry.kind) }}{% endif %}</span></td>
+<td class="mono">{{ entry.ref }}</td>
+<td>{{ entry.party }}</td>
+<td class="num">{% if entry.amount is not none %}₹{{ "%.2f"|format(entry.amount) }}{% else %}—{% endif %}</td>
+<td><a class="btn btn-ghost btn-sm" href="{{ entry.view_url }}">{{ t('view') }}</a></td>
+</tr>
 {% endfor %}
 </tbody>
 </table>
 </div>
-{% if not day_invoices %}<div class="empty-state">{{ t('no_invoices_yet') }}</div>{% endif %}
-</div>
-
-<div class="card panel-pad" style="margin-bottom:20px;">
-<h3 style="font-size:14px;margin-bottom:10px;">{{ t('recent_payments') }} — {{ sel_date }}</h3>
-<div class="table-wrap">
-<table>
-<thead><tr><th>{{ t('customer') }}</th><th>{{ t('amount') }}</th><th>{{ t('method') }}</th></tr></thead>
-<tbody>
-{% for p in day_payments %}
-<tr><td>{{ p.customer.name }}</td><td class="num">₹{{ "%.2f"|format(p.amount) }}</td><td>{{ t(p.method) }}</td></tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-{% if not day_payments %}<div class="empty-state">{{ t('no_payments_yet') }}</div>{% endif %}
-</div>
-
-<div class="card panel-pad" style="margin-bottom:20px;">
-<h3 style="font-size:14px;margin-bottom:10px;">{{ t('expenses_purchases') }} — {{ sel_date }}</h3>
-<div class="table-wrap">
-<table>
-<thead><tr><th>{{ t('category') }}</th><th>{{ t('description') }}</th><th>{{ t('amount') }}</th></tr></thead>
-<tbody>
-{% for e in day_expenses %}
-<tr><td>{{ t('cat_' + e.category) }}</td><td>{{ e.description }}</td><td class="num">₹{{ "%.2f"|format(e.amount) }}</td></tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-{% if not day_expenses %}<div class="empty-state">{{ t('no_expenses_yet') }}</div>{% endif %}
+{% if not day_book_entries %}<div class="empty-state">{{ t('no_invoices_yet') }}</div>{% endif %}
 </div>
 
 <div class="card panel-pad">

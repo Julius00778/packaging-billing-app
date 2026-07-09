@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% set active = "accounts" %}
+{% block title %}{% if e.category == 'raw_material' %}{{ t('purchase_voucher_title') }}{% else %}{{ t('payment_voucher_title') }}{% endif %}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+<a class="btn btn-ghost" href="{{ url_for('expenses_page') }}">← {{ t('expenses_purchases') }}</a>
+<a class="btn btn-primary" href="{{ url_for('print_expense', eid=e.id) }}" target="_blank">{{ t('print') }}</a>
+</div>
+
+<div class="card panel-pad">
+<h2 class="section-title">
+{% if e.category == 'raw_material' %}{{ t('purchase_voucher_title') }}{% else %}{{ t('payment_voucher_title') }}{% endif %}
+ — EXP-{{ e.id }}
+</h2>
+<div class="form-grid three">
+<div class="field"><label>{{ t('date') }}</label><div>{{ e.date }}</div></div>
+<div class="field"><label>{{ t('category') }}</label><div>{{ t('cat_' + e.category) }}</div></div>
+<div class="field"><label>{{ t('party') }}</label><div>{{ e.vendor.name if e.vendor else '—' }}</div></div>
+</div>
+<div class="field"><label>{{ t('description') }}</label><div>{{ e.description or '—' }}</div></div>
+<div class="form-grid three">
+<div class="field"><label>{{ t('amount') }}</label><div class="mono">₹{{ "%.2f"|format(e.amount) }}</div></div>
+<div class="field"><label>{{ t('status') }}</label><div><span class="badge {{ e.payment_status }}">{{ t(e.payment_status) }}</span></div></div>
+<div class="field"><label>{{ t('method') }}</label><div>{{ t(e.method) }}</div></div>
+</div>
+{% if current_user.is_owner %}
+<div class="divider"></div>
+<div class="btn-row">
+<form method="POST" action="{{ url_for('delete_expense', eid=e.id) }}" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">
+<button class="btn btn-ghost" type="submit">{{ t('delete') }}</button>
+</form>
+</div>
+{% endif %}
+</div>
+
+{% endblock %}

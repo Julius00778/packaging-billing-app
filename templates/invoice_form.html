@@ -4,7 +4,12 @@
 {% block content %}
 
 <div class="card panel-pad">
-<h2 class="section-title">{% if invoice %}{{ t('edit_invoice') }} — {{ invoice.invoice_no }}{% else %}{{ t('new_invoice') }}{% endif %}</h2>
+<div class="toolbar" style="margin-top:0;padding:0;border:none;">
+<h2 class="section-title" style="margin-bottom:0;">{% if invoice %}{{ t('edit_invoice') }} — {{ invoice.invoice_no }}{% else %}{{ t('new_invoice') }}{% endif %}</h2>
+{% if invoice %}
+<a class="btn btn-ghost" href="{{ url_for('print_invoice', invid=invoice.id) }}" target="_blank">{{ t('print') }}</a>
+{% endif %}
+</div>
 
 <form method="POST" id="invForm">
 <div class="checkbox-row" style="background:var(--accent-soft);padding:10px 12px;border-radius:8px;">

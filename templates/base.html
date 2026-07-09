@@ -31,6 +31,9 @@ body{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_font
 <a class="tab-btn {% if active=='users' %}active{% endif %}" href="{{ url_for('users_page') }}">{{ t('nav_users') }}</a>
 {% endif %}
 </nav>
+{% if current_user.is_authenticated %}
+<a class="btn btn-primary btn-sm" href="{{ url_for('new_entry') }}">+ {{ t('new_entry') }}</a>
+{% endif %}
 <div class="lang-switch">
 <a href="{{ url_for('set_lang', code='en') }}" class="{% if current_lang=='en' %}active{% endif %}">EN</a>
 <span>/</span>
