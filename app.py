@@ -910,28 +910,34 @@ def customer_khata(cid):
                            pending_challans=pending_challans)
 
 
-@app.route("/accounts/payments", methods=["GET", "POST"])
+@app.route("/accounts/payments")
 @login_required
 def payments_page():
+    recent = Payment.query.filter_by(invoice_id=None).order_by(Payment.created_at.desc()).limit(50).all()
+    return render_template("payments.html", payments=recent)
+
+
+@app.route("/accounts/payments/new", methods=["GET", "POST"])
+@login_required
+def new_payment_entry():
     if request.method == "POST":
         customer_id = request.form.get("customer_id")
         amount = float(request.form.get("amount") or 0)
         customer = Customer.query.get(int(customer_id)) if customer_id else None
         if not customer or amount <= 0:
             flash(t("flash_payment_invalid"), "error")
-        else:
-            p = Payment(
-                customer_id=customer.id, date=request.form.get("date") or date.today().isoformat(),
-                amount=amount, method=request.form.get("method", "cash"),
-                note=request.form.get("note", "").strip(), created_by=current_user.id,
-            )
-            db.session.add(p)
-            db.session.commit()
-            flash(t("flash_payment_saved"), "success")
-        return redirect(url_for("payments_page"))
+            return redirect(url_for("new_payment_entry"))
+        p = Payment(
+            customer_id=customer.id, date=request.form.get("date") or date.today().isoformat(),
+            amount=amount, method=request.form.get("method", "cash"),
+            note=request.form.get("note", "").strip(), created_by=current_user.id,
+        )
+        db.session.add(p)
+        db.session.commit()
+        flash(t("flash_payment_saved"), "success")
+        return redirect(url_for("view_payment", pid=p.id))
 
-    recent = Payment.query.filter_by(invoice_id=None).order_by(Payment.created_at.desc()).limit(50).all()
-    return render_template("payments.html", customers=Customer.query.order_by(Customer.name).all(), payments=recent)
+    return render_template("payment_new.html", customers=Customer.query.order_by(Customer.name).all())
 
 
 @app.route("/accounts/payments/<int:pid>")
@@ -980,37 +986,42 @@ def vendors_page():
     return render_template("vendors.html", vendors=Vendor.query.order_by(Vendor.name).all())
 
 
-@app.route("/accounts/expenses", methods=["GET", "POST"])
+@app.route("/accounts/expenses")
 @login_required
 def expenses_page():
-    if request.method == "POST":
-        amount = float(request.form.get("amount") or 0)
-        if amount <= 0:
-            flash(t("flash_expense_invalid"), "error")
-        else:
-            vendor_id = request.form.get("vendor_id") or None
-            payment_status = request.form.get("payment_status", "paid")
-            amount_paid = amount if payment_status == "paid" else float(request.form.get("amount_paid") or 0)
-            e = Expense(
-                date=request.form.get("date") or date.today().isoformat(),
-                category=request.form.get("category", "general"),
-                vendor_id=int(vendor_id) if vendor_id else None,
-                description=request.form.get("description", "").strip(),
-                amount=amount, payment_status=payment_status, amount_paid=amount_paid,
-                method=request.form.get("method", "cash"), created_by=current_user.id,
-            )
-            db.session.add(e)
-            db.session.commit()
-            flash(t("flash_expense_saved"), "success")
-        return redirect(url_for("expenses_page"))
-
     q = request.args.get("q", "").strip().lower()
     rows = Expense.query.order_by(Expense.date.desc(), Expense.created_at.desc()).all()
     if q:
         rows = [e for e in rows if q in (e.description or "").lower() or (e.vendor and q in e.vendor.name.lower())]
     total = sum(e.amount for e in rows)
-    return render_template("expenses.html", expenses=rows, vendors=Vendor.query.order_by(Vendor.name).all(),
-                           q=q, total=total)
+    return render_template("expenses.html", expenses=rows, q=q, total=total)
+
+
+@app.route("/accounts/expenses/new", methods=["GET", "POST"])
+@login_required
+def new_expense_entry():
+    if request.method == "POST":
+        amount = float(request.form.get("amount") or 0)
+        if amount <= 0:
+            flash(t("flash_expense_invalid"), "error")
+            return redirect(url_for("new_expense_entry", voucher=request.args.get("voucher")))
+        vendor_id = request.form.get("vendor_id") or None
+        payment_status = request.form.get("payment_status", "paid")
+        amount_paid = amount if payment_status == "paid" else float(request.form.get("amount_paid") or 0)
+        e = Expense(
+            date=request.form.get("date") or date.today().isoformat(),
+            category=request.form.get("category", "general"),
+            vendor_id=int(vendor_id) if vendor_id else None,
+            description=request.form.get("description", "").strip(),
+            amount=amount, payment_status=payment_status, amount_paid=amount_paid,
+            method=request.form.get("method", "cash"), created_by=current_user.id,
+        )
+        db.session.add(e)
+        db.session.commit()
+        flash(t("flash_expense_saved"), "success")
+        return redirect(url_for("view_expense", eid=e.id))
+
+    return render_template("expense_new.html", vendors=Vendor.query.order_by(Vendor.name).all())
 
 
 @app.route("/accounts/expenses/<int:eid>")
