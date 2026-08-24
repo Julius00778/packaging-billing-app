@@ -13,6 +13,7 @@ from models import (
     Payment, Vendor, Expense, Category, STATE_NAMES, INVOICE_FONTS
 )
 from translations import get_text
+from po_module import po_bp
 
 # Common packaging-firm units. Item.unit stays a free-text column — this list just
 # drives the dropdown; "Other" in the form reveals a text box for anything not listed.
@@ -26,11 +27,15 @@ if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# PO scan / product photo phone se aati hai — 8 MB tak accept karo. po_module server
+# pe use resize kar deta hai, isliye DB me chhoti hi jaati hai.
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
 db.init_app(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+app.register_blueprint(po_bp)
 
 
 @login_manager.user_loader
