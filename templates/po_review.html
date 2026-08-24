@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}PO {{ po.po_number }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;">
+    <div style="font-weight:600;">PO {{ po.po_number }} — {{ po.customer.name }}</div>
+    <div style="font-size:12px;color:var(--ink-faint);">
+      {{ po.po_date }} · via {{ po.source }} · sizes read as {{ party_unit }}
+      {% if mixed %} · <strong>this party orders more than one product per size</strong>{% endif %}
+    </div>
+  </div>
+  <span class="badge {{ po.status }}">{{ po.status }}</span>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back</a>
+</div>
+
+<div style="display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:16px;align-items:start;">
+
+  <!-- Left: the original PO, always visible while reviewing -->
+  <div class="card panel-pad">
+    <div style="font-weight:600;margin-bottom:8px;">Original PO</div>
+    {% if po.has_scan %}
+      {% if po.scan_mime.startswith('image/') %}
+        <a href="{{ url_for('po.po_scan', po_id=po.id) }}" target="_blank">
+          <img src="{{ url_for('po.po_scan', po_id=po.id) }}" alt="PO scan"
+               style="width:100%;border-radius:6px;border:1px solid var(--line,#ddd);">
+        </a>
+      {% else %}
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_scan', po_id=po.id) }}" target="_blank">
+          Open {{ po.scan_name or 'attachment' }}
+        </a>
+      {% endif %}
+    {% else %}
+      <div style="font-size:12px;color:var(--ink-faint);">Koi scan attach nahi hua.</div>
+    {% endif %}
+
+    <div style="font-weight:600;margin:14px 0 6px;">As typed</div>
+    <pre class="mono" style="white-space:pre-wrap;font-size:12px;margin:0;">{{ po.raw_text }}</pre>
+    {% if po.note %}<div style="margin-top:10px;font-size:12px;">Note: {{ po.note }}</div>{% endif %}
+  </div>
+
+  <!-- Right: line by line -->
+  <div>
+    {% for row in line_view %}
+      {% set line = row.line %}
+      <div class="card panel-pad" style="margin-bottom:12px;">
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+          <span class="mono" style="font-weight:600;">{{ line.raw_size_text }}</span>
+          <span>× {{ line.qty|round(2) }} {{ line.qty_unit }}</span>
+          {% if line.map_id %}
+            <span class="badge paid">{{ 'auto-matched' if line.match_status == 'exact' else 'chosen by operator' }}</span>
+          {% elif line.match_status == 'multiple' %}
+            <span class="badge partial">more than one product fits — pick one</span>
+          {% else %}
+            <span class="badge unpaid">new size — map it once</span>
+          {% endif %}
+          {% if line.unit_source == 'magnitude' %}
+            <span class="badge challan">unit guessed — check this</span>
+          {% endif %}
+        </div>
+        <div class="mono" style="font-size:11px;color:var(--ink-faint);margin-top:4px;">
+          from PO: {{ line.raw_text }} · key {{ line.canonical_key }}
+        </div>
+
+        {% if line.map_id %}
+          <div style="display:flex;gap:12px;align-items:center;margin-top:12px;">
+            {% if line.mapping.has_image %}
+              <a href="{{ url_for('po.map_image', map_id=line.mapping.id) }}" target="_blank" title="Bada karke dekho">
+                <img src="{{ url_for('po.map_thumb', map_id=line.mapping.id) }}" alt="" loading="lazy"
+                     style="width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--line,#ddd);">
+              </a>
+            {% else %}
+              <div style="width:96px;height:96px;border-radius:6px;border:1px dashed var(--line,#ccc);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-faint);">no photo</div>
+            {% endif %}
+            <div>
+              <div style="font-weight:600;">{{ line.mapping.label }}</div>
+              {% if line.mapping.item %}<div style="font-size:12px;color:var(--ink-faint);">Item: {{ line.mapping.item.name }}</div>{% endif %}
+              <div style="font-size:11px;color:var(--ink-faint);">used {{ line.mapping.times_used }} times before</div>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if row.candidates and not line.map_id %}
+          <form method="POST" action="{{ url_for('po.po_line_choose', po_id=po.id, line_id=line.id) }}" style="margin-top:12px;">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+              {% for c in row.candidates %}
+                <label style="border:1px solid var(--line,#ddd);border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center;cursor:pointer;">
+                  <input type="radio" name="map_id" value="{{ c.id }}" required>
+                  {% if c.has_image %}
+                    <img src="{{ url_for('po.map_thumb', map_id=c.id) }}" alt="" loading="lazy"
+                         style="width:56px;height:56px;object-fit:cover;border-radius:4px;">
+                  {% endif %}
+                  <span>
+                    <span style="font-weight:600;">{{ c.label }}</span><br>
+                    <span style="font-size:11px;color:var(--ink-faint);">used {{ c.times_used }}×</span>
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">Use this one</button>
+          </form>
+        {% endif %}
+
+        {% if not line.map_id and not row.candidates %}
+          <form method="POST" action="{{ url_for('po.po_line_map', po_id=po.id, line_id=line.id) }}"
+                enctype="multipart/form-data" style="margin-top:12px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+              <label>Product name
+                <input type="text" name="label" required placeholder="e.g. 2mm EPE Sheet 12x18">
+              </label>
+              <label>Link to item (optional)
+                <select name="item_id">
+                  <option value="">— none —</option>
+                  {% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Photo (phone se seedha chalega)
+                <input type="file" name="image" accept="image/*">
+              </label>
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">Save mapping</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {% if po.status == 'pending' %}
+      <div class="card panel-pad">
+        {% if po.unresolved_count %}
+          <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
+            {{ po.unresolved_count }} line abhi map nahi hui — confirm tabhi hoga jab sab ho jayen.
+          </div>
+        {% else %}
+          <div style="font-size:13px;margin-bottom:10px;">
+            Photo aur naam upar wale scan se mila lo, phir confirm karo.
+          </div>
+        {% endif %}
+        <div class="toolbar" style="margin:0;">
+          <form method="POST" action="{{ url_for('po.po_confirm', po_id=po.id) }}" style="display:inline;">
+            <button class="btn btn-primary" type="submit" {% if po.unresolved_count %}disabled{% endif %}>
+              Confirm and send to dispatch
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('po.po_reject', po_id=po.id) }}" style="display:inline;"
+                onsubmit="return confirm('Reject this PO?');">
+            <button class="btn btn-ghost" type="submit">Reject</button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}Purchase Orders{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;font-weight:600;">Purchase Orders</div>
+  <a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">Size mappings</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_dispatch') }}">Dispatch list</a>
+  <a class="btn btn-primary" href="{{ url_for('po.po_new') }}">+ New PO</a>
+</div>
+
+<div class="toolbar" style="margin-top:-8px;">
+  <a class="btn btn-ghost btn-sm {% if status=='pending' %}active{% endif %}" href="{{ url_for('po.po_list', status='pending') }}">Waiting for operator ({{ counts['pending'] }})</a>
+  <a class="btn btn-ghost btn-sm {% if status=='confirmed' %}active{% endif %}" href="{{ url_for('po.po_list', status='confirmed') }}">Confirmed ({{ counts['confirmed'] }})</a>
+  <a class="btn btn-ghost btn-sm {% if status=='dispatched' %}active{% endif %}" href="{{ url_for('po.po_list', status='dispatched') }}">Dispatched ({{ counts['dispatched'] }})</a>
+  <a class="btn btn-ghost btn-sm {% if status=='rejected' %}active{% endif %}" href="{{ url_for('po.po_list', status='rejected') }}">Rejected ({{ counts['rejected'] }})</a>
+  <a class="btn btn-ghost btn-sm {% if status not in ['pending','confirmed','dispatched','rejected'] %}active{% endif %}" href="{{ url_for('po.po_list', status='all') }}">All</a>
+</div>
+
+<div class="card panel-pad">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>PO No.</th><th>Date</th><th>Party</th><th>Lines</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for po in pos %}
+        <tr>
+          <td class="mono">{{ po.po_number }}
+            {% if po.has_scan %}<span class="badge">scan</span>{% endif %}
+          </td>
+          <td>{{ po.po_date }}</td>
+          <td>{{ po.customer.name }}</td>
+          <td class="num">{{ po.lines|length }}
+            {% if po.unresolved_count %}<span class="badge challan">{{ po.unresolved_count }} to map</span>{% endif %}
+          </td>
+          <td><span class="badge {{ po.status }}">{{ po.status }}</span></td>
+          <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not pos %}
+    <div class="empty-state">
+      <div class="big">Is list me abhi kuch nahi hai</div>
+      <div>Naya PO aaye toh "+ New PO" se add karo.</div>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}Size mappings{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <form method="GET" style="display:flex;gap:10px;flex:1;">
+    <select name="customer_id">
+      <option value="">All parties</option>
+      {% for c in customers %}
+        <option value="{{ c.id }}" {% if cid == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-ghost" type="submit">Filter</button>
+  </form>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back to POs</a>
+</div>
+
+<div class="card panel-pad">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>Party</th><th>Size as written</th><th>Matched on</th><th>Product</th><th>Item</th><th>Used</th><th></th></tr></thead>
+      <tbody>
+      {% for m in maps %}
+        <tr>
+          <td style="width:56px;">
+            {% if m.has_image %}
+              <a href="{{ url_for('po.map_image', map_id=m.id) }}" target="_blank">
+                <img src="{{ url_for('po.map_thumb', map_id=m.id) }}" alt="" loading="lazy"
+                     style="width:44px;height:44px;object-fit:cover;border-radius:4px;">
+              </a>
+            {% endif %}
+          </td>
+          <td>{{ m.customer.name }}</td>
+          <td class="mono">{{ m.raw_size_text }}</td>
+          <td class="mono" style="font-size:11px;color:var(--ink-faint);">{{ m.canonical_key }}</td>
+          <td>{{ m.label }}</td>
+          <td>{{ m.item.name if m.item else '—' }}</td>
+          <td class="num">{{ m.times_used }}</td>
+          <td>
+            {% if current_user.is_owner %}
+              <form method="POST" action="{{ url_for('po.delete_mapping', map_id=m.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Delete this mapping?');">
+                <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not maps %}
+    <div class="empty-state">
+      <div class="big">Abhi koi mapping nahi</div>
+      <div>Pehla PO review karte waqt jo sizes map karoge, wo yahan jama hote jayenge.</div>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

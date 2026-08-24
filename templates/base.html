@@ -25,6 +25,7 @@ body{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_font
 <a class="tab-btn {% if active=='invoices' %}active{% endif %}" href="{{ url_for('invoices') }}">{{ t('nav_invoices') }}</a>
 <a class="tab-btn {% if active=='customers' %}active{% endif %}" href="{{ url_for('customers') }}">{{ t('nav_customers') }}</a>
 <a class="tab-btn {% if active=='items' %}active{% endif %}" href="{{ url_for('items') }}">{{ t('nav_items') }}</a>
+<a class="tab-btn {% if active=='po' %}active{% endif %}" href="{{ url_for('po.po_list') }}">PO</a>
 <a class="tab-btn {% if active=='accounts' %}active{% endif %}" href="{{ url_for('accounts_home') }}">{{ t('nav_accounts') }}</a>
 {% if current_user.is_authenticated and current_user.is_owner %}
 <a class="tab-btn {% if active=='settings' %}active{% endif %}" href="{{ url_for('settings_page') }}">{{ t('nav_settings') }}</a>

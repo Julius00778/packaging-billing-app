@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}Dispatch list{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;font-weight:600;">Dispatch list</div>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">All POs</a>
+</div>
+
+{% for po in pos %}
+  <div class="card panel-pad" style="margin-bottom:12px;">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+      <span class="mono" style="font-weight:600;">{{ po.po_number }}</span>
+      <span>{{ po.customer.name }}</span>
+      <span style="font-size:12px;color:var(--ink-faint);">confirmed {{ po.confirmed_at.strftime('%d %b %H:%M') if po.confirmed_at else '—' }}</span>
+    </div>
+
+    <div class="table-wrap" style="margin-top:10px;">
+      <table>
+        <thead><tr><th></th><th>Product</th><th>Size</th><th>Qty</th></tr></thead>
+        <tbody>
+        {% for line in po.lines %}
+          <tr>
+            <td style="width:60px;">
+              {% if line.mapping and line.mapping.has_image %}
+                <img src="{{ url_for('po.map_image', map_id=line.mapping.id) }}" alt=""
+                     style="width:48px;height:48px;object-fit:cover;border-radius:4px;">
+              {% endif %}
+            </td>
+            <td>{{ line.mapping.label if line.mapping else '—' }}</td>
+            <td class="mono">{{ line.raw_size_text }}</td>
+            <td class="num">{{ line.qty|round(2) }} {{ line.qty_unit }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="toolbar" style="margin:10px 0 0;">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">Open PO</a>
+      <form method="POST" action="{{ url_for('po.po_mark_dispatched', po_id=po.id) }}" style="display:inline;">
+        <button class="btn btn-primary btn-sm" type="submit">Mark dispatched</button>
+      </form>
+    </div>
+  </div>
+{% endfor %}
+
+{% if not pos %}
+  <div class="card panel-pad">
+    <div class="empty-state">
+      <div class="big">Dispatch list khali hai</div>
+      <div>Operator jaise hi koi PO confirm karega, wo yahan aa jayega.</div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}
