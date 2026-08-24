@@ -24,7 +24,7 @@
       {% if po.scan_mime.startswith('image/') %}
         <a href="{{ url_for('po.po_scan', po_id=po.id) }}" target="_blank">
           <img src="{{ url_for('po.po_scan', po_id=po.id) }}" alt="PO scan"
-               style="width:100%;border-radius:6px;border:1px solid var(--line,#ddd);">
+               style="width:100%;border-radius:6px;border:1px solid var(--border);">
         </a>
       {% else %}
         <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_scan', po_id=po.id) }}" target="_blank">
@@ -68,10 +68,10 @@
             {% if line.mapping.has_image %}
               <a href="{{ url_for('po.map_image', map_id=line.mapping.id) }}" target="_blank" title="Bada karke dekho">
                 <img src="{{ url_for('po.map_thumb', map_id=line.mapping.id) }}" alt="" loading="lazy"
-                     style="width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--line,#ddd);">
+                     style="width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
               </a>
             {% else %}
-              <div style="width:96px;height:96px;border-radius:6px;border:1px dashed var(--line,#ccc);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-faint);">no photo</div>
+              <div style="width:96px;height:96px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-faint);">no photo</div>
             {% endif %}
             <div>
               <div style="font-weight:600;">{{ line.mapping.label }}</div>
@@ -85,7 +85,7 @@
           <form method="POST" action="{{ url_for('po.po_line_choose', po_id=po.id, line_id=line.id) }}" style="margin-top:12px;">
             <div style="display:flex;gap:12px;flex-wrap:wrap;">
               {% for c in row.candidates %}
-                <label style="border:1px solid var(--line,#ddd);border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center;cursor:pointer;">
+                <label style="border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center;cursor:pointer;">
                   <input type="radio" name="map_id" value="{{ c.id }}" required>
                   {% if c.has_image %}
                     <img src="{{ url_for('po.map_thumb', map_id=c.id) }}" alt="" loading="lazy"
@@ -105,19 +105,22 @@
         {% if not line.map_id and not row.candidates %}
           <form method="POST" action="{{ url_for('po.po_line_map', po_id=po.id, line_id=line.id) }}"
                 enctype="multipart/form-data" style="margin-top:12px;">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
-              <label>Product name
+            <div class="form-grid three">
+              <div class="field">
+                <label>Product name *</label>
                 <input type="text" name="label" required placeholder="e.g. 2mm EPE Sheet 12x18">
-              </label>
-              <label>Link to item (optional)
+              </div>
+              <div class="field">
+                <label>Link to item (optional)</label>
                 <select name="item_id">
                   <option value="">— none —</option>
                   {% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}
                 </select>
-              </label>
-              <label>Photo (phone se seedha chalega)
+              </div>
+              <div class="field">
+                <label>Photo (phone se seedha chalega)</label>
                 <input type="file" name="image" accept="image/*">
-              </label>
+              </div>
             </div>
             <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">Save mapping</button>
           </form>

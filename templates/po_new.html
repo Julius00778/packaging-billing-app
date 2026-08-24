@@ -10,53 +10,65 @@
 
 <form method="POST" enctype="multipart/form-data">
   <div class="card panel-pad">
-    <div class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;">
-      <label>Party
+    <div class="form-grid three">
+      <div class="field">
+        <label>Party *</label>
         <select name="customer_id" required>
           <option value="">— select —</option>
           {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
-      </label>
-      <label>PO Number
+      </div>
+      <div class="field">
+        <label>PO Number *</label>
         <input type="text" name="po_number" required placeholder="e.g. PO-4471">
-      </label>
-      <label>PO Date
+      </div>
+      <div class="field">
+        <label>PO Date</label>
         <input type="date" name="po_date" value="{{ today }}">
-      </label>
-      <label>Sizes are written in
+      </div>
+    </div>
+
+    <div class="form-grid three">
+      <div class="field">
+        <label>Sizes are written in</label>
         <select name="size_unit">
           <option value="inch">Inch</option>
           <option value="mm">Millimetre</option>
           <option value="cm">Centimetre</option>
         </select>
-      </label>
-      <label>Came from
+      </div>
+      <div class="field">
+        <label>Came from</label>
         <select name="source">
           <option value="upload">Scan / upload</option>
           <option value="email">Email</option>
           <option value="whatsapp">WhatsApp</option>
           <option value="manual">Phone / verbal</option>
         </select>
-      </label>
-      <label>PO scan (optional — phone ki photo chalegi)
+      </div>
+      <div class="field">
+        <label>PO scan (optional — phone ki photo chalegi)</label>
         <input type="file" name="scan" accept="image/*,application/pdf">
-      </label>
+      </div>
     </div>
 
-    <label style="display:block;margin-top:14px;">PO lines
+    <div class="field">
+      <label>PO lines *</label>
       <textarea name="raw_text" rows="8" required
         placeholder="Har line me ek item. Jaise:&#10;12x18 - 500 pcs&#10;18 X 24  qty 200&#10;300x450 mm 150 nos"></textarea>
-    </label>
-    <div style="font-size:12px;color:var(--ink-faint);margin-top:6px;">
-      Sirf wahi lines padhi jayengi jinme size likha ho (12x18 jaisa). Baaki lines chhod di jayengi.
+      <div style="font-size:12px;color:var(--ink-faint);">
+        Sirf wahi lines padhi jayengi jinme size likha ho (12x18 jaisa). Baaki lines chhod di jayengi.
+      </div>
     </div>
 
-    <label style="display:block;margin-top:14px;">Note (optional)
+    <div class="field">
+      <label>Note (optional)</label>
       <input type="text" name="note" placeholder="Delivery date, transport, etc.">
-    </label>
+    </div>
 
-    <div class="toolbar" style="margin-top:16px;">
+    <div class="btn-row">
       <button class="btn btn-primary" type="submit">Read PO</button>
+      <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Cancel</a>
     </div>
   </div>
 </form>
