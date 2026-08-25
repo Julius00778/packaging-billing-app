@@ -19,7 +19,7 @@
 <div class="card panel-pad">
   <div class="table-wrap">
     <table>
-      <thead><tr><th></th><th>Party</th><th>Size as written</th><th>Matched on</th><th>Product</th><th>Item</th><th>Used</th><th></th></tr></thead>
+      <thead><tr><th></th><th>Party</th><th>Code</th><th>Size as written</th><th>Matched on</th><th>Product</th><th>Item</th><th>Used</th><th></th></tr></thead>
       <tbody>
       {% for m in maps %}
         <tr>
@@ -32,6 +32,7 @@
             {% endif %}
           </td>
           <td>{{ m.customer.name }}</td>
+          <td class="mono" style="font-weight:600;">{{ m.item_code or '—' }}</td>
           <td class="mono">{{ m.raw_size_text }}</td>
           <td class="mono" style="font-size:11px;color:var(--ink-faint);">{{ m.canonical_key }}</td>
           <td>{{ m.label }}</td>

@@ -46,22 +46,42 @@
       {% set line = row.line %}
       <div class="card panel-pad" style="margin-bottom:12px;">
         <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
-          <span class="mono" style="font-weight:600;">{{ line.raw_size_text }}</span>
+          {% if line.item_code %}
+            <span class="mono" style="font-weight:700;">{{ line.item_code }}</span>
+          {% endif %}
+          <span class="mono" style="font-weight:600;">{{ line.raw_size_text or '—' }}</span>
           <span>× {{ line.qty|round(2) }} {{ line.qty_unit }}</span>
           {% if line.map_id %}
-            <span class="badge paid">{{ 'auto-matched' if line.match_status == 'exact' else 'chosen by operator' }}</span>
+            {% if line.match_status == 'code' %}
+              <span class="badge paid">matched by item code</span>
+            {% elif line.match_status == 'size' %}
+              <span class="badge paid">matched by size</span>
+            {% else %}
+              <span class="badge paid">chosen by operator</span>
+            {% endif %}
           {% elif line.match_status == 'multiple' %}
             <span class="badge partial">more than one product fits — pick one</span>
           {% else %}
-            <span class="badge unpaid">new size — map it once</span>
+            <span class="badge unpaid">new — map it once</span>
+          {% endif %}
+          {% if line.size_mismatch %}
+            <span class="badge unpaid">code aur size match nahi — check karo</span>
           {% endif %}
           {% if line.unit_source == 'magnitude' %}
             <span class="badge challan">unit guessed — check this</span>
           {% endif %}
         </div>
         <div class="mono" style="font-size:11px;color:var(--ink-faint);margin-top:4px;">
-          from PO: {{ line.raw_text }} · key {{ line.canonical_key }}
+          from PO: {{ line.raw_text }}{% if line.canonical_key %} · key {{ line.canonical_key }}{% endif %}
         </div>
+        {% if line.size_mismatch and line.mapping %}
+          <div style="font-size:12px;color:var(--ink-faint);margin-top:4px;">
+            PO me <span class="mono">{{ line.raw_size_text }}</span> likha hai, par
+            <span class="mono">{{ line.mapping.item_code }}</span> ka size
+            <span class="mono">{{ line.mapping.raw_size_text or line.mapping.canonical_key }}</span> hai.
+            Photo dekh ke tay karo — galat ho toh line theek karke PO dobara banao.
+          </div>
+        {% endif %}
 
         {% if line.map_id %}
           <div style="display:flex;gap:12px;align-items:center;margin-top:12px;">
@@ -106,6 +126,10 @@
           <form method="POST" action="{{ url_for('po.po_line_map', po_id=po.id, line_id=line.id) }}"
                 enctype="multipart/form-data" style="margin-top:12px;">
             <div class="form-grid three">
+              <div class="field">
+                <label>Item code</label>
+                <input type="text" name="item_code" value="{{ line.item_code }}" placeholder="e.g. HM01">
+              </div>
               <div class="field">
                 <label>Product name *</label>
                 <input type="text" name="label" required placeholder="e.g. 2mm EPE Sheet 12x18">
