@@ -115,7 +115,8 @@ with app.app_context():
 photo = big_jpeg(2000)
 for i, lid in enumerate(line_ids, start=1):
     ok(f"map line {i}", client.post(f"/po/{po_id}/line/{lid}/map", data={
-        "label": f"Product {i}", "item_id": str(item_id) if i == 1 else "",
+        "label": f"Product {i}", "item_code": f"ST0{i}",
+        "item_id": str(item_id) if i == 1 else "",
         "image": (io.BytesIO(photo), f"p{i}.jpg"),
     }, content_type="multipart/form-data", follow_redirects=True))
 
@@ -146,10 +147,32 @@ ok("POST /po/new (dusra PO)", client.post("/po/new", data={
 with app.app_context():
     po2 = PurchaseOrder.query.filter_by(po_number="PO-4472").first()
     l = po2.lines[0]
-    check("18x12 ne 12x18 ka mapping auto-match kiya", l.match_status, "exact")
+    check("18x12 ne 12x18 ka mapping auto-match kiya", l.match_status, "size")
     check("mapping juda hua", bool(l.map_id))
     check("kuch bhi unresolved nahi", po2.unresolved_count, 0)
     po2_id = po2.id
+
+# ------------------------------------------- item code se match, aur mismatch
+ok("POST /po/new (item code wala PO)", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-4473", "size_unit": "inch",
+    "raw_text": "ST01 - 250 pcs\nST02 (99x99) - 40 pcs",
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    po3 = PurchaseOrder.query.filter_by(po_number="PO-4473").first()
+    a, b = po3.lines[0], po3.lines[1]
+    check("bina size ke, sirf code se match hua", a.match_status, "code")
+    check("code wali line ka product sahi", a.mapping.item_code, "ST01")
+    check("code wali line ki qty", a.qty, 250.0)
+    check("code wali line pe mismatch flag nahi", a.size_mismatch, False)
+    check("code + galat size bhi code se hi match hua", b.match_status, "code")
+    check("par mismatch flag lag gaya", b.size_mismatch, True)
+    check("mismatch ke bawajood line resolved hai", po3.unresolved_count, 0)
+    po3_id = po3.id
+
+r = ok("review screen mismatch dikhata hai", client.get(f"/po/{po3_id}"))
+check("mismatch ka warning text aaya", "code aur size match nahi" in r.data.decode("utf8", "ignore"))
+
+ok("reject PO-4473", client.post(f"/po/{po3_id}/reject", follow_redirects=True))
 
 # ------------------------------------------------------ confirm + dispatch
 ok("confirm PO", client.post(f"/po/{po_id}/confirm", follow_redirects=True))

@@ -1159,6 +1159,12 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "invoice", "hide_pricing", "hide_pricing BOOLEAN DEFAULT FALSE")
     _add_column_if_missing(inspector, "invoice", "consolidated_into_id", "consolidated_into_id INTEGER")
 
+    # PO module. Tables khud db.create_all() se banti hain, par jo environment
+    # pehle se chal raha hai wahan naye columns haath se jodne padte hain.
+    _add_column_if_missing(inspector, "party_product_map", "item_code", "item_code VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "po_line", "item_code", "item_code VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "po_line", "size_mismatch", "size_mismatch BOOLEAN DEFAULT FALSE")
+
 
 with app.app_context():
     _run_startup_migrations()

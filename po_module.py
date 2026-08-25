@@ -92,8 +92,11 @@ class PartyProductMap(db.Model):
     __tablename__ = "party_product_map"
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey("customer.id"), nullable=False)
+    # Party ka apna code — "HM01". Yahi pehchan ka pehla zariya hai; size sirf
+    # check karne ke liye. Normalized rakha jaata hai (bina space, bade akshar).
+    item_code = db.Column(db.String(40), default="", index=True)
     raw_size_text = db.Column(db.String(80), default="")   # jaisa PO me pehli baar aaya
-    canonical_key = db.Column(db.String(40), nullable=False, index=True)
+    canonical_key = db.Column(db.String(60), nullable=False, index=True)
     label = db.Column(db.String(200), nullable=False)      # operator ko dikhne wala naam
     item_id = db.Column(db.Integer, db.ForeignKey("item.id"), nullable=True)
     image_data = db.Column(db.LargeBinary, nullable=True)
@@ -154,12 +157,21 @@ class POLine(db.Model):
     po_id = db.Column(db.Integer, db.ForeignKey("purchase_order.id"), nullable=False)
     line_no = db.Column(db.Integer, default=0)
     raw_text = db.Column(db.String(400), default="")
+    item_code = db.Column(db.String(40), default="")     # line me jo code likha tha
     raw_size_text = db.Column(db.String(80), default="")
-    canonical_key = db.Column(db.String(40), default="", index=True)
+    canonical_key = db.Column(db.String(60), default="", index=True)
     unit_source = db.Column(db.String(12), default="")   # explicit/party/magnitude
     qty = db.Column(db.Float, default=0.0)
     qty_unit = db.Column(db.String(20), default="pcs")
-    match_status = db.Column(db.String(12), default="none")  # exact/multiple/none/manual
+    # code    — item code se mila (sabse pakka)
+    # size    — code nahi tha, size se ek hi product mila
+    # multiple— kai product fit hue, operator chunega
+    # none    — kuch nahi mila
+    # manual  — operator ne khud chuna ya naya map banaya
+    match_status = db.Column(db.String(12), default="none")
+    # Code aur size dono likhe the par aapas me match nahi hue — chupchaap aage
+    # badhne se accha hai operator ko dikha do.
+    size_mismatch = db.Column(db.Boolean, default=False)
     map_id = db.Column(db.Integer, db.ForeignKey("party_product_map.id"), nullable=True)
 
     mapping = db.relationship("PartyProductMap")
@@ -169,12 +181,28 @@ class POLine(db.Model):
 # Size normalisation
 # --------------------------------------------------------------------------
 
-# Size ke beech me bhi unit aa sakta hai: 12" x 18", 300 mm x 450. Isliye pehle
-# number ke baad ek optional unit token allow kiya gaya hai.
-INLINE_UNIT = r"""(?:\s*(?P<u1>mm|cm|inches|inch|in\b|"|”|''))?"""
+# Size 2 ya 3 dimension ka ho sakta hai: sheet "12x18", dabba "23x14x5".
+# Teesra number optional hai, par jab likha ho toh wo alag product hai —
+# 23x14x5 aur 23x14x8 ek cheez nahi hain.
+_NUM = r"\d+(?:\.\d+)?"
+_SEP = r"\s*[x×*X]\s*"
+
+
+def _inline_unit(n):
+    """Size ke beech me bhi unit aa sakta hai: 12" x 18", 300 mm x 450."""
+    return rf"""(?:\s*(?P<u{n}>mm|cm|inches|inch|in\b|"|”|''))?"""
+
+
 SIZE_RE = re.compile(
-    r"(?P<w>\d+(?:\.\d+)?)" + INLINE_UNIT + r"\s*[x×*X]\s*(?P<h>\d+(?:\.\d+)?)"
+    rf"(?P<d1>{_NUM}){_inline_unit(1)}{_SEP}"
+    rf"(?P<d2>{_NUM}){_inline_unit(2)}"
+    rf"(?:{_SEP}(?P<d3>{_NUM}){_inline_unit(3)})?"
 )
+
+# Item code: do se chaar akshar, phir number — HM01, HM 01, hm-03, ABCD1234.
+# Ye sirf tab bharosa karne layak hai jab party ke code list se milaya jaye,
+# warna "PO 8801" aur "Item 3" bhi code jaise dikhte hain.
+CODE_RE = re.compile(r"\b([A-Za-z]{2,4})\s*-?\s*(\d{1,4})\b")
 
 QTY_KEYWORD_RE = re.compile(
     r"(\d+(?:\.\d+)?)\s*(pcs|pc|nos|no\.?|pieces|piece|kg|box|boxes|bundle|bundles|"
@@ -196,20 +224,40 @@ UNIT_ALIASES = {
 }
 
 
+def _unit_word(word):
+    word = (word or "").strip().lower()
+    if not word:
+        return None
+    if word.startswith("mm"):
+        return "mm"
+    if word.startswith("cm"):
+        return "cm"
+    return "inch"
+
+
+def size_dims(match):
+    """Match me se 2 ya 3 numbers nikalo."""
+    dims = [float(match.group("d1")), float(match.group("d2"))]
+    if match.groupdict().get("d3"):
+        dims.append(float(match.group("d3")))
+    return dims
+
+
 def detect_size_unit(text, match, party_default="inch"):
-    """Size ke turant baad wala unit token dekho — poori line me nahi.
+    """Unit sirf size ke andar ya turant baad dekho — poori line me nahi.
 
     Ye important hai: "2mm foam 12x18" me agar poori line me 'mm' dhoondhoge toh
-    12x18 ko galti se mm maan loge, jabki wo inch hai aur 'mm' thickness ka tha.
+    12x18 ko galti se mm maan loge, jabki wo mm kisi aur cheez ka tha.
+
+    Jab unit size ke andar kahin bhi likha ho — "23x14x5 cm" ya "300 mm x 450" —
+    toh wo poore size pe lagta hai, sirf us ek number pe nahi. Log aise hi
+    likhte hain.
     """
-    # 1) Size ke andar likha unit — "12\" x 18\"", "300 mm x 450"
-    inline = (match.groupdict().get("u1") or "").strip().lower()
-    if inline:
-        if inline.startswith("mm"):
-            return "mm", "explicit"
-        if inline.startswith("cm"):
-            return "cm", "explicit"
-        return "inch", "explicit"
+    # 1) Size ke andar kahin bhi likha unit
+    for n in (1, 2, 3):
+        unit = _unit_word(match.groupdict().get(f"u{n}"))
+        if unit:
+            return unit, "explicit"
 
     # 2) Size ke turant baad wala unit — poori line me nahi.
     tail = text[match.end(): match.end() + 10].lower()
@@ -220,26 +268,52 @@ def detect_size_unit(text, match, party_default="inch"):
     if re.match(r"""\s*(inches|inch|in\b|"|”|'')""", tail):
         return "inch", "explicit"
 
-    # 3) Party ka apna convention
+    # 3) Party ka apna convention — aam taur pe yahi chalta hai
     if party_default in ("inch", "mm", "cm"):
         return party_default, "party"
 
     # 4) Aakhri sahara: bade numbers aam taur pe mm hote hain. Ye heuristic
     #    galat ho sakta hai, isliye unit_source='magnitude' operator ko flag dikhata hai.
-    w, h = float(match.group("w")), float(match.group("h"))
-    return ("mm", "magnitude") if max(w, h) > 100 else ("inch", "magnitude")
+    dims = size_dims(match)
+    return ("mm", "magnitude") if max(dims) > 100 else ("inch", "magnitude")
 
 
-def canonical_size(width, height, unit):
-    """Dono dimensions ko mm me badlo aur sort karo, taaki 12x18 == 18x12."""
-    if unit == "inch":
-        mm = [width * 25.4, height * 25.4]
-    elif unit == "cm":
-        mm = [width * 10.0, height * 10.0]
-    else:
-        mm = [width, height]
-    a, b = sorted(round(v, 1) for v in mm)
-    return f"{a:.1f}x{b:.1f}"
+TO_MM = {"inch": 25.4, "cm": 10.0, "mm": 1.0}
+
+
+def canonical_size(dims, unit):
+    """Saare dimensions mm me badlo aur sort karo.
+
+    Sort isliye ki 23x14x5 aur 5x23x14 ek hi dabba hai — party jis kram me bhi
+    likhe. Do-number aur teen-number wali keys ki lambai alag hoti hai, isliye
+    12x18 kabhi 12x18x5 se nahi takrayega.
+    """
+    factor = TO_MM.get(unit, 1.0)
+    mm = sorted(round(float(d) * factor, 1) for d in dims)
+    return "x".join(f"{v:.1f}" for v in mm)
+
+
+def normalize_code(text):
+    """'HM 01', 'hm-01', 'HM01' — teeno ka ek hi matlab: HM01."""
+    return re.sub(r"[\s\-_.]+", "", (text or "")).upper()
+
+
+def find_item_code(line, known_codes):
+    """Line me se us party ka item code dhoondho.
+
+    Sirf un codes pe bharosa karte hain jo us party ke liye pehle se maujood
+    hain. Generic regex pe bharosa karte toh "PO 8801" aur "Item 3" bhi code
+    ban jaate. Isliye pehle line ke saare code-jaise tokens nikaalo, phir
+    dekho ki unme se koi party ke list me hai ya nahi.
+    """
+    if not known_codes:
+        return None
+    known = {normalize_code(c) for c in known_codes if c}
+    for m in CODE_RE.finditer(line or ""):
+        candidate = normalize_code(m.group(1) + m.group(2))
+        if candidate in known:
+            return candidate, m.span()
+    return None
 
 
 def parse_qty(rest_text):
@@ -257,45 +331,84 @@ def parse_qty(rest_text):
     return 0.0, "pcs"
 
 
-def parse_po_text(text, party_default_unit="inch"):
-    """PO ka text lo, har line se size + qty nikalo.
+def parse_po_text(text, party_default_unit="inch", known_codes=None):
+    """PO ka text lo, har line se item code + size + qty nikalo.
 
-    Sirf wahi lines lautati hai jinme ek size pattern mila. OCR laganae ke baad
-    bhi yahi function use hoga — bas input badlega.
+    Ek line tabhi order-line maani jaati hai jab usme ya toh us party ka item
+    code ho, ya koi size ho. Baaki lines — headers, "Thanks", delivery note —
+    chhod di jaati hain.
+
+    `known_codes` us party ke maujooda codes ki list hai. Ye na do toh sirf
+    size se kaam chalega (purana behaviour).
+
+    OCR lagane ke baad bhi yahi function chalega — bas input badlega.
     """
     out = []
     for raw_line in (text or "").splitlines():
         line = raw_line.strip()
         if not line:
             continue
+
+        code_hit = find_item_code(line, known_codes)
         m = SIZE_RE.search(line)
-        if not m:
+        if not code_hit and not m:
             continue
-        unit, unit_source = detect_size_unit(line, m, party_default_unit)
-        key = canonical_size(float(m.group("w")), float(m.group("h")), unit)
-        tail = line[m.end():]
-        # Teesra dimension (thickness) — "12x18x2mm". Ise hata do warna 2 ko qty
-        # samajh liya jayega.
-        tail = re.sub(r"""^\s*(?:mm|cm|inch(?:es)?|in\b|"|”|'')?\s*[x×*X]\s*\d+(?:\.\d+)?\s*(?:mm|cm)?""",
-                      " ", tail, count=1, flags=re.I)
-        # Size ka apna unit word bhi qty parsing se hata do
-        tail = re.sub(r"""^\s*(?:mm|cm|inches|inch|in\b|"|”|'')""", " ", tail, count=1, flags=re.I)
-        rest = line[:m.start()] + " " + tail
-        qty, qty_unit = parse_qty(rest)
-        out.append({
+
+        # Line me se size aur code dono nikaal do, taaki unke numbers qty na ban jayen
+        rest_parts = []
+        cut = []
+        if m:
+            cut.append(m.span())
+        if code_hit:
+            cut.append(code_hit[1])
+        pos = 0
+        for start, end in sorted(cut):
+            rest_parts.append(line[pos:start])
+            pos = end
+        rest_parts.append(line[pos:])
+        rest = " ".join(rest_parts)
+        # Size ke turant baad ka unit word bhi qty parsing se hata do
+        rest = re.sub(r"""^\s*(?:mm|cm|inches|inch|in\b|"|”|'')""", " ", rest, count=1, flags=re.I)
+
+        row = {
             "raw_text": line,
-            "raw_size_text": m.group(0),
-            "canonical_key": key,
-            "unit_source": unit_source,
-            "qty": qty,
-            "qty_unit": qty_unit,
-        })
+            "item_code": code_hit[0] if code_hit else "",
+            "raw_size_text": m.group(0).strip() if m else "",
+            "canonical_key": "",
+            "unit_source": "",
+            "qty": 0.0,
+            "qty_unit": "pcs",
+        }
+        if m:
+            unit, unit_source = detect_size_unit(line, m, party_default_unit)
+            row["canonical_key"] = canonical_size(size_dims(m), unit)
+            row["unit_source"] = unit_source
+
+        row["qty"], row["qty_unit"] = parse_qty(rest)
+        out.append(row)
     return out
 
 
 # --------------------------------------------------------------------------
 # Matching
 # --------------------------------------------------------------------------
+
+def known_codes_for(customer_id):
+    """Us party ke saare item codes — parser ko yahi list deni hoti hai."""
+    rows = (db.session.query(PartyProductMap.item_code)
+            .filter(PartyProductMap.customer_id == customer_id,
+                    PartyProductMap.item_code != "")
+            .distinct().all())
+    return [r[0] for r in rows]
+
+
+def map_by_code(customer_id, item_code):
+    if not item_code:
+        return None
+    return (PartyProductMap.query
+            .filter_by(customer_id=customer_id, item_code=normalize_code(item_code))
+            .first())
+
 
 def candidates_for(customer_id, canonical_key):
     if not canonical_key:
@@ -306,14 +419,26 @@ def candidates_for(customer_id, canonical_key):
             .all())
 
 
-def match_line(customer_id, canonical_key):
-    """(status, chosen_map_or_None) lautata hai."""
+def match_line(customer_id, item_code=None, canonical_key=None):
+    """(status, chosen_map_or_None, size_mismatch) lautata hai.
+
+    Code sabse pehle dekha jaata hai — wo party ki apni pehchan hai. Size tab
+    dekha jaata hai jab code na ho. Dono hon toh size sirf check karta hai:
+    na mile toh product to code wala hi rehta hai, par flag lag jaata hai
+    taaki operator apni aankhon se dekh le.
+    """
+    by_code = map_by_code(customer_id, item_code)
+    if by_code:
+        mismatch = bool(canonical_key and by_code.canonical_key
+                        and canonical_key != by_code.canonical_key)
+        return "code", by_code, mismatch
+
     rows = candidates_for(customer_id, canonical_key)
     if len(rows) == 1:
-        return "exact", rows[0]
+        return "size", rows[0], False
     if len(rows) > 1:
-        return "multiple", None
-    return "none", None
+        return "multiple", None, False
+    return "none", None, False
 
 
 def party_is_mixed(customer_id):
@@ -393,9 +518,10 @@ def _read_upload(file_storage, max_dim=IMAGE_MAX_DIM, target_bytes=IMAGE_TARGET_
 
 
 def _apply_match(line, customer_id):
-    status, chosen = match_line(customer_id, line.canonical_key)
+    status, chosen, mismatch = match_line(customer_id, line.item_code, line.canonical_key)
     line.match_status = status
     line.map_id = chosen.id if chosen else None
+    line.size_mismatch = mismatch
 
 
 # --------------------------------------------------------------------------
@@ -442,9 +568,10 @@ def po_new():
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
 
         raw_text = request.form.get("raw_text", "")
-        parsed = parse_po_text(raw_text, unit)
+        parsed = parse_po_text(raw_text, unit, known_codes_for(customer_id))
         if not parsed:
-            flash("Text me koi size line nahi mili (jaise '12x18 - 500 pcs').", "error")
+            flash("Text me koi order line nahi mili — item code (HM01) ya size "
+                  "(23x14x5) likhna zaroori hai.", "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
 
         po = PurchaseOrder(
@@ -502,6 +629,7 @@ def po_line_choose(po_id, line_id):
         abort(404)
     line.map_id = m.id
     line.match_status = "manual"
+    line.size_mismatch = False
     db.session.commit()
     return redirect(url_for("po.po_review", po_id=po_id))
 
@@ -516,6 +644,11 @@ def po_line_map(po_id, line_id):
         flash("Product ka naam likhna zaroori hai.", "error")
         return redirect(url_for("po.po_review", po_id=po_id))
 
+    item_code = normalize_code(request.form.get("item_code", "") or line.item_code)
+    if item_code and map_by_code(line.po.customer_id, item_code):
+        flash(f"Code {item_code} is party ke liye pehle se hai — dusra code do.", "error")
+        return redirect(url_for("po.po_review", po_id=po_id))
+
     try:
         img_data, img_mime, _ = _read_upload(request.files.get("image"))
     except ValueError:
@@ -526,6 +659,7 @@ def po_line_map(po_id, line_id):
     item_id = request.form.get("item_id") or ""
     m = PartyProductMap(
         customer_id=line.po.customer_id,
+        item_code=item_code,
         raw_size_text=line.raw_size_text,
         canonical_key=line.canonical_key,
         label=label,
@@ -538,8 +672,10 @@ def po_line_map(po_id, line_id):
     db.session.flush()
     line.map_id = m.id
     line.match_status = "manual"
+    line.size_mismatch = False
     db.session.commit()
-    flash(f"'{label}' map ho gaya — is party ke liye ye size ab yaad rahega.", "success")
+    remembered = f"code {item_code}" if item_code else "ye size"
+    flash(f"'{label}' map ho gaya — is party ke liye {remembered} ab yaad rahega.", "success")
     return redirect(url_for("po.po_review", po_id=po_id))
 
 
