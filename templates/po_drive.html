@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}Drive samples{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;">
+    <div style="font-weight:600;">Drive se product samples</div>
+    <div style="font-size:12px;color:var(--ink-faint);">
+      Ek main folder, uske andar har party ka folder, aur file ka naam item code + size.
+    </div>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">Saare products</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back to POs</a>
+</div>
+
+{% if not key_set %}
+  <div class="card panel-pad" style="margin-bottom:14px;">
+    <div style="font-weight:600;margin-bottom:6px;">Pehle key daalni padegi</div>
+    <div style="font-size:13px;color:var(--ink-faint);">
+      Is environment me <span class="mono">GOOGLE_SERVICE_ACCOUNT_JSON</span> set nahi hai.
+      Service account ki JSON key Railway ke variables me is naam se paste karo, phir
+      dobara deploy hone ke baad ye page kaam karega.
+    </div>
+  </div>
+{% endif %}
+
+<div class="card panel-pad" style="margin-bottom:14px;">
+  <form method="POST" action="{{ url_for('po.drive_set_folder') }}">
+    <div class="field">
+      <label>Main folder ka link</label>
+      <input type="text" name="root_link" value="{{ root_link }}"
+             placeholder="https://drive.google.com/drive/folders/...">
+      <div style="font-size:12px;color:var(--ink-faint);">
+        Drive me folder kholo, address bar ka poora link yahan paste kar do.
+        Folder service account ke email se share hona chahiye.
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Folder padho</button>
+    </div>
+  </form>
+</div>
+
+{% if folders %}
+  <div class="card panel-pad">
+    <div class="toolbar" style="margin-bottom:12px;">
+      <div style="flex:1;font-weight:600;">Party folders</div>
+      <form method="POST" action="{{ url_for('po.drive_sync_now') }}">
+        <button class="btn btn-primary" type="submit">Sab sync karo</button>
+      </form>
+    </div>
+
+    {% for f in folders %}
+      <div style="border-top:1px solid var(--border);padding:12px 0;">
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+          <span style="font-weight:600;">{{ f.folder_name }}</span>
+          {% if f.customer_id %}
+            <span class="badge paid">{{ f.customer.name }} se juda</span>
+            {% if counts.get(f.id) %}
+              <span style="font-size:12px;color:var(--ink-faint);">{{ counts[f.id] }} product</span>
+            {% endif %}
+          {% else %}
+            <span class="badge unpaid">kis party ka hai? batao</span>
+          {% endif %}
+        </div>
+
+        {% if f.last_synced %}
+          <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;">
+            aakhri sync {{ f.last_synced.strftime('%d %b %H:%M') }} · {{ f.last_result }}
+          </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('po.drive_link_folder', folder_id=f.id) }}"
+              style="margin-top:10px;">
+          <div class="form-grid three">
+            <div class="field">
+              <label>Ye party hai</label>
+              <select name="customer_id">
+                <option value="">— abhi nahi —</option>
+                {% for c in customers %}
+                  <option value="{{ c.id }}" {% if f.customer_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label>Size likhe hain</label>
+              <select name="size_unit">
+                <option value="cm" {% if f.size_unit == 'cm' %}selected{% endif %}>Centimetre</option>
+                <option value="inch" {% if f.size_unit == 'inch' %}selected{% endif %}>Inch</option>
+                <option value="mm" {% if f.size_unit == 'mm' %}selected{% endif %}>Millimetre</option>
+              </select>
+            </div>
+            <div class="field" style="justify-content:flex-end;">
+              <label>&nbsp;</label>
+              <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+            </div>
+          </div>
+        </form>
+
+        {% if f.customer_id %}
+          <form method="POST" action="{{ url_for('po.drive_sync_now') }}" style="display:inline;">
+            <input type="hidden" name="folder_id" value="{{ f.id }}">
+            <button class="btn btn-ghost btn-sm" type="submit">Sirf isko sync karo</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card panel-pad">
+    <div class="empty-state">
+      <div class="big">Abhi koi folder nahi</div>
+      <div>Upar main folder ka link daal ke "Folder padho" dabao.</div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}
