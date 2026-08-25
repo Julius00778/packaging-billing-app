@@ -152,30 +152,54 @@
       </div>
     {% endfor %}
 
-    {% if po.status == 'pending' %}
-      <div class="card panel-pad">
+    <div class="card panel-pad">
+      {% if po.status == 'pending' %}
         {% if po.unresolved_count %}
           <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
-            {{ po.unresolved_count }} line abhi map nahi hui — confirm tabhi hoga jab sab ho jayen.
+            {{ po.unresolved_count }} line abhi map nahi hui — operator ko tabhi bhejenge jab sab ho jayen.
           </div>
         {% else %}
           <div style="font-size:13px;margin-bottom:10px;">
-            Photo aur naam upar wale scan se mila lo, phir confirm karo.
+            Sab theek lage toh operator group me bhej do — photo ke saath card chala jayega.
           </div>
         {% endif %}
         <div class="toolbar" style="margin:0;">
           <form method="POST" action="{{ url_for('po.po_confirm', po_id=po.id) }}" style="display:inline;">
             <button class="btn btn-primary" type="submit" {% if po.unresolved_count %}disabled{% endif %}>
-              Confirm and send to dispatch
+              Operator ko bhejo
             </button>
           </form>
           <form method="POST" action="{{ url_for('po.po_reject', po_id=po.id) }}" style="display:inline;"
-                onsubmit="return confirm('Reject this PO?');">
-            <button class="btn btn-ghost" type="submit">Reject</button>
+                onsubmit="return confirm('Ye order cancel kar dein?');">
+            <button class="btn btn-ghost" type="submit">Cancel order</button>
           </form>
         </div>
-      </div>
-    {% endif %}
+
+      {% else %}
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
+          <span style="font-weight:600;">Abhi:</span>
+          <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
+            {{ status_label.get(po.status, po.status) }}
+          </span>
+          {% if po.operator_name %}
+            <span style="font-size:12px;color:var(--ink-faint);">{{ po.operator_name }}</span>
+          {% endif %}
+        </div>
+        <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
+          Aage badhana operator ka kaam hai — wo Telegram pe karega. Yahan se sirf galti
+          sudhaaro: peeche le jao, ya order cancel kar do.
+        </div>
+        <div class="toolbar" style="margin:0;flex-wrap:wrap;">
+          {% for target, label in status_moves %}
+            <form method="POST" action="{{ url_for('po.po_set_status', po_id=po.id) }}" style="display:inline;"
+                  onsubmit="return confirm('Order ko {{ label }} karna hai?');">
+              <input type="hidden" name="to" value="{{ target }}">
+              <button class="btn btn-ghost btn-sm" type="submit">{{ label }}</button>
+            </form>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
   </div>
 </div>
 

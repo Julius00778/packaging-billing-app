@@ -5,17 +5,21 @@
 
 <div class="toolbar">
   <div style="flex:1;font-weight:600;">Purchase Orders</div>
-  <a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">Size mappings</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">Products</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.telegram_page') }}">Telegram</a>
   <a class="btn btn-ghost" href="{{ url_for('po.po_dispatch') }}">Dispatch list</a>
   <a class="btn btn-primary" href="{{ url_for('po.po_new') }}">+ New PO</a>
 </div>
 
-<div class="toolbar" style="margin-top:-8px;">
-  <a class="btn btn-ghost btn-sm {% if status=='pending' %}active{% endif %}" href="{{ url_for('po.po_list', status='pending') }}">Waiting for operator ({{ counts['pending'] }})</a>
-  <a class="btn btn-ghost btn-sm {% if status=='confirmed' %}active{% endif %}" href="{{ url_for('po.po_list', status='confirmed') }}">Confirmed ({{ counts['confirmed'] }})</a>
-  <a class="btn btn-ghost btn-sm {% if status=='dispatched' %}active{% endif %}" href="{{ url_for('po.po_list', status='dispatched') }}">Dispatched ({{ counts['dispatched'] }})</a>
-  <a class="btn btn-ghost btn-sm {% if status=='rejected' %}active{% endif %}" href="{{ url_for('po.po_list', status='rejected') }}">Rejected ({{ counts['rejected'] }})</a>
-  <a class="btn btn-ghost btn-sm {% if status not in ['pending','confirmed','dispatched','rejected'] %}active{% endif %}" href="{{ url_for('po.po_list', status='all') }}">All</a>
+<div class="toolbar" style="margin-top:-8px;flex-wrap:wrap;">
+  {% for key, label in [('pending','Review me'), ('with_operator','Operator ke paas'),
+                        ('in_production','Operation me'), ('made','Ban gaya'),
+                        ('dispatched','Dispatch ho gaya'), ('rejected','Cancel')] %}
+    <a class="btn btn-ghost btn-sm {% if status==key %}active{% endif %}"
+       href="{{ url_for('po.po_list', status=key) }}">{{ label }} ({{ counts[key] }})</a>
+  {% endfor %}
+  <a class="btn btn-ghost btn-sm {% if status not in counts %}active{% endif %}"
+     href="{{ url_for('po.po_list', status='all') }}">Sab</a>
 </div>
 
 <div class="card panel-pad">
@@ -33,7 +37,12 @@
           <td class="num">{{ po.lines|length }}
             {% if po.unresolved_count %}<span class="badge challan">{{ po.unresolved_count }} to map</span>{% endif %}
           </td>
-          <td><span class="badge {{ po.status }}">{{ po.status }}</span></td>
+          <td>
+            <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
+              {{ status_label.get(po.status, po.status) }}
+            </span>
+            {% if po.operator_name %}<div style="font-size:11px;color:var(--ink-faint);">{{ po.operator_name }}</div>{% endif %}
+          </td>
           <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">Open</a></td>
         </tr>
       {% endfor %}

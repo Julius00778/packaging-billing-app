@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}Telegram{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;">
+    <div style="font-weight:600;">Telegram</div>
+    <div style="font-size:12px;color:var(--ink-faint);">
+      Operator ko order card yahin jaata hai. Bot sirf dikhata hai aur do button leta hai —
+      galti sudhaarna app me hi hota hai.
+    </div>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back to POs</a>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:14px;">
+  {% if not key_set %}
+    <div style="font-weight:600;margin-bottom:6px;">Pehle bot ka token daalna padega</div>
+    <div style="font-size:13px;color:var(--ink-faint);">
+      Telegram pe <span class="mono">@BotFather</span> se naya bot banao. Jo token mile
+      wo Railway ke is environment me <span class="mono">TELEGRAM_BOT_TOKEN</span> naam se
+      daalo, phir deploy dabana mat bhoolna.
+    </div>
+  {% elif error %}
+    <div style="font-weight:600;margin-bottom:6px;">Token toh hai, par kaam nahi kar raha</div>
+    <div style="font-size:13px;color:var(--ink-faint);">{{ error }}</div>
+  {% else %}
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span style="font-weight:600;">Bot chalu hai:</span>
+      <span class="mono">@{{ bot_name }}</span>
+      {% if hooked %}<span class="badge paid">juda hua</span>{% endif %}
+    </div>
+    <div style="font-size:12px;color:var(--ink-faint);margin:8px 0 12px;">
+      Bot ko dono group me add karo (operator wala aur manager wala), phir har group me
+      ek msg bhejo — group neeche list me aa jayega.
+    </div>
+    <form method="POST" action="{{ url_for('po.telegram_set_hook') }}">
+      <button class="btn btn-primary" type="submit">
+        {{ 'Dobara jodo' if hooked else 'Bot ko app se jodo' }}
+      </button>
+    </form>
+  {% endif %}
+</div>
+
+<div class="card panel-pad" style="margin-bottom:14px;">
+  <div style="font-weight:600;margin-bottom:4px;">Groups</div>
+  <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">
+    Batao kaunsa group kis kaam ka hai. Order card operator group me jayega, dispatch ki
+    khabar manager group me.
+  </div>
+
+  {% if chats %}
+    {% for c in chats %}
+      <div style="border-top:1px solid var(--border);padding:11px 0;display:flex;
+                  gap:12px;align-items:center;flex-wrap:wrap;">
+        <div style="flex:1;min-width:180px;">
+          <div style="font-weight:600;">{{ c.title or c.chat_id }}</div>
+          <div class="mono" style="font-size:11px;color:var(--ink-faint);">
+            {{ c.chat_type }} · {{ c.chat_id }}
+          </div>
+        </div>
+        {% if c.role %}<span class="badge paid">{{ c.role }}</span>{% endif %}
+        <form method="POST" action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
+              style="display:flex;gap:8px;align-items:center;">
+          <select name="role" style="width:auto;">
+            <option value="" {% if not c.role %}selected{% endif %}>— koi role nahi —</option>
+            <option value="operator" {% if c.role == 'operator' %}selected{% endif %}>Operator group</option>
+            <option value="manager" {% if c.role == 'manager' %}selected{% endif %}>Manager group</option>
+            <option value="owner" {% if c.role == 'owner' %}selected{% endif %}>Aapka chat</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+        </form>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <div class="big">Abhi koi group nahi dikha</div>
+      <div>Bot ko group me add karke wahan ek msg bhejo, phir ye page refresh karo.</div>
+    </div>
+  {% endif %}
+</div>
+
+<div class="card panel-pad">
+  <div style="font-weight:600;margin-bottom:4px;">Log</div>
+  <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">
+    Button group me sab ko dikhta hai, par dabaa sirf wahi sakta hai jise aap yahan
+    operator banao. Baaki ko "aap operator nahi ho" ka msg milega.
+  </div>
+
+  {% if people %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Naam</th><th>Username</th><th>Telegram ID</th><th>Button daba sakta hai</th><th></th></tr></thead>
+        <tbody>
+        {% for p in people %}
+          <tr>
+            <td>{{ p.name or '—' }}</td>
+            <td class="mono">{{ '@' + p.username if p.username else '—' }}</td>
+            <td class="mono" style="font-size:11px;color:var(--ink-faint);">{{ p.tg_user_id }}</td>
+            <td>
+              {% if p.is_operator %}
+                <span class="badge paid">haan</span>
+              {% else %}
+                <span style="color:var(--ink-faint);">nahi</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="POST" action="{{ url_for('po.telegram_set_operator', row_id=p.id) }}">
+                <input type="hidden" name="is_operator" value="{{ '0' if p.is_operator else '1' }}">
+                <button class="btn btn-ghost btn-sm" type="submit">
+                  {{ 'Hata do' if p.is_operator else 'Operator banao' }}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="big">Abhi koi nahi</div>
+      <div>Jo bhi bot wale group me msg bhejega, wo yahan aa jayega.</div>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

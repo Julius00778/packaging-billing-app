@@ -13,7 +13,9 @@
     <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
       <span class="mono" style="font-weight:600;">{{ po.po_number }}</span>
       <span>{{ po.customer.name }}</span>
-      <span style="font-size:12px;color:var(--ink-faint);">confirmed {{ po.confirmed_at.strftime('%d %b %H:%M') if po.confirmed_at else '—' }}</span>
+      <span style="font-size:12px;color:var(--ink-faint);">
+        ban gaya {{ po.made_at.strftime('%d %b %H:%M') if po.made_at else '—' }}{% if po.operator_name %} · {{ po.operator_name }}{% endif %}
+      </span>
     </div>
 
     <div class="table-wrap" style="margin-top:10px;">
@@ -24,7 +26,7 @@
           <tr>
             <td style="width:60px;">
               {% if line.mapping and line.mapping.has_image %}
-                <img src="{{ url_for('po.map_image', map_id=line.mapping.id) }}" alt=""
+                <img src="{{ url_for('po.map_thumb', map_id=line.mapping.id) }}" alt="" loading="lazy"
                      style="width:48px;height:48px;object-fit:cover;border-radius:4px;">
               {% endif %}
             </td>
@@ -50,7 +52,7 @@
   <div class="card panel-pad">
     <div class="empty-state">
       <div class="big">Dispatch list khali hai</div>
-      <div>Operator jaise hi koi PO confirm karega, wo yahan aa jayega.</div>
+      <div>Operator jaise hi Telegram pe "Done" dabayega, order yahan aa jayega.</div>
     </div>
   </div>
 {% endif %}
