@@ -11,7 +11,9 @@
       {% if mixed %} · <strong>this party orders more than one product per size</strong>{% endif %}
     </div>
   </div>
-  <span class="badge {{ po.status }}">{{ po.status }}</span>
+  <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
+    {{ status_label.get(po.status, po.status) }}
+  </span>
   <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back</a>
 </div>
 
