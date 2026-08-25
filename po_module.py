@@ -19,6 +19,7 @@ Design notes
 """
 
 import io
+import os
 import re
 from datetime import datetime, date
 
@@ -28,6 +29,8 @@ from flask import (
 from flask_login import login_required, current_user
 
 from models import db, Customer, Item
+
+import drive_sync
 
 try:
     from PIL import Image, ImageOps
@@ -104,6 +107,10 @@ class PartyProductMap(db.Model):
     # Alag chhota thumbnail: review screen pe 20 lines ek saath khulti hain, wahan
     # 20 × 120 KB load karne ka koi matlab nahi jab 96px ka square dikhana hai.
     image_thumb = db.Column(db.LargeBinary, nullable=True)
+    # Drive se aaya hai toh yaad rakho — dobara sync pe wahi file phir se
+    # download na ho jab tak Drive pe badli na ho.
+    drive_file_id = db.Column(db.String(120), default="", index=True)
+    drive_modified = db.Column(db.String(40), default="")
     times_used = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
@@ -114,6 +121,46 @@ class PartyProductMap(db.Model):
     @property
     def has_image(self):
         return bool(self.image_data)
+
+
+class POSetting(db.Model):
+    """Chhoti chhoti settings — abhi sirf Drive ka main folder."""
+    __tablename__ = "po_setting"
+    key = db.Column(db.String(60), primary_key=True)
+    value = db.Column(db.String(500), default="")
+
+    @staticmethod
+    def get(key, default=""):
+        row = db.session.get(POSetting, key)
+        return row.value if row and row.value else default
+
+    @staticmethod
+    def put(key, value):
+        row = db.session.get(POSetting, key)
+        if not row:
+            row = POSetting(key=key)
+            db.session.add(row)
+        row.value = (value or "").strip()
+        return row
+
+
+class PartyFolder(db.Model):
+    """Drive ka ek party folder, aur wo app ki kaunsi party hai.
+
+    Folder ka naam ("GM ENTERPREISES") aur app me customer ka naam alag ho sakte
+    hain, isliye jodna ek baar haath se hota hai. Naam bilkul mil jaye toh apne
+    aap jud jaata hai.
+    """
+    __tablename__ = "party_folder"
+    id = db.Column(db.Integer, primary_key=True)
+    folder_id = db.Column(db.String(120), unique=True, nullable=False)
+    folder_name = db.Column(db.String(200), default="")
+    customer_id = db.Column(db.Integer, db.ForeignKey("customer.id"), nullable=True)
+    size_unit = db.Column(db.String(10), default="cm")
+    last_synced = db.Column(db.DateTime, nullable=True)
+    last_result = db.Column(db.String(300), default="")
+
+    customer = db.relationship("Customer")
 
 
 class PurchaseOrder(db.Model):
@@ -517,6 +564,104 @@ def _read_upload(file_storage, max_dim=IMAGE_MAX_DIM, target_bytes=IMAGE_TARGET_
     return data, (file_storage.mimetype or "application/octet-stream"), file_storage.filename
 
 
+DRIVE_ROOT_KEY = "drive_root_folder"
+
+
+def sync_party_folders(service, root_folder_id):
+    """Main folder ke party folders DB me le aao. Naya folder mila toh naam se
+    customer dhoondhne ki koshish karo — na mile toh khaali chhod do, operator
+    baad me jod dega."""
+    found = drive_sync.list_party_folders(service, root_folder_id)
+    added = 0
+    for f in found:
+        row = PartyFolder.query.filter_by(folder_id=f["id"]).first()
+        if not row:
+            row = PartyFolder(folder_id=f["id"])
+            db.session.add(row)
+            added += 1
+        row.folder_name = f["name"]
+        if not row.customer_id:
+            guess = (Customer.query
+                     .filter(db.func.lower(Customer.name) == f["name"].strip().lower())
+                     .first())
+            if guess:
+                row.customer_id = guess.id
+    db.session.commit()
+    return found, added
+
+
+def sync_one_folder(service, folder):
+    """Ek party folder ke saare samples DB me laao.
+
+    Har file ka naam code aur size deta hai. Wahi code pehle se ho toh row
+    update hoti hai, nayi nahi banti — isliye baar baar sync karna safe hai.
+    Photo tabhi dobara download hoti hai jab Drive pe file badli ho.
+    """
+    result = {"seen": 0, "added": 0, "updated": 0, "photos": 0, "skipped": []}
+    if not folder.customer_id:
+        raise ValueError("folder kisi party se juda nahi hai")
+
+    unit = folder.size_unit if folder.size_unit in ("inch", "mm", "cm") else "cm"
+    PartyPOConfig.set_unit(folder.customer_id, unit)
+
+    for f in drive_sync.list_sample_files(service, folder.folder_id):
+        result["seen"] += 1
+        parsed = drive_sync.parse_sample_filename(
+            f["name"], canonical_size, SIZE_RE, size_dims, normalize_code)
+        if not parsed:
+            result["skipped"].append(f"{f['name']} — naam me item code nahi mila")
+            continue
+        code, dims, raw_size = parsed
+        if not dims:
+            result["skipped"].append(f"{f['name']} — naam me size nahi mila")
+            continue
+
+        row = PartyProductMap.query.filter_by(
+            customer_id=folder.customer_id, item_code=code).first()
+        is_new = row is None
+        if is_new:
+            row = PartyProductMap(customer_id=folder.customer_id, item_code=code,
+                                  times_used=0)
+            db.session.add(row)
+            result["added"] += 1
+        else:
+            result["updated"] += 1
+
+        row.canonical_key = canonical_size(dims, unit)
+        row.raw_size_text = raw_size
+        if not row.label:
+            row.label = f"{code} ({raw_size})"
+
+        # Photo tabhi laao jab pehle na aayi ho ya Drive pe badli ho
+        changed = (row.drive_file_id != f["id"]
+                   or row.drive_modified != (f.get("modifiedTime") or ""))
+        if changed or not row.image_data:
+            try:
+                data = drive_sync.download_file(service, f["id"])
+            except Exception as exc:
+                result["skipped"].append(f"{f['name']} — photo nahi aayi ({exc})")
+                data = None
+            if data:
+                main = _compress_image(data, IMAGE_MAX_DIM, IMAGE_TARGET_BYTES)
+                thumb = _compress_image(data, THUMB_MAX_DIM, THUMB_TARGET_BYTES)
+                if main:
+                    row.image_data, row.image_mime = main
+                    row.image_thumb = thumb[0] if thumb else None
+                else:   # Pillow na ho toh original hi rakh lo
+                    row.image_data = data
+                    row.image_mime = f.get("mimeType") or "image/jpeg"
+                    row.image_thumb = None
+                result["photos"] += 1
+                row.drive_file_id = f["id"]
+                row.drive_modified = f.get("modifiedTime") or ""
+
+    folder.last_synced = datetime.utcnow()
+    folder.last_result = (f"{result['seen']} file, {result['added']} naye, "
+                          f"{result['updated']} update, {result['photos']} photo")
+    db.session.commit()
+    return result
+
+
 def _apply_match(line, customer_id):
     status, chosen, mismatch = match_line(customer_id, line.item_code, line.canonical_key)
     line.match_status = status
@@ -763,6 +908,103 @@ def po_scan(po_id):
     if not po.scan_data:
         abort(404)
     return Response(po.scan_data, mimetype=po.scan_mime or "application/octet-stream")
+
+
+@po_bp.route("/drive")
+@login_required
+def drive_page():
+    folders = PartyFolder.query.order_by(PartyFolder.folder_name).all()
+    counts = {}
+    for f in folders:
+        if f.customer_id:
+            counts[f.id] = PartyProductMap.query.filter_by(
+                customer_id=f.customer_id).filter(PartyProductMap.item_code != "").count()
+    return render_template(
+        "po_drive.html",
+        root_link=POSetting.get(DRIVE_ROOT_KEY),
+        folders=folders, counts=counts,
+        customers=Customer.query.order_by(Customer.name).all(),
+        key_set=bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()),
+    )
+
+
+@po_bp.route("/drive/folder", methods=["POST"])
+@login_required
+def drive_set_folder():
+    """Main folder ka link save karo aur uske andar ke party folders padh lo."""
+    link = request.form.get("root_link", "").strip()
+    folder_id = drive_sync.folder_id_from_link(link)
+    if not folder_id:
+        flash("Drive folder ka link ya ID daalo.", "error")
+        return redirect(url_for("po.drive_page"))
+    try:
+        service = drive_sync.drive_service()
+        meta = drive_sync.check_access(service, folder_id)
+        found, added = sync_party_folders(service, folder_id)
+    except drive_sync.DriveError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("po.drive_page"))
+    POSetting.put(DRIVE_ROOT_KEY, link)
+    db.session.commit()
+    flash(f"'{meta['name']}' khul gaya — {len(found)} party folder mile"
+          + (f", {added} naye." if added else "."), "success")
+    return redirect(url_for("po.drive_page"))
+
+
+@po_bp.route("/drive/folder/<int:folder_id>/link", methods=["POST"])
+@login_required
+def drive_link_folder(folder_id):
+    """Drive folder ko app ki party se jodo, aur uska size unit tay karo."""
+    folder = db.session.get(PartyFolder, folder_id) or abort(404)
+    cid = request.form.get("customer_id") or ""
+    folder.customer_id = int(cid) if cid.isdigit() else None
+    unit = request.form.get("size_unit", "cm")
+    folder.size_unit = unit if unit in ("inch", "mm", "cm") else "cm"
+    if folder.customer_id:
+        PartyPOConfig.set_unit(folder.customer_id, folder.size_unit)
+    db.session.commit()
+    flash("Folder jud gaya. Ab sync chala do.", "success")
+    return redirect(url_for("po.drive_page"))
+
+
+@po_bp.route("/drive/sync", methods=["POST"])
+@login_required
+def drive_sync_now():
+    """Sab jude hue folders sync karo (ya sirf ek, agar folder_id bheja ho)."""
+    only = request.form.get("folder_id") or ""
+    q = PartyFolder.query.filter(PartyFolder.customer_id.isnot(None))
+    if only.isdigit():
+        q = q.filter(PartyFolder.id == int(only))
+    folders = q.all()
+    if not folders:
+        flash("Pehle kam se kam ek folder ko party se jodo.", "error")
+        return redirect(url_for("po.drive_page"))
+
+    try:
+        service = drive_sync.drive_service()
+    except drive_sync.DriveError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("po.drive_page"))
+
+    total = {"seen": 0, "added": 0, "updated": 0, "photos": 0}
+    skipped = []
+    for folder in folders:
+        try:
+            r = sync_one_folder(service, folder)
+        except Exception as exc:
+            skipped.append(f"{folder.folder_name} — {exc}")
+            continue
+        for k in total:
+            total[k] += r[k]
+        skipped.extend(r["skipped"])
+
+    flash(f"Sync ho gaya — {total['seen']} file dekhi, {total['added']} naye product, "
+          f"{total['updated']} update, {total['photos']} photo aayi.", "success")
+    for s in skipped[:8]:
+        flash("Chhod diya: " + s, "error")
+    if len(skipped) > 8:
+        flash(f"…aur {len(skipped) - 8} aur chhodi gayin.", "error")
+    return redirect(url_for("po.drive_page"))
 
 
 @po_bp.route("/mappings")

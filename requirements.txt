@@ -6,3 +6,5 @@ gunicorn==22.0.0
 psycopg2-binary==2.9.9
 reportlab==4.2.5
 Pillow==10.4.0
+google-api-python-client==2.147.0
+google-auth==2.35.0

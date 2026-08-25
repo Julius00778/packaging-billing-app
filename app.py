@@ -1164,6 +1164,8 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "party_product_map", "item_code", "item_code VARCHAR(40) DEFAULT ''")
     _add_column_if_missing(inspector, "po_line", "item_code", "item_code VARCHAR(40) DEFAULT ''")
     _add_column_if_missing(inspector, "po_line", "size_mismatch", "size_mismatch BOOLEAN DEFAULT FALSE")
+    _add_column_if_missing(inspector, "party_product_map", "drive_file_id", "drive_file_id VARCHAR(120) DEFAULT ''")
+    _add_column_if_missing(inspector, "party_product_map", "drive_modified", "drive_modified VARCHAR(40) DEFAULT ''")
 
 
 with app.app_context():
