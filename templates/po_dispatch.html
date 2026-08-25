@@ -31,7 +31,11 @@
               {% endif %}
             </td>
             <td>{{ line.mapping.label if line.mapping else '—' }}</td>
-            <td class="mono">{{ line.raw_size_text }}</td>
+            <td class="mono">
+              {# Order me sirf code likha ho toh size product se lo — dispatch wale
+                 ko size dikhna chahiye, chahe PO me likha ho ya na ho. #}
+              {{ line.raw_size_text or (line.mapping.raw_size_text if line.mapping else '') or '—' }}
+            </td>
             <td class="num">{{ line.qty|round(2) }} {{ line.qty_unit }}</td>
           </tr>
         {% endfor %}
