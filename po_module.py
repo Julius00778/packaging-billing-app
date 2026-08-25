@@ -21,6 +21,7 @@ Design notes
 import io
 import os
 import re
+import uuid
 from datetime import datetime, date
 
 from flask import (
@@ -31,6 +32,7 @@ from flask_login import login_required, current_user
 from models import db, Customer, Item
 
 import drive_sync
+import telegram_bot
 
 try:
     from PIL import Image, ImageOps
@@ -53,7 +55,35 @@ THUMB_TARGET_BYTES = 20 * 1024
 SCAN_MAX_DIM = 1800          # PO scan — isme text padhna hota hai, isliye bada
 SCAN_TARGET_BYTES = 500 * 1024
 
-PO_STATUSES = ("pending", "confirmed", "rejected", "dispatched")
+# Order ki poori zindagi. Naam wahi rakhe hain jo Julius bolte hain.
+#   pending       — office me review chal raha hai
+#   with_operator — card operator group me chala gaya, jawab ka intezaar
+#   in_production — operator ne OK kiya (yellow dot)
+#   made          — operator ne Done kiya (green dot), dispatch list me
+#   dispatched    — maal nikal gaya
+#   rejected      — office ne cancel kiya
+PO_STATUSES = ("pending", "with_operator", "in_production", "made",
+               "dispatched", "rejected")
+
+STATUS_LABEL = {
+    "pending": "review chal raha hai",
+    "with_operator": "operator ke paas",
+    "in_production": "operation me",
+    "made": "ban gaya",
+    "dispatched": "dispatch ho gaya",
+    "rejected": "cancel",
+}
+
+# Kaunsi status se kaunsi pe jaa sakte hain. Iske bahar kuch nahi hota — na
+# button se, na screen se.
+NEXT_STATUS = {
+    "pending": ("with_operator", "rejected"),
+    "with_operator": ("in_production", "rejected"),
+    "in_production": ("made", "with_operator", "rejected"),
+    "made": ("dispatched", "in_production", "rejected"),
+    "dispatched": ("made",),
+    "rejected": ("pending",),
+}
 
 
 # --------------------------------------------------------------------------
@@ -163,6 +193,33 @@ class PartyFolder(db.Model):
     customer = db.relationship("Customer")
 
 
+class TelegramChat(db.Model):
+    """Har wo chat/group jisme bot ko dala gaya hai.
+
+    Chat ID dhoondhna aam aadmi ke liye mushkil hai, isliye bot khud yaad rakhta
+    hai ki wo kahan kahan hai. Aapko bas chunna hai ki kaunsa group operator ka
+    hai aur kaunsa manager ka.
+    """
+    __tablename__ = "telegram_chat"
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.String(40), unique=True, nullable=False)
+    title = db.Column(db.String(200), default="")
+    chat_type = db.Column(db.String(20), default="")   # group/supergroup/private
+    role = db.Column(db.String(20), default="")        # operator/manager/owner
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class TelegramPerson(db.Model):
+    """Jo log bot se baat karte hain. Sirf 'operator' wale button daba sakte hain."""
+    __tablename__ = "telegram_person"
+    id = db.Column(db.Integer, primary_key=True)
+    tg_user_id = db.Column(db.String(40), unique=True, nullable=False)
+    name = db.Column(db.String(120), default="")
+    username = db.Column(db.String(120), default="")
+    is_operator = db.Column(db.Boolean, default=False)
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class PurchaseOrder(db.Model):
     __tablename__ = "purchase_order"
     id = db.Column(db.Integer, primary_key=True)
@@ -181,6 +238,13 @@ class PurchaseOrder(db.Model):
     confirmed_at = db.Column(db.DateTime, nullable=True)
     confirmed_by = db.Column(db.Integer, db.ForeignKey("user.id"))
     dispatched_at = db.Column(db.DateTime, nullable=True)
+    # Telegram ka card kahan gaya — taaki wahi card update ho, naya na bhejna pade
+    tg_chat_id = db.Column(db.String(40), default="")
+    tg_message_ids = db.Column(db.String(300), default="")   # comma se jude
+    sent_at = db.Column(db.DateTime, nullable=True)
+    accepted_at = db.Column(db.DateTime, nullable=True)      # operator ne OK kiya
+    made_at = db.Column(db.DateTime, nullable=True)          # operator ne Done kiya
+    operator_name = db.Column(db.String(120), default="")
 
     customer = db.relationship("Customer")
     lines = db.relationship("POLine", backref="po", cascade="all, delete-orphan",
@@ -662,6 +726,216 @@ def sync_one_folder(service, folder):
     return result
 
 
+# --------------------------------------------------------------------------
+# Telegram
+# --------------------------------------------------------------------------
+
+TG_SECRET_KEY = "telegram_webhook_secret"
+
+
+def chat_for_role(role):
+    return TelegramChat.query.filter_by(role=role).first()
+
+
+def is_operator(tg_user_id):
+    p = TelegramPerson.query.filter_by(tg_user_id=str(tg_user_id)).first()
+    return bool(p and p.is_operator)
+
+
+def remember_chat(chat, role_hint=None):
+    if not chat or not chat.get("id"):
+        return None
+    row = TelegramChat.query.filter_by(chat_id=str(chat["id"])).first()
+    if not row:
+        row = TelegramChat(chat_id=str(chat["id"]), role=role_hint or "")
+        db.session.add(row)
+    row.title = chat.get("title") or telegram_bot.person_name(chat) or row.title
+    row.chat_type = chat.get("type") or row.chat_type
+    row.last_seen = datetime.utcnow()
+    return row
+
+
+def remember_person(user):
+    if not user or not user.get("id"):
+        return None
+    row = TelegramPerson.query.filter_by(tg_user_id=str(user["id"])).first()
+    if not row:
+        row = TelegramPerson(tg_user_id=str(user["id"]))
+        db.session.add(row)
+    row.name = telegram_bot.person_name(user) or row.name
+    row.username = user.get("username") or row.username
+    row.last_seen = datetime.utcnow()
+    return row
+
+
+def order_card_text(po, line=None):
+    """Operator ke liye card ka text. Chhota rakho — phone pe padhna hai."""
+    head = f"<b>{po.po_number}</b> — {po.customer.name}"
+    if line is None:
+        rows = []
+        for l in po.lines:
+            name = l.mapping.label if l.mapping else (l.item_code or l.raw_size_text)
+            rows.append(f"• <b>{l.item_code or '—'}</b>  {name}  ×  "
+                        f"{l.qty:g} {l.qty_unit}")
+        body = "\n".join(rows)
+        note = f"\n\n<i>{po.note}</i>" if po.note else ""
+        return f"{head}\n\n{body}{note}"
+
+    name = line.mapping.label if line.mapping else (line.item_code or line.raw_size_text)
+    return (f"{head}\n\n<b>{line.item_code or '—'}</b>\n{name}\n"
+            f"<b>{line.qty:g} {line.qty_unit}</b>")
+
+
+def order_buttons(po):
+    """Status ke hisaab se button. Ho chuka kaam dobara nahi dikhta."""
+    if po.status == "with_operator":
+        return [[{"text": "✅ OK — bana raha hoon", "callback_data": f"ok:{po.id}"}]]
+    if po.status == "in_production":
+        return [[{"text": "🟢 Done — ban gaya", "callback_data": f"done:{po.id}"}]]
+    return []
+
+
+def status_line(po):
+    marks = {"with_operator": "🕐", "in_production": "🟡", "made": "🟢",
+             "dispatched": "📦", "rejected": "❌"}
+    who = f" — {po.operator_name}" if po.operator_name else ""
+    return f"\n\n{marks.get(po.status, '')} <b>{STATUS_LABEL.get(po.status, po.status)}</b>{who}"
+
+
+def send_order_to_operator(po, token=None):
+    """Har line ka apna card, photo ke saath. Aakhir me buttons wala card."""
+    chat = chat_for_role("operator")
+    if not chat:
+        raise telegram_bot.TelegramError(
+            "Operator group chuna nahi gaya. Telegram page pe jaake batao ki "
+            "kaunsa group operator ka hai."
+        )
+    msg_ids = []
+    for line in po.lines:
+        photo = line.mapping.image_data if line.mapping else None
+        res = telegram_bot.send_photo(chat.chat_id, photo, order_card_text(po, line),
+                                      token=token)
+        if res and res.get("message_id"):
+            msg_ids.append(str(res["message_id"]))
+
+    # Aakhir me ek summary card — buttons isi pe rehte hain, taaki har line pe
+    # button na aaye aur operator galti se aadha order aage na badha de.
+    po.status = "with_operator"
+    po.sent_at = datetime.utcnow()
+    po.tg_chat_id = chat.chat_id
+    res = telegram_bot.send_message(
+        chat.chat_id, order_card_text(po) + status_line(po),
+        buttons=order_buttons(po), token=token)
+    if res and res.get("message_id"):
+        msg_ids.append(str(res["message_id"]))
+    po.tg_message_ids = ",".join(msg_ids)
+    db.session.commit()
+    return len(msg_ids)
+
+
+def refresh_order_card(po, token=None):
+    """Aakhri (button wale) card ko nayi status ke saath update karo."""
+    if not po.tg_chat_id or not po.tg_message_ids:
+        return
+    last = po.tg_message_ids.split(",")[-1]
+    try:
+        telegram_bot.edit_message(po.tg_chat_id, last,
+                                  order_card_text(po) + status_line(po),
+                                  buttons=order_buttons(po), token=token)
+    except telegram_bot.TelegramError:
+        pass   # card update na ho paye toh order to badal hi chuka hai
+
+
+def notify_manager(po, token=None):
+    chat = chat_for_role("manager")
+    if not chat:
+        return False
+    lines = "\n".join(
+        f"• {l.item_code or '—'}  {l.mapping.label if l.mapping else ''}  ×  "
+        f"{l.qty:g} {l.qty_unit}" for l in po.lines)
+    text = (f"📦 <b>Dispatch ke liye taiyaar</b>\n\n"
+            f"<b>{po.po_number}</b> — {po.customer.name}\n{lines}")
+    if po.operator_name:
+        text += f"\n\nBanaya: {po.operator_name}"
+    try:
+        telegram_bot.send_message(chat.chat_id, text, token=token)
+        return True
+    except telegram_bot.TelegramError:
+        return False
+
+
+def move_status(po, new_status, who=""):
+    """Ek hi jagah se status badalta hai — button se ho ya screen se.
+
+    Galat chhalang (jaise pending se seedha dispatched) yahin ruk jaati hai.
+    """
+    if new_status == po.status:
+        return False, f"Ye order pehle se {STATUS_LABEL[new_status]} hai."
+    if new_status not in NEXT_STATUS.get(po.status, ()):
+        return False, (f"{STATUS_LABEL.get(po.status, po.status)} se seedha "
+                       f"{STATUS_LABEL.get(new_status, new_status)} nahi ho sakta.")
+
+    now = datetime.utcnow()
+    if new_status == "in_production":
+        po.accepted_at = now
+        po.operator_name = who or po.operator_name
+    elif new_status == "made":
+        po.made_at = now
+        po.operator_name = who or po.operator_name
+        for line in po.lines:
+            if line.mapping:
+                line.mapping.times_used = (line.mapping.times_used or 0) + 1
+    elif new_status == "dispatched":
+        po.dispatched_at = now
+    po.status = new_status
+    db.session.commit()
+    return True, STATUS_LABEL[new_status]
+
+
+def handle_update(update, token=None):
+    """Telegram se aaya ek update. Kabhi exception nahi phenkta — webhook ko
+    hamesha 200 chahiye, warna Telegram baar baar wahi update bhejta rehta hai."""
+    chat = telegram_bot.chat_from_update(update)
+    user = telegram_bot.user_from_update(update)
+    if chat:
+        remember_chat(chat)
+    if user and not user.get("is_bot"):
+        remember_person(user)
+    db.session.commit()
+
+    cq = update.get("callback_query")
+    if not cq:
+        return "noted"
+
+    data = cq.get("data") or ""
+    action, _, po_id = data.partition(":")
+    who = telegram_bot.person_name(cq.get("from"))
+
+    def reply(text, alert=False):
+        try:
+            telegram_bot.answer_callback(cq.get("id"), text, alert, token=token)
+        except telegram_bot.TelegramError:
+            pass
+        return text
+
+    if not is_operator((cq.get("from") or {}).get("id")):
+        return reply("Aap operator ki list me nahi ho — office se puchho.", alert=True)
+
+    po = db.session.get(PurchaseOrder, int(po_id)) if po_id.isdigit() else None
+    if not po:
+        return reply("Ye order ab nahi hai.", alert=True)
+
+    target = {"ok": "in_production", "done": "made"}.get(action)
+    if not target:
+        return reply("Ye button samajh nahi aaya.")
+
+    moved, msg = move_status(po, target, who=who)
+    refresh_order_card(po, token=token)
+    if moved and target == "made":
+        notify_manager(po, token=token)
+    return reply(msg if moved else msg, alert=not moved)
+
+
 def _apply_match(line, customer_id):
     status, chosen, mismatch = match_line(customer_id, line.item_code, line.canonical_key)
     line.match_status = status
@@ -682,7 +956,8 @@ def po_list():
         q = q.filter_by(status=status)
     rows = q.order_by(PurchaseOrder.created_at.desc()).all()
     counts = {s: PurchaseOrder.query.filter_by(status=s).count() for s in PO_STATUSES}
-    return render_template("po_list.html", pos=rows, status=status, counts=counts)
+    return render_template("po_list.html", pos=rows, status=status, counts=counts,
+                           status_label=STATUS_LABEL)
 
 
 @po_bp.route("/new", methods=["GET", "POST"])
@@ -752,11 +1027,19 @@ def po_review(po_id):
             "line": line,
             "candidates": candidates_for(po.customer_id, line.canonical_key),
         })
+    # Office se sirf peeche laane aur cancel karne wale raste dikhao — aage
+    # badhana operator ka kaam hai, Telegram pe.
+    forward = {"pending": "with_operator", "with_operator": "in_production",
+               "in_production": "made", "made": "dispatched"}
+    moves = [(t, f"{STATUS_LABEL[t]} kar do")
+             for t in NEXT_STATUS.get(po.status, ())
+             if t != forward.get(po.status)]
     return render_template(
         "po_review.html", po=po, line_view=line_view,
         items=Item.query.order_by(Item.name).all(),
         mixed=party_is_mixed(po.customer_id),
         party_unit=PartyPOConfig.unit_for(po.customer_id),
+        status_label=STATUS_LABEL, status_moves=moves,
     )
 
 
@@ -827,41 +1110,72 @@ def po_line_map(po_id, line_id):
 @po_bp.route("/<int:po_id>/confirm", methods=["POST"])
 @login_required
 def po_confirm(po_id):
+    """Office ne review poora kiya — ab card operator group me jayega."""
     po = PurchaseOrder.query.get_or_404(po_id)
     if po.status != "pending":
-        flash("Ye PO pehle hi process ho chuka hai.", "error")
+        flash("Ye order pehle hi aage badh chuka hai.", "error")
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.unresolved_count:
         flash(f"{po.unresolved_count} line abhi map nahi hui — pehle wo poori karo.", "error")
         return redirect(url_for("po.po_review", po_id=po.id))
 
-    for line in po.lines:
-        if line.mapping:
-            line.mapping.times_used = (line.mapping.times_used or 0) + 1
-    po.status = "confirmed"
     po.confirmed_at = datetime.utcnow()
     po.confirmed_by = current_user.id
-    db.session.commit()
-    flash(f"PO {po.po_number} confirm ho gaya — dispatch list me chala gaya.", "success")
-    return redirect(url_for("po.po_dispatch"))
+    try:
+        sent = send_order_to_operator(po)
+    except telegram_bot.TelegramError as exc:
+        db.session.rollback()
+        flash(f"Operator ko bhej nahi paye — {exc}", "error")
+        return redirect(url_for("po.po_review", po_id=po.id))
+    flash(f"{po.po_number} operator group me chala gaya ({sent} card).", "success")
+    return redirect(url_for("po.po_review", po_id=po.id))
+
+
+@po_bp.route("/<int:po_id>/status", methods=["POST"])
+@login_required
+def po_set_status(po_id):
+    """Office ki taraf se status badalna — galti sudhaarne ke liye.
+
+    Operator Telegram pe sirf aage badhata hai. Peeche laana, cancel karna, ya
+    seedha dispatched karna — sab yahin se hota hai.
+    """
+    po = PurchaseOrder.query.get_or_404(po_id)
+    target = request.form.get("to", "")
+    if target not in PO_STATUSES:
+        abort(400)
+    if target == "rejected":
+        po.note = (request.form.get("note", "").strip() or po.note)
+    moved, msg = move_status(po, target, who="")
+    if moved:
+        refresh_order_card(po)
+        if target == "made":
+            notify_manager(po)
+        flash(f"{po.po_number} — ab {msg}.", "success")
+    else:
+        flash(msg, "error")
+    back = request.form.get("back") or url_for("po.po_review", po_id=po.id)
+    return redirect(back)
 
 
 @po_bp.route("/<int:po_id>/reject", methods=["POST"])
 @login_required
 def po_reject(po_id):
     po = PurchaseOrder.query.get_or_404(po_id)
-    po.status = "rejected"
     po.note = (request.form.get("note", "").strip() or po.note)
-    db.session.commit()
-    flash(f"PO {po.po_number} reject kar diya.", "success")
+    moved, msg = move_status(po, "rejected")
+    if moved:
+        refresh_order_card(po)
+        flash(f"{po.po_number} cancel kar diya.", "success")
+    else:
+        flash(msg, "error")
     return redirect(url_for("po.po_list"))
 
 
 @po_bp.route("/dispatch")
 @login_required
 def po_dispatch():
-    rows = (PurchaseOrder.query.filter_by(status="confirmed")
-            .order_by(PurchaseOrder.confirmed_at.desc()).all())
+    rows = (PurchaseOrder.query.filter_by(status="made")
+            .order_by(PurchaseOrder.made_at.desc()).all())
     return render_template("po_dispatch.html", pos=rows)
 
 
@@ -869,13 +1183,12 @@ def po_dispatch():
 @login_required
 def po_mark_dispatched(po_id):
     po = PurchaseOrder.query.get_or_404(po_id)
-    if po.status != "confirmed":
-        flash("Sirf confirmed PO hi dispatch ho sakta hai.", "error")
-        return redirect(url_for("po.po_dispatch"))
-    po.status = "dispatched"
-    po.dispatched_at = datetime.utcnow()
-    db.session.commit()
-    flash(f"PO {po.po_number} dispatched mark ho gaya.", "success")
+    moved, msg = move_status(po, "dispatched")
+    if moved:
+        refresh_order_card(po)
+        flash(f"{po.po_number} dispatched mark ho gaya.", "success")
+    else:
+        flash(msg, "error")
     return redirect(url_for("po.po_dispatch"))
 
 
@@ -1005,6 +1318,97 @@ def drive_sync_now():
     if len(skipped) > 8:
         flash(f"…aur {len(skipped) - 8} aur chhodi gayin.", "error")
     return redirect(url_for("po.drive_page"))
+
+
+@po_bp.route("/telegram")
+@login_required
+def telegram_page():
+    bot_name = ""
+    error = ""
+    key_set = bool(os.environ.get("TELEGRAM_BOT_TOKEN", "").strip())
+    if key_set:
+        try:
+            bot_name = (telegram_bot.get_me() or {}).get("username", "")
+        except telegram_bot.TelegramError as exc:
+            error = str(exc)
+    return render_template(
+        "po_telegram.html",
+        key_set=key_set, bot_name=bot_name, error=error,
+        chats=TelegramChat.query.order_by(TelegramChat.last_seen.desc()).all(),
+        people=TelegramPerson.query.order_by(TelegramPerson.last_seen.desc()).all(),
+        hooked=bool(POSetting.get(TG_SECRET_KEY)),
+    )
+
+
+@po_bp.route("/telegram/chat/<int:row_id>/role", methods=["POST"])
+@login_required
+def telegram_set_role(row_id):
+    row = db.session.get(TelegramChat, row_id) or abort(404)
+    role = request.form.get("role", "")
+    if role not in ("", "operator", "manager", "owner"):
+        abort(400)
+    if role:      # ek role sirf ek chat ka
+        for other in TelegramChat.query.filter_by(role=role).all():
+            if other.id != row.id:
+                other.role = ""
+    row.role = role
+    db.session.commit()
+    flash(f"'{row.title or row.chat_id}' ab {role or 'kisi role me nahi'} hai.", "success")
+    return redirect(url_for("po.telegram_page"))
+
+
+@po_bp.route("/telegram/person/<int:row_id>/operator", methods=["POST"])
+@login_required
+def telegram_set_operator(row_id):
+    row = db.session.get(TelegramPerson, row_id) or abort(404)
+    row.is_operator = request.form.get("is_operator") == "1"
+    db.session.commit()
+    flash(f"{row.name or row.tg_user_id} — "
+          + ("ab button daba sakta hai." if row.is_operator else "ab button nahi daba sakta."),
+          "success")
+    return redirect(url_for("po.telegram_page"))
+
+
+@po_bp.route("/telegram/hook", methods=["POST"])
+@login_required
+def telegram_set_hook():
+    """Telegram ko batao ki updates kahan bhejni hain."""
+    secret = POSetting.get(TG_SECRET_KEY)
+    if not secret:
+        secret = uuid.uuid4().hex
+        POSetting.put(TG_SECRET_KEY, secret)
+        db.session.commit()
+    hook_url = url_for("po.telegram_webhook", secret=secret, _external=True)
+    if hook_url.startswith("http://"):
+        hook_url = "https://" + hook_url[len("http://"):]
+    try:
+        telegram_bot.set_webhook(hook_url, secret_token=secret)
+    except telegram_bot.TelegramError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("po.telegram_page"))
+    flash("Bot jud gaya. Ab dono group me ek msg bhej do taaki wo yahan dikhne lagen.",
+          "success")
+    return redirect(url_for("po.telegram_page"))
+
+
+@po_bp.route("/telegram/hook/<secret>", methods=["POST"])
+def telegram_webhook(secret):
+    """Telegram yahan updates bhejta hai. Login nahi hota — isliye secret URL me
+    hai, aur Telegram ka apna secret header bhi check hota hai.
+
+    Yahan se hamesha 200 jaata hai. Error par 500 dene se Telegram wahi update
+    baar baar bhejta rehta hai, aur order do baar aage badh sakta hai.
+    """
+    if not secret or secret != POSetting.get(TG_SECRET_KEY):
+        abort(404)
+    header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if header and header != secret:
+        abort(403)
+    try:
+        handle_update(request.get_json(force=True, silent=True) or {})
+    except Exception:
+        db.session.rollback()
+    return "", 200
 
 
 @po_bp.route("/mappings")

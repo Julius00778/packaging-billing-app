@@ -1,0 +1,231 @@
+"""Telegram bot ke tests — asli Telegram ke bina.
+
+Telegram ki jagah ek nakli API hai jo har call yaad rakh leti hai. Isse ye check
+hota hai ki operator ko kya bheja gaya, kaun button daba sakta hai, status kis
+kram me badalta hai, aur manager ko khabar kab jaati hai.
+
+    python3 test_po_telegram.py
+"""
+import io
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+DB = os.path.join(os.path.dirname(__file__), "test_tg.db")
+os.environ["DATABASE_URL"] = "sqlite:///" + DB
+os.environ["TELEGRAM_BOT_TOKEN"] = "test-token"
+if os.path.exists(DB):
+    os.remove(DB)
+
+from app import app                                     # noqa: E402
+from models import db, Customer, User, Settings         # noqa: E402
+import telegram_bot                                     # noqa: E402
+import po_module as M                                    # noqa: E402
+
+fails = []
+
+
+def check(label, got, want=True):
+    if got != want:
+        fails.append(f"{label}\n    got:  {got!r}\n    want: {want!r}")
+
+
+class FakeTelegram:
+    """Har call yaad rakhti hai. message_id badhta jaata hai, jaise asli me."""
+
+    def __init__(self):
+        self.calls = []
+        self.next_id = 100
+
+    def __call__(self, method, payload=None, files=None, token=None, timeout=20):
+        self.calls.append((method, payload or {}, bool(files)))
+        if method in ("sendMessage", "sendPhoto"):
+            self.next_id += 1
+            return {"message_id": self.next_id}
+        if method == "getMe":
+            return {"username": "sambhav_orders_bot"}
+        return True
+
+    def of(self, method):
+        return [c for c in self.calls if c[0] == method]
+
+    def last_text(self, method):
+        rows = self.of(method)
+        if not rows:
+            return ""
+        p = rows[-1][1]
+        return p.get("text") or p.get("caption") or ""
+
+
+TG = FakeTelegram()
+telegram_bot.call = TG
+
+OPERATOR = {"id": 555, "first_name": "Ramesh"}
+RANDOM_GUY = {"id": 999, "first_name": "Koi Aur"}
+OP_CHAT = {"id": -1001, "title": "Sambhav Operators", "type": "supergroup"}
+MGR_CHAT = {"id": -1002, "title": "Sambhav Managers", "type": "supergroup"}
+
+
+def cb(data, user):
+    return {"callback_query": {"id": "c1", "from": user, "data": data,
+                               "message": {"chat": OP_CHAT, "message_id": 1}}}
+
+
+with app.app_context():
+    db.create_all()
+    s = Settings.get(); s.firm_name = "Sambhav"
+    u = User(name="Julius", username="owner", role="owner"); u.set_password("secret123")
+    cust = Customer(name="GM ENTERPREISES")
+    db.session.add_all([u, cust])
+    db.session.commit()
+
+    # ---------------------------------------------- bot khud chats yaad rakhta hai
+    M.handle_update({"message": {"chat": OP_CHAT, "from": OPERATOR, "text": "hi"}})
+    M.handle_update({"message": {"chat": MGR_CHAT, "from": OPERATOR, "text": "hi"}})
+    check("dono group yaad rahe", M.TelegramChat.query.count(), 2)
+    check("bhejne wala bhi yaad raha", M.TelegramPerson.query.count(), 1)
+    check("naya banda by default operator nahi hota",
+          M.TelegramPerson.query.first().is_operator, False)
+
+    op_chat = M.TelegramChat.query.filter_by(chat_id="-1001").first()
+    mgr_chat = M.TelegramChat.query.filter_by(chat_id="-1002").first()
+    op_chat.role, mgr_chat.role = "operator", "manager"
+    ramesh = M.TelegramPerson.query.filter_by(tg_user_id="555").first()
+    ramesh.is_operator = True
+    db.session.commit()
+
+    # ------------------------------------------------------------- ek order banao
+    product = M.PartyProductMap(customer_id=cust.id, item_code="GME02",
+                                canonical_key="40.0x140.0x230.0",
+                                raw_size_text="23x14x4", label="GME02 (23x14x4)",
+                                image_data=b"\xff\xd8\xff-nakli-photo", times_used=0)
+    db.session.add(product)
+    db.session.commit()
+
+    po = M.PurchaseOrder(po_number="PO-77", customer_id=cust.id, status="pending",
+                         po_date="2026-08-25", created_by=u.id)
+    db.session.add(po)
+    db.session.flush()
+    db.session.add(M.POLine(po_id=po.id, line_no=1, item_code="GME02",
+                            raw_size_text="23x14x4", canonical_key="40.0x140.0x230.0",
+                            qty=500, qty_unit="pcs", match_status="code",
+                            map_id=product.id))
+    db.session.commit()
+    po_id = po.id
+
+    # -------------------------------------------------------- operator ko bhejna
+    TG.calls.clear()
+    M.send_order_to_operator(db.session.get(M.PurchaseOrder, po_id))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("status operator ke paas chala gaya", po.status, "with_operator")
+    check("har line ka photo card gaya", len(TG.of("sendPhoto")), 1)
+    check("photo sach me attach hui", TG.of("sendPhoto")[0][2], True)
+    check("card me item code hai", "GME02" in TG.of("sendPhoto")[0][1]["caption"], True)
+    check("card me qty hai", "500 pcs" in TG.of("sendPhoto")[0][1]["caption"], True)
+    check("aakhir me ek summary card", len(TG.of("sendMessage")), 1)
+    check("button sirf summary card pe hai", "ok:" in str(TG.of("sendMessage")[-1][1]), True)
+    check("line card pe koi button nahi", "callback_data" in str(TG.of("sendPhoto")[0][1]), False)
+    check("message id yaad rahe", len(po.tg_message_ids.split(",")), 2)
+
+    # ----------------------------------------------- sirf operator button daba sake
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{po_id}", RANDOM_GUY))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("anjaan bande se status nahi badla", po.status, "with_operator")
+    check("usko saaf jawab mila",
+          "operator ki list me nahi" in TG.of("answerCallbackQuery")[-1][1]["text"], True)
+
+    # ------------------------------------------------------------- OK -> yellow
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{po_id}", OPERATOR))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("operator ne OK kiya toh operation me", po.status, "in_production")
+    check("operator ka naam laga", po.operator_name, "Ramesh")
+    check("card update hua", len(TG.of("editMessageText")), 1)
+    check("ab Done button dikhta hai", "done:" in str(TG.of("editMessageText")[-1][1]), True)
+    check("manager ko abhi khabar nahi gayi", len(TG.of("sendMessage")), 0)
+
+    # ------------------------------------- wahi button dobara — kuch nahi hona chahiye
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{po_id}", OPERATOR))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("dobara OK se kuch nahi badla", po.status, "in_production")
+
+    # ------------------------------------------------------------ Done -> green
+    TG.calls.clear()
+    M.handle_update(cb(f"done:{po_id}", OPERATOR))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("Done ke baad ban gaya", po.status, "made")
+    check("made_at set hua", bool(po.made_at), True)
+    check("product ka times_used badha",
+          db.session.get(M.PartyProductMap, product.id).times_used, 1)
+    check("manager ko khabar gayi", len(TG.of("sendMessage")), 1)
+    mgr = TG.of("sendMessage")[-1][1]
+    check("khabar manager group me gayi", str(mgr["chat_id"]), "-1002")
+    check("khabar me PO number hai", "PO-77" in mgr["text"], True)
+    check("khabar me operator ka naam hai", "Ramesh" in mgr["text"], True)
+    check("ban jaane ke baad koi button nahi",
+          M.order_buttons(po), [])
+
+    # --------------------------------------------------- galat chhalang nahi chalti
+    po2 = M.PurchaseOrder(po_number="PO-78", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add(po2); db.session.commit()
+    ok, msg = M.move_status(po2, "dispatched")
+    check("pending se seedha dispatched nahi", ok, False)
+    check("wajah bhi batayi", "nahi ho sakta" in msg, True)
+    check("status waisa hi raha", po2.status, "pending")
+
+    # ------------------------------------------------- office peeche la sakta hai
+    po = db.session.get(M.PurchaseOrder, po_id)
+    ok, _ = M.move_status(po, "in_production")
+    check("ban gaya se wapas operation me ja sakta hai", ok, True)
+    ok, _ = M.move_status(po, "made")
+    check("phir aage bhi", ok, True)
+    ok, _ = M.move_status(po, "dispatched")
+    check("aur dispatch bhi", (ok, po.status), (True, "dispatched"))
+
+    # ---------------------------------------------------- cancel kahin se bhi ho
+    ok, _ = M.move_status(po2, "rejected")
+    check("pending order cancel ho gaya", (ok, po2.status), (True, "rejected"))
+
+# ------------------------------------------------------------------ webhook
+client = app.test_client()
+client.post("/login", data={"username": "owner", "password": "secret123"},
+            follow_redirects=True)
+
+r = client.get("/po/telegram")
+check("telegram page khulta hai", r.status_code, 200)
+check("bot ka naam dikhta hai", b"sambhav_orders_bot" in r.data, True)
+
+r = client.post("/po/telegram/hook", follow_redirects=True)
+check("webhook set ho gaya", r.status_code, 200)
+check("Telegram ko setWebhook gaya", len(TG.of("setWebhook")) >= 1, True)
+hook_url = TG.of("setWebhook")[-1][1]["url"]
+check("webhook https pe hai", hook_url.startswith("https://"), True)
+check("webhook me secret hai", bool(TG.of("setWebhook")[-1][1].get("secret_token")), True)
+
+with app.app_context():
+    secret = M.POSetting.get(M.TG_SECRET_KEY)
+
+check("galat secret pe 404", client.post("/po/hook/galat-secret", json={}).status_code, 404)
+check("sahi secret pe 200",
+      client.post(f"/po/telegram/hook/{secret}", json={
+          "message": {"chat": OP_CHAT, "from": OPERATOR, "text": "test"}}).status_code, 200)
+check("galat secret header pe 403",
+      client.post(f"/po/telegram/hook/{secret}", json={},
+                  headers={"X-Telegram-Bot-Api-Secret-Token": "kuch aur"}).status_code, 403)
+check("kachra bheja jaye toh bhi 200 (warna Telegram baar baar bhejega)",
+      client.post(f"/po/telegram/hook/{secret}", data="ye json nahi hai").status_code, 200)
+
+# purani screens bhi chalti rahni chahiye
+for path in ("/", "/invoices", "/customers", "/items", "/po/", "/po/dispatch",
+             "/po/mappings", "/po/drive"):
+    check(f"GET {path}", client.get(path).status_code, 200)
+
+if fails:
+    print(f"FAILED {len(fails)} check(s):\n")
+    for f in fails:
+        print(" - " + f)
+    sys.exit(1)
+print("telegram: all checks passed")

@@ -1167,6 +1167,28 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "party_product_map", "drive_file_id", "drive_file_id VARCHAR(120) DEFAULT ''")
     _add_column_if_missing(inspector, "party_product_map", "drive_modified", "drive_modified VARCHAR(40) DEFAULT ''")
 
+    _add_column_if_missing(inspector, "purchase_order", "tg_chat_id", "tg_chat_id VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "tg_message_ids", "tg_message_ids VARCHAR(300) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "sent_at", "sent_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "accepted_at", "accepted_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "made_at", "made_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "operator_name", "operator_name VARCHAR(120) DEFAULT ''")
+
+    # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
+    # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.
+    _rename_po_status(inspector, "confirmed", "made")
+
+
+def _rename_po_status(inspector, old, new):
+    from sqlalchemy import text
+    if "purchase_order" not in inspector.get_table_names():
+        return
+    with db.engine.connect() as conn:
+        conn.execute(text("UPDATE purchase_order SET status = :new, made_at = "
+                          "COALESCE(made_at, confirmed_at) WHERE status = :old"),
+                     {"new": new, "old": old})
+        conn.commit()
+
 
 with app.app_context():
     _run_startup_migrations()

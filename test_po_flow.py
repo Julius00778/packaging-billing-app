@@ -17,6 +17,7 @@ if os.path.exists(DB):
 
 from app import app                                  # noqa: E402
 from models import db, Customer, Item                # noqa: E402
+import po_module                                    # noqa: E402
 from po_module import PartyProductMap, PurchaseOrder, POLine, PartyPOConfig  # noqa: E402
 
 fails = []
@@ -174,27 +175,42 @@ check("mismatch ka warning text aaya", "code aur size match nahi" in r.data.deco
 
 ok("reject PO-4473", client.post(f"/po/{po3_id}/reject", follow_redirects=True))
 
-# ------------------------------------------------------ confirm + dispatch
-ok("confirm PO", client.post(f"/po/{po_id}/confirm", follow_redirects=True))
+# ------------------------------------------------------ operator ko bhejna
+# Telegram set nahi hai — order aage nahi badhna chahiye, aur wajah saaf honi chahiye.
+r = ok("confirm bina Telegram ke", client.post(f"/po/{po_id}/confirm", follow_redirects=True))
+check("Telegram bina order pending hi raha",
+      app.test_request_context() and True, True)
+with app.app_context():
+    check("bina operator group ke order aage nahi badha",
+          db.session.get(PurchaseOrder, po_id).status, "pending")
+check("wajah batayi gayi", "Operator group chuna nahi gaya" in r.data.decode("utf8", "ignore"))
+
+# Aage ka safar office ki taraf se — Telegram wala hissa test_po_telegram.py me hai.
 with app.app_context():
     po = db.session.get(PurchaseOrder, po_id)
-    check("PO confirmed", po.status, "confirmed")
-    check("confirmed_at set", bool(po.confirmed_at))
+    moved, _ = po_module.move_status(po, "with_operator")
+    check("office se operator ke paas", (moved, po.status), (True, "with_operator"))
+    moved, _ = po_module.move_status(po, "in_production", who="Ramesh")
+    check("operation me", (moved, po.status), (True, "in_production"))
+    moved, _ = po_module.move_status(po, "made", who="Ramesh")
+    check("ban gaya", (moved, po.status), (True, "made"))
+    check("made_at set", bool(po.made_at))
     check("times_used badha", db.session.get(PartyProductMap, map_id).times_used, 1)
+    check("galat chhalang nahi chalti", po_module.move_status(po, "pending")[0], False)
 
 r = ok("GET /po/dispatch", client.get("/po/dispatch"))
-check("confirmed PO dispatch list me hai", b"PO-4471" in r.data)
+check("ban gaya order dispatch list me hai", b"PO-4471" in r.data)
 
 ok("mark dispatched", client.post(f"/po/{po_id}/dispatched", follow_redirects=True))
 with app.app_context():
     check("PO dispatched", db.session.get(PurchaseOrder, po_id).status, "dispatched")
 
-ok("reject dusra PO", client.post(f"/po/{po2_id}/reject",
+ok("cancel dusra PO", client.post(f"/po/{po2_id}/reject",
                                   data={"note": "party ne cancel kiya"}, follow_redirects=True))
 with app.app_context():
-    check("PO rejected", db.session.get(PurchaseOrder, po2_id).status, "rejected")
+    check("PO cancel hua", db.session.get(PurchaseOrder, po2_id).status, "rejected")
 
-for st in ("pending", "confirmed", "rejected", "dispatched"):
+for st in po_module.PO_STATUSES:
     ok(f"GET /po/?status={st}", client.get(f"/po/?status={st}"))
 ok("GET /po/mappings?customer_id=", client.get(f"/po/mappings?customer_id={cust_id}"))
 
