@@ -29,7 +29,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from models import db, Customer, Item
+from models import db, Customer, Item, Invoice
 
 import drive_sync
 import telegram_bot
@@ -193,6 +193,53 @@ class PartyFolder(db.Model):
     customer = db.relationship("Customer")
 
 
+class PartyRate(db.Model):
+    """Kis party ko kaunsa product kis rate pe jaata hai.
+
+    Rate **product** se juda hai (party_product_map se), line me likhe code se
+    nahi. Wajah: order me kabhi item code likha hota hai, kabhi sirf size. Dono
+    haalat me product wahi hota hai, isliye rate bhi wahi milna chahiye.
+
+    Rate us unit pe rakha jaata hai jis unit me order aata hai — 'pcs' ka rate
+    alag, 'box' ka alag. Koi hisaab khud nahi lagaya jaata (1 box me kitne pc
+    hain, ye system nahi jaanta), isliye bill kabhi apne aap galat nahi banega.
+    """
+    __tablename__ = "party_rate"
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey("customer.id"), nullable=False)
+    map_id = db.Column(db.Integer, db.ForeignKey("party_product_map.id"), nullable=False)
+    item_code = db.Column(db.String(40), default="")   # sirf padhne ke liye
+    qty_unit = db.Column(db.String(20), default="pcs")
+    rate = db.Column(db.Float, default=0.0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint("map_id", "qty_unit",
+                                          name="uq_rate_product_unit"),)
+
+    mapping = db.relationship("PartyProductMap")
+
+    @staticmethod
+    def look_up(map_id, qty_unit):
+        if not map_id:
+            return None
+        return PartyRate.query.filter_by(map_id=map_id,
+                                         qty_unit=qty_unit or "pcs").first()
+
+    @staticmethod
+    def remember(mapping, qty_unit, rate):
+        if not mapping or not rate:
+            return None
+        row = PartyRate.look_up(mapping.id, qty_unit)
+        if not row:
+            row = PartyRate(customer_id=mapping.customer_id, map_id=mapping.id,
+                            qty_unit=qty_unit or "pcs")
+            db.session.add(row)
+        row.item_code = mapping.item_code or ""
+        row.rate = float(rate)
+        row.updated_at = datetime.utcnow()
+        return row
+
+
 class TelegramChat(db.Model):
     """Har wo chat/group jisme bot ko dala gaya hai.
 
@@ -241,6 +288,8 @@ class PurchaseOrder(db.Model):
     # Telegram ka card kahan gaya — taaki wahi card update ho, naya na bhejna pade
     tg_chat_id = db.Column(db.String(40), default="")
     tg_message_ids = db.Column(db.String(300), default="")   # comma se jude
+    tg_rate_summary_id = db.Column(db.String(40), default="")  # aapke chat wala card
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True)
     sent_at = db.Column(db.DateTime, nullable=True)
     accepted_at = db.Column(db.DateTime, nullable=True)      # operator ne OK kiya
     made_at = db.Column(db.DateTime, nullable=True)          # operator ne Done kiya
@@ -260,6 +309,14 @@ class PurchaseOrder(db.Model):
     @property
     def unresolved_count(self):
         return sum(1 for l in self.lines if not l.map_id)
+
+    @property
+    def no_rate_count(self):
+        return sum(1 for l in self.lines if not l.rate)
+
+    @property
+    def total(self):
+        return round(sum(l.amount for l in self.lines), 2)
 
 
 class POLine(db.Model):
@@ -284,8 +341,15 @@ class POLine(db.Model):
     # badhne se accha hai operator ko dikha do.
     size_mismatch = db.Column(db.Boolean, default=False)
     map_id = db.Column(db.Integer, db.ForeignKey("party_product_map.id"), nullable=True)
+    rate = db.Column(db.Float, default=0.0)
+    rate_from_memory = db.Column(db.Boolean, default=False)  # pichli baar wala rate
+    tg_rate_msg_id = db.Column(db.String(40), default="")    # kis msg ka reply rate hai
 
     mapping = db.relationship("PartyProductMap")
+
+    @property
+    def amount(self):
+        return round((self.qty or 0) * (self.rate or 0), 2)
 
 
 # --------------------------------------------------------------------------
@@ -802,6 +866,153 @@ def status_line(po):
     return f"\n\n{marks.get(po.status, '')} <b>{STATUS_LABEL.get(po.status, po.status)}</b>{who}"
 
 
+def fill_remembered_rates(po):
+    """Jo rate pehle diye the wo apne aap bhar do. Nayi cheez khaali rehti hai."""
+    filled = 0
+    for line in po.lines:
+        if line.rate or not line.map_id:
+            continue
+        known = PartyRate.look_up(line.map_id, line.qty_unit)
+        if known and known.rate:
+            line.rate = known.rate
+            line.rate_from_memory = True
+            filled += 1
+    return filled
+
+
+def rate_summary_text(po):
+    rows = []
+    for line in po.lines:
+        name = line.mapping.label if line.mapping else (line.item_code or line.raw_size_text)
+        head = f"<b>{line.item_code or '—'}</b>  {name}  ×  {line.qty:g} {line.qty_unit}"
+        if not line.rate:
+            rows.append(f"{head}\n   ⬜ <b>rate chahiye</b>")
+        elif line.rate_from_memory:
+            rows.append(f"{head}\n   ₹{line.rate:g}/{line.qty_unit} (pichli baar)"
+                        f" = ₹{line.amount:,.0f}")
+        else:
+            rows.append(f"{head}\n   ₹{line.rate:g}/{line.qty_unit} = ₹{line.amount:,.0f}")
+    body = "\n\n".join(rows)
+    tail = ""
+    if not po.no_rate_count:
+        tail = f"\n\n<b>Total ₹{po.total:,.0f}</b>"
+    else:
+        tail = (f"\n\n{po.no_rate_count} line ka rate baaki hai — neeche wale msg pe "
+                f"reply karke sirf number bhej do.")
+    return (f"<b>{po.po_number}</b> — {po.customer.name}\n"
+            f"<i>naya order aaya hai</i>\n\n{body}{tail}")
+
+
+def rate_buttons(po):
+    if po.status != "pending" or po.no_rate_count:
+        return []
+    return [[{"text": "✅ Rate theek hain — operator ko bhejo",
+              "callback_data": f"rates:{po.id}"}]]
+
+
+def ask_rates(po, token=None):
+    """Aapke apne chat me order bhejo — jahan rate chahiye wahan poochho.
+
+    Har us line ka apna msg jaata hai jiska rate nahi pata. Uske reply me sirf
+    number bhejna hota hai — bot ko pata rehta hai ki wo reply kis line ka hai.
+    """
+    chat = chat_for_role("owner")
+    if not chat:
+        raise telegram_bot.TelegramError(
+            "Aapka apna chat chuna nahi gaya. Bot ko private me /start bhejo, phir "
+            "Telegram page pe use 'Aapka chat' bana do."
+        )
+    fill_remembered_rates(po)
+    db.session.commit()
+
+    res = telegram_bot.send_message(chat.chat_id, rate_summary_text(po),
+                                    buttons=rate_buttons(po), token=token)
+    po.tg_rate_summary_id = str(res.get("message_id")) if res else ""
+
+    for line in po.lines:
+        if line.rate:
+            continue
+        name = line.mapping.label if line.mapping else line.item_code
+        ask = telegram_bot.send_message(
+            chat.chat_id,
+            f"<b>{line.item_code or '—'}</b> — {name}\n{line.qty:g} {line.qty_unit}\n\n"
+            f"Is msg ka reply karke rate bhejo (per {line.qty_unit}).",
+            token=token)
+        line.tg_rate_msg_id = str(ask.get("message_id")) if ask else ""
+    db.session.commit()
+    return po.no_rate_count
+
+
+def refresh_rate_summary(po, token=None):
+    chat = chat_for_role("owner")
+    if not chat or not po.tg_rate_summary_id:
+        return
+    try:
+        telegram_bot.edit_message(chat.chat_id, po.tg_rate_summary_id,
+                                  rate_summary_text(po), buttons=rate_buttons(po),
+                                  token=token)
+    except telegram_bot.TelegramError:
+        pass
+
+
+def set_line_rate(line, rate):
+    """Ek jagah se rate lagta hai — screen se ho ya Telegram se."""
+    line.rate = float(rate)
+    line.rate_from_memory = False
+    PartyRate.remember(line.mapping, line.qty_unit, line.rate)
+    db.session.commit()
+
+
+def make_invoice(po):
+    """Order ban jaane par bill. Ek order ka ek hi bill — dobara nahi banta.
+
+    Number wahi tareeke se milta hai jaise baaki app me: prefix + 4 ank, aur
+    agla number pehle se use ho toh aage badh jaata hai.
+    """
+    from models import Settings, InvoiceItem
+    if po.invoice_id:
+        return db.session.get(Invoice, po.invoice_id), False
+    if po.no_rate_count:
+        raise ValueError("kuch lines ka rate nahi hai")
+
+    settings = Settings.get()
+    n = settings.next_invoice_no or 1
+    while Invoice.query.filter_by(
+            invoice_no=f"{settings.invoice_prefix}-{str(n).zfill(4)}").first():
+        n += 1
+    inv = Invoice(
+        invoice_no=f"{settings.invoice_prefix}-{str(n).zfill(4)}",
+        date=date.today().isoformat(),
+        customer_id=po.customer_id,
+        created_by=po.confirmed_by or po.created_by,
+        notes=f"Order {po.po_number}",
+    )
+    db.session.add(inv)
+    db.session.flush()
+
+    subtotal = 0.0
+    for line in po.lines:
+        name = line.mapping.label if line.mapping else (line.item_code or line.raw_size_text)
+        desc = f"{line.item_code} — {name}" if line.item_code else name
+        db.session.add(InvoiceItem(
+            invoice_id=inv.id,
+            item_id=line.mapping.item_id if line.mapping else None,
+            description=desc[:200], qty=line.qty, unit=line.qty_unit,
+            rate=line.rate, gst_rate=0.0,
+            taxable_amount=line.amount, line_total=line.amount,
+        ))
+        subtotal += line.amount
+
+    # GST abhi off hai — jab chalu hoga tab yahin rate aur amounts jud jayenge.
+    inv.subtotal = round(subtotal, 2)
+    inv.taxable_amount = inv.subtotal
+    inv.grand_total = inv.subtotal
+    settings.next_invoice_no = n + 1
+    po.invoice_id = inv.id
+    db.session.commit()
+    return inv, True
+
+
 def send_order_to_operator(po, token=None):
     """Har line ka apna card, photo ke saath. Aakhir me buttons wala card."""
     chat = chat_for_role("operator")
@@ -889,6 +1100,14 @@ def move_status(po, new_status, who=""):
         po.dispatched_at = now
     po.status = new_status
     db.session.commit()
+
+    # Ban gaya matlab bill ban sakta hai. Bill na ban paye (rate nahi hai, ya kuch
+    # aur) toh order phir bhi ban chuka hai — usko rokna galat hoga.
+    if new_status == "made" and not po.invoice_id:
+        try:
+            make_invoice(po)
+        except Exception:
+            db.session.rollback()
     return True, STATUS_LABEL[new_status]
 
 
@@ -905,7 +1124,7 @@ def handle_update(update, token=None):
 
     cq = update.get("callback_query")
     if not cq:
-        return "noted"
+        return handle_rate_reply(update, token=token)
 
     data = cq.get("data") or ""
     action, _, po_id = data.partition(":")
@@ -918,12 +1137,27 @@ def handle_update(update, token=None):
             pass
         return text
 
-    if not is_operator((cq.get("from") or {}).get("id")):
-        return reply("Aap operator ki list me nahi ho — office se puchho.", alert=True)
-
     po = db.session.get(PurchaseOrder, int(po_id)) if po_id.isdigit() else None
     if not po:
         return reply("Ye order ab nahi hai.", alert=True)
+
+    # Rate wala button aapke apne chat me hota hai, operator group me nahi.
+    if action == "rates":
+        owner = chat_for_role("owner")
+        here = str(((cq.get("message") or {}).get("chat") or {}).get("id"))
+        if not owner or here != owner.chat_id:
+            return reply("Ye button sirf aapke chat me chalta hai.", alert=True)
+        if po.no_rate_count:
+            return reply("Abhi kuch lines ka rate baaki hai.", alert=True)
+        try:
+            send_order_to_operator(po, token=token)
+        except telegram_bot.TelegramError as exc:
+            return reply(str(exc), alert=True)
+        refresh_rate_summary(po, token=token)
+        return reply("Operator ko bhej diya.")
+
+    if not is_operator((cq.get("from") or {}).get("id")):
+        return reply("Aap operator ki list me nahi ho — office se puchho.", alert=True)
 
     target = {"ok": "in_production", "done": "made"}.get(action)
     if not target:
@@ -933,7 +1167,62 @@ def handle_update(update, token=None):
     refresh_order_card(po, token=token)
     if moved and target == "made":
         notify_manager(po, token=token)
+        if po.invoice_id:
+            notify_bill_ready(po, db.session.get(Invoice, po.invoice_id), token=token)
     return reply(msg if moved else msg, alert=not moved)
+
+
+def handle_rate_reply(update, token=None):
+    """Aapke chat me kisi rate-wale msg ka reply — usme sirf number hota hai."""
+    msg = update.get("message") or {}
+    parent = msg.get("reply_to_message") or {}
+    text = (msg.get("text") or "").strip().replace("₹", "").replace(",", "")
+    chat = msg.get("chat") or {}
+
+    owner = chat_for_role("owner")
+    if not (parent and text and owner and str(chat.get("id")) == owner.chat_id):
+        return "noted"
+
+    line = POLine.query.filter_by(tg_rate_msg_id=str(parent.get("message_id"))).first()
+    if not line:
+        return "noted"
+    try:
+        rate = float(text)
+    except ValueError:
+        telegram_bot.send_message(owner.chat_id,
+                                  "Sirf number bhejo — jaise <code>25</code>.", token=token)
+        return "bad number"
+    if rate <= 0:
+        telegram_bot.send_message(owner.chat_id, "Rate zero se bada hona chahiye.",
+                                  token=token)
+        return "bad number"
+
+    set_line_rate(line, rate)
+    po = line.po
+    refresh_rate_summary(po, token=token)
+    left = po.no_rate_count
+    telegram_bot.send_message(
+        owner.chat_id,
+        f"✅ <b>{line.item_code}</b> — ₹{rate:g}/{line.qty_unit} yaad rakh liya."
+        + ("" if left else "\n\nSab rate aa gaye. Upar wale card se operator ko bhej do."),
+        token=token)
+    return "rate set"
+
+
+def notify_bill_ready(po, inv, token=None):
+    """Bill ban gaya — aapko aur manager ko chhoti si khabar."""
+    text = (f"🧾 <b>Bill ban gaya</b> — {inv.invoice_no}\n"
+            f"{po.po_number} · {po.customer.name}\n"
+            f"<b>₹{inv.grand_total:,.0f}</b>\n\n"
+            f"<i>Print accountant karega.</i>")
+    for role in ("owner", "manager"):
+        chat = chat_for_role(role)
+        if not chat:
+            continue
+        try:
+            telegram_bot.send_message(chat.chat_id, text, token=token)
+        except telegram_bot.TelegramError:
+            pass
 
 
 def _apply_match(line, customer_id):
@@ -1010,8 +1299,19 @@ def po_new():
             _apply_match(line, customer_id)
             db.session.add(line)
 
+        fill_remembered_rates(po)
         db.session.commit()
-        flash(f"PO {po_number} padh liya — {len(parsed)} line(s). Ab review karo.", "success")
+
+        msg = f"PO {po_number} padh liya — {len(parsed)} line(s)."
+        # Rate aapke Telegram chat pe poochh lo — wahi flow hai jo tay hua tha.
+        # Chat set na ho toh koi baat nahi, rate yahin screen pe daal do.
+        if chat_for_role("owner"):
+            try:
+                ask_rates(po)
+                msg += " Rate aapke Telegram pe poochh liye hain."
+            except telegram_bot.TelegramError as exc:
+                flash(f"Telegram pe rate nahi poochh paye — {exc}", "error")
+        flash(msg, "success")
         return redirect(url_for("po.po_review", po_id=po.id))
 
     return render_template("po_new.html", customers=customers, today=date.today().isoformat())
@@ -1040,6 +1340,7 @@ def po_review(po_id):
         mixed=party_is_mixed(po.customer_id),
         party_unit=PartyPOConfig.unit_for(po.customer_id),
         status_label=STATUS_LABEL, status_moves=moves,
+        invoice=db.session.get(Invoice, po.invoice_id) if po.invoice_id else None,
     )
 
 
@@ -1107,6 +1408,33 @@ def po_line_map(po_id, line_id):
     return redirect(url_for("po.po_review", po_id=po_id))
 
 
+@po_bp.route("/<int:po_id>/rates", methods=["POST"])
+@login_required
+def po_set_rates(po_id):
+    """Screen se rate daalna — Telegram ka doosra raasta."""
+    po = PurchaseOrder.query.get_or_404(po_id)
+    changed = 0
+    for line in po.lines:
+        raw = (request.form.get(f"rate_{line.id}", "") or "").strip().replace(",", "")
+        if not raw:
+            continue
+        try:
+            rate = float(raw)
+        except ValueError:
+            flash(f"{line.item_code or line.raw_size_text} ka rate number nahi hai.", "error")
+            continue
+        if rate <= 0:
+            flash("Rate zero se bada hona chahiye.", "error")
+            continue
+        if rate != line.rate or line.rate_from_memory:
+            set_line_rate(line, rate)
+            changed += 1
+    if changed:
+        refresh_rate_summary(po)
+        flash(f"{changed} rate save ho gaye — is party ke liye yaad rahenge.", "success")
+    return redirect(url_for("po.po_review", po_id=po.id))
+
+
 @po_bp.route("/<int:po_id>/confirm", methods=["POST"])
 @login_required
 def po_confirm(po_id):
@@ -1117,6 +1445,10 @@ def po_confirm(po_id):
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.unresolved_count:
         flash(f"{po.unresolved_count} line abhi map nahi hui — pehle wo poori karo.", "error")
+        return redirect(url_for("po.po_review", po_id=po.id))
+    if po.no_rate_count:
+        flash(f"{po.no_rate_count} line ka rate nahi hai — bill isi se banega, "
+              f"isliye pehle rate daalo.", "error")
         return redirect(url_for("po.po_review", po_id=po.id))
 
     po.confirmed_at = datetime.utcnow()

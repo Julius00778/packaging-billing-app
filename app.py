@@ -1173,6 +1173,11 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "purchase_order", "accepted_at", "accepted_at TIMESTAMP")
     _add_column_if_missing(inspector, "purchase_order", "made_at", "made_at TIMESTAMP")
     _add_column_if_missing(inspector, "purchase_order", "operator_name", "operator_name VARCHAR(120) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "tg_rate_summary_id", "tg_rate_summary_id VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "invoice_id", "invoice_id INTEGER")
+    _add_column_if_missing(inspector, "po_line", "rate", "rate FLOAT DEFAULT 0.0")
+    _add_column_if_missing(inspector, "po_line", "rate_from_memory", "rate_from_memory BOOLEAN DEFAULT FALSE")
+    _add_column_if_missing(inspector, "po_line", "tg_rate_msg_id", "tg_rate_msg_id VARCHAR(40) DEFAULT ''")
 
     # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
     # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.

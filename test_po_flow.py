@@ -16,7 +16,7 @@ if os.path.exists(DB):
     os.remove(DB)
 
 from app import app                                  # noqa: E402
-from models import db, Customer, Item                # noqa: E402
+from models import db, Customer, Item, Invoice       # noqa: E402
 import po_module                                    # noqa: E402
 from po_module import PartyProductMap, PurchaseOrder, POLine, PartyPOConfig  # noqa: E402
 
@@ -175,15 +175,53 @@ check("mismatch ka warning text aaya", "code aur size match nahi" in r.data.deco
 
 ok("reject PO-4473", client.post(f"/po/{po3_id}/reject", follow_redirects=True))
 
+# ------------------------------------------------------------------- rate
+# Rate ke bina order aage nahi badhna chahiye — bill isi se banta hai.
+r = ok("confirm bina rate ke", client.post(f"/po/{po_id}/confirm", follow_redirects=True))
+with app.app_context():
+    check("bina rate ke order pending hi raha",
+          db.session.get(PurchaseOrder, po_id).status, "pending")
+check("rate ki wajah batayi gayi", "rate nahi hai" in r.data.decode("utf8", "ignore"))
+
+with app.app_context():
+    lines = db.session.get(PurchaseOrder, po_id).lines
+    rate_form = {f"rate_{l.id}": str(20 + i * 5) for i, l in enumerate(lines)}
+    qtys = [(l.item_code, l.qty, l.qty_unit) for l in lines]
+ok("rate save karo", client.post(f"/po/{po_id}/rates", data=rate_form, follow_redirects=True))
+
+with app.app_context():
+    po = db.session.get(PurchaseOrder, po_id)
+    check("saare rate lag gaye", po.no_rate_count, 0)
+    check("pehli line ka rate", po.lines[0].rate, 20.0)
+    check("amount = qty x rate", po.lines[0].amount, round(po.lines[0].qty * 20.0, 2))
+    check("total sahi", po.total, round(sum(l.qty * l.rate for l in po.lines), 2))
+    # rate party + code + unit pe yaad rehna chahiye
+    known = po_module.PartyRate.look_up(po.lines[0].map_id, po.lines[0].qty_unit)
+    check("rate yaad raha", known.rate if known else None, 20.0)
+    check("rate product se juda hai, line ke code se nahi",
+          known.map_id, po.lines[0].map_id)
+    check("dusre unit ka rate alag hi rehta hai",
+          po_module.PartyRate.look_up(po.lines[0].map_id, "box"), None)
+
+# Naya PO usi party ka — rate apne aap bhar jaana chahiye
+ok("POST /po/new (rate memory test)", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-4474", "size_unit": "inch",
+    "raw_text": "ST01 - 10 pcs",
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    po4 = PurchaseOrder.query.filter_by(po_number="PO-4474").first()
+    check("purana rate apne aap bhar gaya", po4.lines[0].rate, 20.0)
+    check("aur flag laga ki ye yaad se aaya", po4.lines[0].rate_from_memory, True)
+    check("is order ka rate baaki nahi", po4.no_rate_count, 0)
+
 # ------------------------------------------------------ operator ko bhejna
-# Telegram set nahi hai — order aage nahi badhna chahiye, aur wajah saaf honi chahiye.
+# Telegram set nahi hai — order aage nahi badhna chahiye, wajah saaf honi chahiye.
 r = ok("confirm bina Telegram ke", client.post(f"/po/{po_id}/confirm", follow_redirects=True))
-check("Telegram bina order pending hi raha",
-      app.test_request_context() and True, True)
 with app.app_context():
     check("bina operator group ke order aage nahi badha",
           db.session.get(PurchaseOrder, po_id).status, "pending")
-check("wajah batayi gayi", "Operator group chuna nahi gaya" in r.data.decode("utf8", "ignore"))
+check("Telegram ki wajah batayi gayi",
+      "Operator group chuna nahi gaya" in r.data.decode("utf8", "ignore"))
 
 # Aage ka safar office ki taraf se — Telegram wala hissa test_po_telegram.py me hai.
 with app.app_context():
@@ -197,6 +235,23 @@ with app.app_context():
     check("made_at set", bool(po.made_at))
     check("times_used badha", db.session.get(PartyProductMap, map_id).times_used, 1)
     check("galat chhalang nahi chalti", po_module.move_status(po, "pending")[0], False)
+
+    # ------------------------------------------------------------------ bill
+    check("ban gaya toh bill bhi ban gaya", bool(po.invoice_id))
+    inv = db.session.get(Invoice, po.invoice_id)
+    check("bill usi party ka", inv.customer_id, cust_id)
+    check("bill me utni hi lines", len(inv.items), len(po.lines))
+    check("bill ka total order ke total jitna", inv.grand_total, po.total)
+    check("GST abhi off hai", (inv.cgst_amount, inv.sgst_amount, inv.igst_amount), (0.0, 0.0, 0.0))
+    check("invoice number mil gaya", bool(inv.invoice_no))
+    check("bill me order ka zikr", "PO-4471" in (inv.notes or ""))
+    old_inv_id = po.invoice_id
+    po_module.move_status(po, "in_production")
+    po_module.move_status(po, "made")
+    check("dobara made karne se naya bill nahi banta", po.invoice_id, old_inv_id)
+    check("ek hi bill bana", Invoice.query.filter_by(customer_id=cust_id).count(), 1)
+
+ok("bill print khulta hai", client.get(f"/invoices/{old_inv_id}/print"))
 
 r = ok("GET /po/dispatch", client.get("/po/dispatch"))
 check("ban gaya order dispatch list me hai", b"PO-4471" in r.data)

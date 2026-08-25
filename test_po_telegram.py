@@ -62,6 +62,8 @@ telegram_bot.call = TG
 
 OPERATOR = {"id": 555, "first_name": "Ramesh"}
 RANDOM_GUY = {"id": 999, "first_name": "Koi Aur"}
+JULIUS = {"id": 111, "first_name": "Julius"}
+OWNER_CHAT = {"id": 777, "title": "", "type": "private", "first_name": "Julius"}
 OP_CHAT = {"id": -1001, "title": "Sambhav Operators", "type": "supergroup"}
 MGR_CHAT = {"id": -1002, "title": "Sambhav Managers", "type": "supergroup"}
 
@@ -166,6 +168,119 @@ with app.app_context():
     check("khabar me operator ka naam hai", "Ramesh" in mgr["text"], True)
     check("ban jaane ke baad koi button nahi",
           M.order_buttons(po), [])
+
+    # ============================================================ rate + bill
+    # Aapka apna chat — rate yahin poochha jaata hai
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "/start"}})
+    own = M.TelegramChat.query.filter_by(chat_id="777").first()
+    own.role = "owner"
+    db.session.commit()
+
+    po3 = M.PurchaseOrder(po_number="PO-79", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add(po3)
+    db.session.flush()
+    db.session.add_all([
+        M.POLine(po_id=po3.id, line_no=1, item_code="GME02", qty=200, qty_unit="pcs",
+                 canonical_key="40.0x140.0x230.0", match_status="code", map_id=product.id),
+        M.POLine(po_id=po3.id, line_no=2, item_code="GME02", qty=10, qty_unit="box",
+                 canonical_key="40.0x140.0x230.0", match_status="code", map_id=product.id),
+    ])
+    db.session.commit()
+    po3_id = po3.id
+
+    TG.calls.clear()
+    left = M.ask_rates(db.session.get(M.PurchaseOrder, po3_id))
+    check("dono line ka rate poochha gaya", left, 2)
+    sent = TG.of("sendMessage")
+    check("summary + do sawaal", len(sent), 3)
+    check("summary aapke chat me gaya", str(sent[0][1]["chat_id"]), "777")
+    check("summary me 'rate chahiye' likha hai", "rate chahiye" in sent[0][1]["text"], True)
+    check("jab tak rate baaki hai, bhejne ka button nahi",
+          "rates:" in str(sent[0][1]), False)
+
+    po3 = db.session.get(M.PurchaseOrder, po3_id)
+    l_pcs, l_box = po3.lines[0], po3.lines[1]
+
+    # pehli line ka rate — us sawaal ke reply me sirf number
+    TG.calls.clear()
+    M.handle_update({"message": {
+        "chat": OWNER_CHAT, "from": JULIUS, "text": "25",
+        "reply_to_message": {"message_id": int(l_pcs.tg_rate_msg_id)}}})
+    po3 = db.session.get(M.PurchaseOrder, po3_id)
+    check("pcs ka rate lag gaya", po3.lines[0].rate, 25.0)
+    check("ek line ka rate abhi baaki hai", po3.no_rate_count, 1)
+    check("abhi bhi button nahi aaya",
+          "rates:" in str(TG.of("editMessageText")[-1][1]), False)
+
+    # doosri line — wahi product, par box me. Rate alag hi poochha jaata hai.
+    TG.calls.clear()
+    M.handle_update({"message": {
+        "chat": OWNER_CHAT, "from": JULIUS, "text": "₹900",
+        "reply_to_message": {"message_id": int(l_box.tg_rate_msg_id)}}})
+    po3 = db.session.get(M.PurchaseOrder, po3_id)
+    check("rupee ka nishan aur comma hat jaate hain", po3.lines[1].rate, 900.0)
+    check("ab koi rate baaki nahi", po3.no_rate_count, 0)
+    check("total sahi", po3.total, 200 * 25 + 10 * 900)
+    check("ab bhejne ka button aa gaya",
+          "rates:" in str(TG.of("editMessageText")[-1][1]), True)
+
+    check("pcs ka rate yaad raha",
+          M.PartyRate.look_up(product.id, "pcs").rate, 25.0)
+    check("box ka rate alag yaad raha",
+          M.PartyRate.look_up(product.id, "box").rate, 900.0)
+
+    # number ki jagah kachra
+    TG.calls.clear()
+    M.handle_update({"message": {
+        "chat": OWNER_CHAT, "from": JULIUS, "text": "pata nahi",
+        "reply_to_message": {"message_id": int(l_pcs.tg_rate_msg_id)}}})
+    check("kachre pe saaf jawab",
+          "Sirf number" in TG.of("sendMessage")[-1][1]["text"], True)
+    check("rate waisa hi raha",
+          db.session.get(M.PurchaseOrder, po3_id).lines[0].rate, 25.0)
+
+    # rate ka reply operator group se — nahi chalna chahiye
+    TG.calls.clear()
+    M.handle_update({"message": {
+        "chat": OP_CHAT, "from": OPERATOR, "text": "1",
+        "reply_to_message": {"message_id": int(l_pcs.tg_rate_msg_id)}}})
+    check("operator group se rate nahi badalta",
+          db.session.get(M.PurchaseOrder, po3_id).lines[0].rate, 25.0)
+
+    # bhejne wala button operator group se — nahi chalna chahiye
+    TG.calls.clear()
+    M.handle_update({"callback_query": {"id": "c9", "from": OPERATOR,
+                                        "data": f"rates:{po3_id}",
+                                        "message": {"chat": OP_CHAT, "message_id": 9}}})
+    check("galat jagah se rates button nahi chalta",
+          db.session.get(M.PurchaseOrder, po3_id).status, "pending")
+
+    # sahi jagah se
+    TG.calls.clear()
+    M.handle_update({"callback_query": {"id": "c10", "from": JULIUS,
+                                        "data": f"rates:{po3_id}",
+                                        "message": {"chat": OWNER_CHAT, "message_id": 9}}})
+    po3 = db.session.get(M.PurchaseOrder, po3_id)
+    check("rate confirm karte hi operator ko chala gaya", po3.status, "with_operator")
+
+    # operator ne banaya -> bill
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{po3_id}", OPERATOR))
+    M.handle_update(cb(f"done:{po3_id}", OPERATOR))
+    po3 = db.session.get(M.PurchaseOrder, po3_id)
+    check("ban gaya", po3.status, "made")
+    check("bill khud ban gaya", bool(po3.invoice_id), True)
+
+    from models import Invoice
+    inv = db.session.get(Invoice, po3.invoice_id)
+    check("bill ka total order jitna", inv.grand_total, float(200 * 25 + 10 * 900))
+    check("bill me do line", len(inv.items), 2)
+    check("pcs wali line ka rate", inv.items[0].rate, 25.0)
+    check("box wali line ka unit", inv.items[1].unit, "box")
+    bill_msgs = [c for c in TG.of("sendMessage") if "Bill ban gaya" in c[1].get("text", "")]
+    check("bill ki khabar gayi", len(bill_msgs), 2)   # aapko aur manager ko
+    check("khabar me invoice number", inv.invoice_no in bill_msgs[0][1]["text"], True)
 
     # --------------------------------------------------- galat chhalang nahi chalti
     po2 = M.PurchaseOrder(po_number="PO-78", customer_id=cust.id, status="pending",
