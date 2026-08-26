@@ -397,7 +397,7 @@ ok("bill print khulta hai", client.get(f"/invoices/{old_inv_id}/print"))
 # Naya tab nahi — invoices list se overlay khulta hai jo yahi hissa laata hai.
 r = ok("invoices list", client.get("/invoices"))
 body = r.data.decode("utf8", "ignore")
-check("list se bill khulta hai, naye tab me nahi", "openBill(" in body)
+check("list se bill khulta hai, naye tab me nahi", "data-bill=" in body)
 check("overlay page pe maujood hai", 'id="billOverlay"' in body)
 # List me har bill ka link overlay kholta hai. Overlay ke andar ek "naye tab me
 # kholo" wala raasta jaan-boojh ke hai — wo tabhi dikhta hai jab overlay khud
@@ -406,7 +406,11 @@ import re as _re                                            # noqa: E402
 table = body.split("<table", 1)[-1].split("</table>", 1)[0]
 check("list me koi bill naye tab me nahi khulta", 'target="_blank"' in table, False)
 check("har bill overlay se khulta hai",
-      len(_re.findall(r"openBill\(", table)) >= 1)
+      len(_re.findall(r'data-bill="\d+"', table)) >= 1)
+check("bill number attribute me saaf jaata hai", f'data-bill-no="{inv_no}"' in table)
+# Inline onclick me bill number apne quote leke aata tha aur attribute beech me
+# kat jaata tha — link chup-chaap naye page pe le jaata. Isliye row me inline JS nahi.
+check("bill ke link me inline JS nahi", "onclick=" in table, False)
 
 r = ok("bill ka preview", client.get(f"/invoices/{old_inv_id}/preview"))
 prev = r.data.decode("utf8", "ignore")
