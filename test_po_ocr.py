@@ -115,6 +115,12 @@ check("qty bhi aayi", qtys, [500.0, 300.0, 40.0])
 # OCR ne yahan "roll" ko "rll" padha tha — unit bhi usi tarah list se mili
 check("aakhri line ki unit roll hai", data["rows"][2]["unit"], "roll")
 
+# OCR ne is photo me 26x15x6 ko 26x16x6 padha tha. Code pakka hai, isliye
+# size product se aata hai — photo ke ank se nahi.
+check("size product se aaya, OCR ke ank se nahi",
+      [row["size"] for row in data["rows"]],
+      ["34x15x5", "23x14x4", "26x15x6"])
+
 # Unit ka sudhaar bhi sirf photo ke liye
 check("aadmi ke likhe me unit ka andaza nahi",
       M.parse_po_text("GME04 26x15x6 40 rll", "cm", KNOWN)[0]["qty_unit"], "pcs")
@@ -152,7 +158,15 @@ r = client.post("/po/read-text", data={
 rows = r.get_json()["rows"]
 check("paste se do line bani", len(rows), 2)
 check("paste me code waisa hi rehta hai", [x["code"] for x in rows], ["GME02", "GME04"])
-check("code se size bhar gaya", rows[0]["size"], "23x14x4")
+check("code se khaali size bhar gaya", rows[0]["size"], "23x14x4")
+# Haath se likhe me jo size likha hai wahi rehta hai — agar wo product se
+# alag hai toh review screen use pakadti hai, hum chupke se nahi badalte
+r2 = client.post("/po/read-text", data={
+    "customer_id": str(cid), "size_unit": "cm",
+    "text": "GME04 26x99x6 - 5 roll",
+})
+check("paste me likha hua size waisa hi rehta hai",
+      r2.get_json()["rows"][0]["size"], "26x99x6")
 
 # ---------------------------------------------- OCR band ho toh saaf mana karo
 real = ocr_read.have_tool

@@ -1660,12 +1660,19 @@ def _rows_for_form(text, customer_id, unit, fuzzy):
     rows = []
     for p in parse_po_text(text, unit, known, fuzzy=fuzzy):
         size = p["raw_size_text"]
-        # Code pehchaan me aa gaya par size padha hi nahi gaya — toh product ka
-        # apna size bhar do. Ye khaali khaana bharna hai, kisi padhe hue ko
-        # kaatna nahi.
-        if not size and p["item_code"] and customer_id:
+        # Code mil gaya toh product ka apna size hi sahi hai.
+        #
+        # Photo se aaye ank pe bharosa nahi kiya ja sakta — OCR 26x15x6 ko
+        # 26x16x6 padh deta hai, aur us ank ko jaanchne ka koi zariya nahi.
+        # Code alag maamla hai: use party ki chhoti si list se milaya jaata
+        # hai, isliye wo pakka hota hai. Aur is dhande me ek code = ek
+        # product = ek size, toh code pata hone ka matlab size bhi pata hai.
+        #
+        # Haath se likhe text me ye jaayaz nahi — wahan jo likha hai wahi
+        # rehna chahiye, aur size alag ho toh review screen use pakadti hai.
+        if p["item_code"] and customer_id and (fuzzy or not size):
             m = map_by_code(customer_id, p["item_code"])
-            if m:
+            if m and m.raw_size_text:
                 size = m.raw_size_text
         rows.append({"code": p["item_code"], "size": size,
                      "qty": p["qty"] or "", "unit": p["qty_unit"]})
