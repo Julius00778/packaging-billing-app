@@ -224,8 +224,9 @@
           <span style="font-weight:600;">{{ t('po_bill_made') }}</span>
           <span class="mono">{{ invoice.invoice_no }}</span>
           <span class="mono">₹{{ '%.0f'|format(invoice.grand_total) }}</span>
+          {# Bill kahin se bhi khule, ek hi tarah khulta hai — usi screen pe. #}
           <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=invoice.id) }}"
-             target="_blank">{{ t('po_print') }}</a>
+             data-bill="{{ invoice.id }}" data-bill-no="{{ invoice.invoice_no }}">{{ t('bill_open') }}</a>
         </div>
       </div>
     {% endif %}
@@ -294,5 +295,7 @@
     </div>
   </div>
 </div>
+
+{% include "bill_overlay.html" %}
 
 {% endblock %}
