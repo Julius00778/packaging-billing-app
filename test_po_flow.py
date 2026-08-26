@@ -16,6 +16,7 @@ if os.path.exists(DB):
     os.remove(DB)
 
 from app import app                                  # noqa: E402
+import app as app_mod                                # noqa: E402
 from models import db, Customer, Item, Invoice       # noqa: E402
 import po_module                                    # noqa: E402
 from po_module import PartyProductMap, PurchaseOrder, POLine, PartyPOConfig  # noqa: E402
@@ -187,7 +188,8 @@ with app.app_context():
     po3_id = po3.id
 
 r = ok("review screen mismatch dikhata hai", client.get(f"/po/{po3_id}"))
-check("mismatch ka warning text aaya", "code aur size match nahi" in r.data.decode("utf8", "ignore"))
+check("mismatch ka warning text aaya",
+      "code and size do not match" in r.data.decode("utf8", "ignore"))
 
 ok("reject PO-4473", client.post(f"/po/{po3_id}/reject", follow_redirects=True))
 
@@ -203,10 +205,10 @@ r = ok("confirm bina qty ke", client.post(f"/po/{po_id}/confirm", follow_redirec
 with app.app_context():
     check("bina qty ke order pending hi raha",
           db.session.get(PurchaseOrder, po_id).status, "pending")
-check("qty ki wajah batayi gayi", "qty nahi hai" in r.data.decode("utf8", "ignore"))
+check("qty ki wajah batayi gayi", "has no quantity" in r.data.decode("utf8", "ignore"))
 r = ok("review screen pe qty ka warning", client.get(f"/po/{po_id}"))
 body = r.data.decode("utf8", "ignore")
-check("screen pe qty ki baat likhi hai", "line me qty nahi likhi" in body)
+check("screen pe qty ki baat likhi hai", "has no quantity" in body)
 check("bhejne ka button band hai", "disabled" in body)
 with app.app_context():
     po = db.session.get(PurchaseOrder, po_id)
@@ -230,7 +232,7 @@ with app.app_context():
 
 r = ok("GET /po/mappings", client.get("/po/mappings"))
 check("category tay na hone ki baat likhi hai",
-      "category abhi tay nahi hai" in r.data.decode("utf8", "ignore"))
+      "have no category yet" in r.data.decode("utf8", "ignore"))
 
 # Categories screen se units badalna
 r = ok("GET /items/categories", client.get("/items/categories"))
@@ -305,10 +307,10 @@ r = ok("confirm bina rate ke", client.post(f"/po/{po_id}/confirm", follow_redire
 with app.app_context():
     check("bina rate ke order pending hi raha",
           db.session.get(PurchaseOrder, po_id).status, "pending")
-check("rate ki wajah batayi gayi", "rate nahi hai" in r.data.decode("utf8", "ignore"))
+check("rate ki wajah batayi gayi", "has no rate" in r.data.decode("utf8", "ignore"))
 r = ok("review screen pe rate ka warning", client.get(f"/po/{po_id}"))
 body = r.data.decode("utf8", "ignore")
-check("screen pe rate ki baat likhi hai", "line ka rate baaki hai" in body)
+check("screen pe rate ki baat likhi hai", "still needs a rate" in body)
 check("rate baaki ho toh bhejne ka button band", "disabled" in body)
 
 with app.app_context():
@@ -391,6 +393,69 @@ with app.app_context():
 
 ok("bill print khulta hai", client.get(f"/invoices/{old_inv_id}/print"))
 
+# ------------------------------------------------- bill usi screen pe khulta hai
+# Naya tab nahi — invoices list se overlay khulta hai jo yahi hissa laata hai.
+r = ok("invoices list", client.get("/invoices"))
+body = r.data.decode("utf8", "ignore")
+check("list se bill khulta hai, naye tab me nahi", "openBill(" in body)
+check("overlay page pe maujood hai", 'id="billOverlay"' in body)
+# List me har bill ka link overlay kholta hai. Overlay ke andar ek "naye tab me
+# kholo" wala raasta jaan-boojh ke hai — wo tabhi dikhta hai jab overlay khud
+# na khul paye, isliye use ginti me nahi le rahe.
+import re as _re                                            # noqa: E402
+table = body.split("<table", 1)[-1].split("</table>", 1)[0]
+check("list me koi bill naye tab me nahi khulta", 'target="_blank"' in table, False)
+check("har bill overlay se khulta hai",
+      len(_re.findall(r"openBill\(", table)) >= 1)
+
+r = ok("bill ka preview", client.get(f"/invoices/{old_inv_id}/preview"))
+prev = r.data.decode("utf8", "ignore")
+check("preview me poora page nahi aata", "<html" not in prev.lower())
+check("preview me dono copy hain", prev.count('class="pinv-half"'), 2)
+check("preview me bill number hai", inv_no in prev)
+
+r = ok("sirf party copy", client.get(f"/invoices/{old_inv_id}/preview?copies=party"))
+prev = r.data.decode("utf8", "ignore")
+check("ek hi copy aayi", prev.count('class="pinv-half"'), 1)
+check("aur wo party wali hai", "PARTY" in prev.upper() and "OFFICE" not in prev.upper())
+
+r = ok("sirf office copy", client.get(f"/invoices/{old_inv_id}/preview?copies=office"))
+check("office wali copy aayi",
+      "OFFICE" in r.data.decode("utf8", "ignore").upper())
+
+r = ok("ulta-seedha copies value", client.get(f"/invoices/{old_inv_id}/preview?copies=xyz"))
+check("anjaan value pe dono copy", r.data.decode("utf8", "ignore").count('class="pinv-half"'), 2)
+
+# PDF asli file bane — browser ke "Save as PDF" pe nahi chhodna
+r = ok("PDF banta hai", client.get(f"/invoices/{old_inv_id}/pdf"))
+check("PDF hi hai", r.data[:5], b"%PDF-")
+check("PDF download hota hai", "attachment" in r.headers.get("Content-Disposition", ""))
+both_pdf = len(r.data)
+r = ok("ek copy ka PDF", client.get(f"/invoices/{old_inv_id}/pdf?copies=party"))
+check("wo bhi PDF hai", r.data[:5], b"%PDF-")
+check("ek copy ka PDF chhota hai", len(r.data) < both_pdf)
+
+r = ok("bill print screen", client.get("/po/bills?show=all"))
+check("wahan bhi overlay hai", 'id="billOverlay"' in r.data.decode("utf8", "ignore"))
+
+# ------------------------------------------------------------- dashboard
+# Pehla sawaal "ab tak kitna" nahi, "aaj kya karna hai" hota hai.
+r = ok("dashboard khulta hai", client.get("/"))
+dash = r.data.decode("utf8", "ignore")
+check("aaj wala hissa upar hai", "Today" in dash)
+check("aaj ka bill total dikh raha hai", "Bills made today" in dash)
+check("aaj ka paisa dikh raha hai", "Received today" in dash)
+check("har stage ka apna raasta hai", '/po/?status=made' in dash or 'status=made' in dash)
+with app.app_context():
+    snap = app_mod._today_snapshot(db.session.get(Invoice, old_inv_id).date)
+    check("aaj ke bill gine gaye", snap["bill_count"] >= 1)
+    check("bill ka total sahi", snap["bill_total"] > 0)
+    check("stage ki ginti aayi", len(snap["stages"]), 4)
+    check("print baaki ki ginti bhi", snap["to_print"] >= 0)
+    khaali = app_mod._today_snapshot("2020-01-01")
+    check("purane din ka koi bill nahi", khaali["bill_count"], 0)
+    check("purane din kuch aaya bhi nahi", khaali["received"], 0)
+
 # Invoice edit screen pe item ka naam Item ke khane me aana chahiye
 r = ok("bill edit khulta hai", client.get(f"/invoices/{old_inv_id}/edit"))
 body = r.data.decode("utf8", "ignore")
@@ -406,7 +471,7 @@ check("bill ke saare item master list me hain", all(n in master_names for n in n
 # ------------------------------------------------------- accountant ka print page
 r = ok("GET /po/bills", client.get("/po/bills"))
 check("aaj ka bill list me hai", b"PO-4471" in r.data)
-check("print baaki dikh raha hai", "baaki" in r.data.decode("utf8", "ignore"))
+check("print baaki dikh raha hai", ">left<" in r.data.decode("utf8", "ignore"))
 
 r = ok("sab ek saath print", client.get("/po/bills/print"))
 body = r.data.decode("utf8", "ignore")
@@ -424,7 +489,7 @@ r = ok("ab 'baaki' list khaali", client.get("/po/bills"))
 check("print ho chuka bill baaki list me nahi", b"PO-4471" not in r.data)
 r = ok("saare dikhao", client.get("/po/bills?show=all"))
 check("saare wali list me hai", b"PO-4471" in r.data)
-check("ho gaya dikh raha hai", "ho gaya" in r.data.decode("utf8", "ignore"))
+check("print ho gaya dikh raha hai", ">printed<" in r.data.decode("utf8", "ignore"))
 
 ok("nishan hata do", client.post(f"/po/bills/{po_id}/printed",
                                  data={"printed": "0"}, follow_redirects=True))
@@ -433,13 +498,13 @@ with app.app_context():
 
 # aur din ka koi bill nahi
 r = ok("purane din ka page", client.get("/po/bills?date=2020-01-01&show=all"))
-check("us din kuch nahi tha", "koi bill nahi bana" in r.data.decode("utf8", "ignore"))
+check("us din kuch nahi tha", "No bill was made this day" in r.data.decode("utf8", "ignore"))
 r = ok("purane din ka baaki-wala page", client.get("/po/bills?date=2020-01-01"))
 check("us din print karne ko bhi kuch nahi",
-      "koi bill print karna baaki nahi" in r.data.decode("utf8", "ignore"))
+      "No bill left to print" in r.data.decode("utf8", "ignore"))
 r = ok("bina bill ke print", client.get("/po/bills/print?date=2020-01-01", follow_redirects=True))
 check("print karne ko kuch nahi hai toh wapas bhej deta hai",
-      "koi bill print karne ko nahi" in r.data.decode("utf8", "ignore"))
+      "no bill left to print" in r.data.decode("utf8", "ignore"))
 
 
 r = ok("GET /po/dispatch", client.get("/po/dispatch"))

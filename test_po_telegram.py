@@ -73,6 +73,10 @@ def cb(data, user):
                                "message": {"chat": OP_CHAT, "message_id": 1}}}
 
 
+# Screen ke raaste bhi isi test me jaanche jaate hain. Login user banne ke
+# baad hota hai, isliye client yahan sirf banaya jaata hai.
+client = app.test_client()
+
 with app.app_context():
     db.create_all()
     s = Settings.get(); s.firm_name = "Sambhav"
@@ -256,6 +260,17 @@ with app.app_context():
     check("galat jagah se rates button nahi chalta",
           db.session.get(M.PurchaseOrder, po3_id).status, "pending")
 
+    # ---------------------------------------- screen se bina mohar ke nahi bhej sakte
+    # Bill isi rate se banta hai, isliye rate pe Telegram wali haan zaroori hai.
+    client.post("/login", data={"username": "owner", "password": "secret123"},
+                follow_redirects=True)
+    check("abhi rate pe mohar nahi lagi",
+          db.session.get(M.PurchaseOrder, po3_id).rates_ok_at, None)
+    r = client.post(f"/po/{po3_id}/confirm", follow_redirects=True)
+    check("screen se bhejna ruk gaya",
+          db.session.get(M.PurchaseOrder, po3_id).status, "pending")
+    check("aur wajah bhi batayi", "not confirmed yet" in r.data.decode("utf8", "ignore"))
+
     # sahi jagah se
     TG.calls.clear()
     M.handle_update({"callback_query": {"id": "c10", "from": JULIUS,
@@ -263,6 +278,7 @@ with app.app_context():
                                         "message": {"chat": OWNER_CHAT, "message_id": 9}}})
     po3 = db.session.get(M.PurchaseOrder, po3_id)
     check("rate confirm karte hi operator ko chala gaya", po3.status, "with_operator")
+    check("aur mohar lag gayi", bool(po3.rates_ok_at), True)
 
     # operator ne banaya -> bill
     TG.calls.clear()
@@ -374,9 +390,6 @@ with app.app_context():
     check("pending order cancel ho gaya", (ok, po2.status), (True, "rejected"))
 
 # ------------------------------------------------------------------ webhook
-client = app.test_client()
-client.post("/login", data={"username": "owner", "password": "secret123"},
-            follow_redirects=True)
 
 r = client.get("/po/telegram")
 check("telegram page khulta hai", r.status_code, 200)

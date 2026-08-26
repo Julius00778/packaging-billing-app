@@ -12,7 +12,7 @@ from models import (
     db, User, Settings, Customer, Item, StockEntry, Invoice, InvoiceItem,
     Payment, Vendor, Expense, Category, STATE_NAMES, INVOICE_FONTS
 )
-from translations import get_text
+from translations import t
 from po_module import po_bp
 
 # Common packaging-firm units. Item.unit stays a free-text column — this list just
@@ -57,10 +57,6 @@ app.register_blueprint(po_bp)
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-
-def t(key):
-    return get_text(session.get("lang", "en"), key)
 
 
 def owner_required(f):
@@ -161,6 +157,39 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _today_snapshot(today):
+    """Aaj ka din ek nazar me — kya atka hai aur kya ho chuka hai.
+
+    Dashboard ka pehla sawaal "ab tak kitna" nahi hota, "aaj kya karna hai"
+    hota hai. Isliye upar wahi cheezein aati hain jo aaj haath me hain, aur
+    kul-jama neeche.
+    """
+    from po_module import PurchaseOrder
+
+    stages = []
+    for key in ("pending", "with_operator", "in_production", "made"):
+        stages.append({"key": key,
+                       "count": PurchaseOrder.query.filter_by(status=key).count()})
+
+    todays = [i for i in Invoice.query.filter_by(date=today).all()
+              if not i.hide_pricing]
+    printed = 0
+    for po in PurchaseOrder.query.filter(PurchaseOrder.invoice_id.isnot(None)).all():
+        inv = db.session.get(Invoice, po.invoice_id)
+        if inv and inv.date == today and po.bill_printed_at:
+            printed += 1
+
+    payments = Payment.query.filter_by(date=today).all()
+    return {
+        "stages": stages,
+        "bill_count": len(todays),
+        "bill_total": round(sum(i.grand_total or 0 for i in todays), 2),
+        "to_print": max(0, len(todays) - printed),
+        "received": round(sum(p.amount or 0 for p in payments), 2),
+        "receipt_count": len(payments),
+    }
+
+
 @app.route("/")
 @login_required
 def dashboard():
@@ -183,7 +212,10 @@ def dashboard():
     return render_template(
         "dashboard.html", count=count, billed=billed, received=received, pending=pending,
         cgst=cgst, sgst=sgst, igst=igst, recent=recent, low_stock=low_stock,
-        pending_challans=pending_challans
+        pending_challans=pending_challans,
+        # `today` naam global me pehle se ek tareekh hai — usi naam se yahan
+        # dictionary bhejna baad me kisi ko dhokha dega.
+        today_view=_today_snapshot(date.today().isoformat()),
     )
 
 
@@ -656,13 +688,27 @@ def print_invoice(invid):
     return render_template("invoice_print.html", inv=inv, settings=settings)
 
 
+def _copies_choice(raw):
+    """Kaunsi copy chahiye. Kuch bhi anjaan aaye toh dono — wahi aam zaroorat hai."""
+    return raw if raw in ("both", "party", "office") else "both"
+
+
+@app.route("/invoices/<int:invid>/preview")
+@login_required
+def invoice_preview(invid):
+    """Sirf bill ka hissa, bina page ke — overlay isi ko andar la ke dikhata hai."""
+    inv = Invoice.query.get_or_404(invid)
+    return render_template("invoice_preview.html", inv=inv, settings=Settings.get(),
+                           copies=_copies_choice(request.args.get("copies")))
+
+
 @app.route("/invoices/<int:invid>/pdf")
 @login_required
 def invoice_pdf(invid):
     inv = Invoice.query.get_or_404(invid)
     settings = Settings.get()
     from invoice_pdf import build_invoice_pdf
-    buf = build_invoice_pdf(inv, settings, t)
+    buf = build_invoice_pdf(inv, settings, t, copies=_copies_choice(request.args.get("copies")))
     return send_file(buf, mimetype="application/pdf", as_attachment=True,
                       download_name=f"{inv.invoice_no}.pdf")
 
@@ -1209,6 +1255,7 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "po_line", "tg_rate_msg_id", "tg_rate_msg_id VARCHAR(40) DEFAULT ''")
     _add_column_if_missing(inspector, "purchase_order", "bill_printed_at", "bill_printed_at TIMESTAMP")
     _add_column_if_missing(inspector, "category", "units", "units VARCHAR(200) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "rates_ok_at", "rates_ok_at TIMESTAMP")
 
     # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
     # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.

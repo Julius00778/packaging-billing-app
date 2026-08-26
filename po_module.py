@@ -30,6 +30,7 @@ from flask import (
 from flask_login import login_required, current_user
 
 from models import db, Customer, Item, Invoice, Category, Settings
+from translations import t
 
 import drive_sync
 import telegram_bot
@@ -76,6 +77,9 @@ SCAN_TARGET_BYTES = 500 * 1024
 PO_STATUSES = ("pending", "with_operator", "in_production", "made",
                "dispatched", "rejected")
 
+# Ye Hinglish jaan-boojh ke hai — sirf Telegram ke msg me chalti hai, jahan
+# operator aur manager padhte hain. Screen ka har shabd translations.py se
+# aata hai (EN/Hindi), yahan se nahi.
 STATUS_LABEL = {
     "pending": "review chal raha hai",
     "with_operator": "operator ke paas",
@@ -372,6 +376,10 @@ class PurchaseOrder(db.Model):
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True)
     # Accountant ka nishan — "ye bill nikal chuka". App printer se nahi poochhta.
     bill_printed_at = db.Column(db.DateTime, nullable=True)
+    # Rate pe aapki mohar. Bill isi rate se banta hai, isliye order operator ke
+    # paas tabhi jaata hai jab aap Telegram pe haan kar dete ho. Rate baad me
+    # badla toh ye nishan hat jaata hai — purani mohar naye rate pe nahi chalti.
+    rates_ok_at = db.Column(db.DateTime, nullable=True)
     sent_at = db.Column(db.DateTime, nullable=True)
     accepted_at = db.Column(db.DateTime, nullable=True)      # operator ne OK kiya
     made_at = db.Column(db.DateTime, nullable=True)          # operator ne Done kiya
@@ -1053,6 +1061,7 @@ def set_line_rate(line, rate):
     """Ek jagah se rate lagta hai — screen se ho ya Telegram se."""
     line.rate = float(rate)
     line.rate_from_memory = False
+    line.po.rates_ok_at = None      # naya rate, nayi mohar chahiye
     PartyRate.remember(line.mapping, line.qty_unit, line.rate)
     db.session.commit()
 
@@ -1076,6 +1085,7 @@ def set_line_unit(line, unit):
     if allowed and unit not in allowed:
         return False
     line.qty_unit = unit
+    line.po.rates_ok_at = None      # unit badli toh rate bhi badla — mohar hat gayi
     known = PartyRate.look_up(line.map_id, unit) if line.map_id else None
     if known and known.rate:
         line.rate = known.rate
@@ -1274,6 +1284,8 @@ def handle_update(update, token=None):
             return reply("Ye button sirf aapke chat me chalta hai.", alert=True)
         if po.no_rate_count:
             return reply("Abhi kuch lines ka rate baaki hai.", alert=True)
+        po.rates_ok_at = datetime.utcnow()
+        db.session.commit()
         try:
             send_order_to_operator(po, token=token)
         except telegram_bot.TelegramError as exc:
@@ -1427,8 +1439,7 @@ def po_list():
         q = q.filter_by(status=status)
     rows = q.order_by(PurchaseOrder.created_at.desc()).all()
     counts = {s: PurchaseOrder.query.filter_by(status=s).count() for s in PO_STATUSES}
-    return render_template("po_list.html", pos=rows, status=status, counts=counts,
-                           status_label=STATUS_LABEL)
+    return render_template("po_list.html", pos=rows, status=status, counts=counts)
 
 
 @po_bp.route("/new", methods=["GET", "POST"])
@@ -1439,13 +1450,13 @@ def po_new():
         customer_id = request.form.get("customer_id") or ""
         po_number = request.form.get("po_number", "").strip()
         if not customer_id.isdigit() or not po_number:
-            flash("Party aur PO number dono chahiye.", "error")
+            flash(t("po_f_party_and_number"), "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
         customer_id = int(customer_id)
 
         dupe = PurchaseOrder.query.filter_by(customer_id=customer_id, po_number=po_number).first()
         if dupe:
-            flash(f"Ye PO pehle se hai ({po_number}) — wahi khol raha hoon.", "error")
+            flash(t("po_f_duplicate", no=po_number), "error")
             return redirect(url_for("po.po_review", po_id=dupe.id))
 
         unit = request.form.get("size_unit", "inch")
@@ -1455,14 +1466,13 @@ def po_new():
             scan_data, scan_mime, scan_name = _read_upload(
                 request.files.get("scan"), SCAN_MAX_DIM, SCAN_TARGET_BYTES)
         except ValueError:
-            flash("Scan bahut bada hai (8 MB se zyada) — chhota karke dobara try karo.", "error")
+            flash(t("po_f_scan_too_big"), "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
 
         raw_text = request.form.get("raw_text", "")
         parsed = parse_po_text(raw_text, unit, known_codes_for(customer_id))
         if not parsed:
-            flash("Text me koi order line nahi mili — item code (HM01) ya size "
-                  "(23x14x5) likhna zaroori hai.", "error")
+            flash(t("po_f_no_lines"), "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
 
         po = PurchaseOrder(
@@ -1484,15 +1494,15 @@ def po_new():
         fill_remembered_rates(po)
         db.session.commit()
 
-        msg = f"PO {po_number} padh liya — {len(parsed)} line(s)."
+        msg = t("po_f_read_lines", no=po_number, n=len(parsed))
         # Rate aapke Telegram chat pe poochh lo — wahi flow hai jo tay hua tha.
         # Chat set na ho toh koi baat nahi, rate yahin screen pe daal do.
         if chat_for_role("owner"):
             try:
                 ask_rates(po)
-                msg += " Rate aapke Telegram pe poochh liye hain."
+                msg += t("po_f_rates_asked")
             except telegram_bot.TelegramError as exc:
-                flash(f"Telegram pe rate nahi poochh paye — {exc}", "error")
+                flash(t("po_f_rate_ask_failed", reason=exc), "error")
         flash(msg, "success")
         return redirect(url_for("po.po_review", po_id=po.id))
 
@@ -1513,15 +1523,14 @@ def po_review(po_id):
     # badhana operator ka kaam hai, Telegram pe.
     forward = {"pending": "with_operator", "with_operator": "in_production",
                "in_production": "made", "made": "dispatched"}
-    moves = [(t, f"{STATUS_LABEL[t]} kar do")
-             for t in NEXT_STATUS.get(po.status, ())
-             if t != forward.get(po.status)]
+    moves = [target for target in NEXT_STATUS.get(po.status, ())
+             if target != forward.get(po.status)]
     return render_template(
         "po_review.html", po=po, line_view=line_view,
         items=Item.query.order_by(Item.name).all(),
         mixed=party_is_mixed(po.customer_id),
         party_unit=PartyPOConfig.unit_for(po.customer_id),
-        status_label=STATUS_LABEL, status_moves=moves,
+        status_moves=moves,
         invoice=db.session.get(Invoice, po.invoice_id) if po.invoice_id else None,
         has_owner_chat=bool(chat_for_role("owner")),
     )
@@ -1534,7 +1543,7 @@ def po_line_choose(po_id, line_id):
     line = POLine.query.filter_by(id=line_id, po_id=po_id).first_or_404()
     map_id = request.form.get("map_id") or ""
     if not map_id.isdigit():
-        flash("Koi option select nahi hua.", "error")
+        flash(t("po_f_nothing_selected"), "error")
         return redirect(url_for("po.po_review", po_id=po_id))
     m = PartyProductMap.query.get(int(map_id))
     if not m or m.customer_id != line.po.customer_id:
@@ -1553,18 +1562,18 @@ def po_line_map(po_id, line_id):
     line = POLine.query.filter_by(id=line_id, po_id=po_id).first_or_404()
     label = request.form.get("label", "").strip()
     if not label:
-        flash("Product ka naam likhna zaroori hai.", "error")
+        flash(t("po_f_name_required"), "error")
         return redirect(url_for("po.po_review", po_id=po_id))
 
     item_code = normalize_code(request.form.get("item_code", "") or line.item_code)
     if item_code and map_by_code(line.po.customer_id, item_code):
-        flash(f"Code {item_code} is party ke liye pehle se hai — dusra code do.", "error")
+        flash(t("po_f_code_exists", code=item_code), "error")
         return redirect(url_for("po.po_review", po_id=po_id))
 
     try:
         img_data, img_mime, _ = _read_upload(request.files.get("image"))
     except ValueError:
-        flash("Photo bahut badi hai (8 MB se zyada) — chhoti karke dobara try karo.", "error")
+        flash(t("po_f_photo_too_big"), "error")
         return redirect(url_for("po.po_review", po_id=po_id))
     thumb = _compress_image(img_data, THUMB_MAX_DIM, THUMB_TARGET_BYTES) if img_data else None
 
@@ -1588,8 +1597,9 @@ def po_line_map(po_id, line_id):
     line.match_status = "manual"
     line.size_mismatch = False
     db.session.commit()
-    remembered = f"code {item_code}" if item_code else "ye size"
-    flash(f"'{label}' map ho gaya — is party ke liye {remembered} ab yaad rahega.", "success")
+    remembered = (t("po_f_remember_code", code=item_code) if item_code
+                  else t("po_f_remember_size"))
+    flash(t("po_f_mapped", label=label, what=remembered), "success")
     return redirect(url_for("po.po_review", po_id=po_id))
 
 
@@ -1616,10 +1626,10 @@ def po_set_rates(po_id):
         try:
             rate = float(raw)
         except ValueError:
-            flash(f"{line.item_code or line.raw_size_text} ka rate number nahi hai.", "error")
+            flash(t("po_f_rate_not_number", what=line.item_code or line.raw_size_text), "error")
             continue
         if rate <= 0:
-            flash("Rate zero se bada hona chahiye.", "error")
+            flash(t("po_f_rate_positive"), "error")
             continue
         if rate != line.rate or line.rate_from_memory:
             set_line_rate(line, rate)
@@ -1627,10 +1637,9 @@ def po_set_rates(po_id):
     if changed or units_changed:
         refresh_rate_summary(po)
     if units_changed:
-        flash(f"{units_changed} line ki unit badal gayi — us unit ka rate dobara dekha gaya hai.",
-              "success")
+        flash(t("po_f_units_changed", n=units_changed), "success")
     if changed:
-        flash(f"{changed} rate save ho gaye — is party ke liye yaad rahenge.", "success")
+        flash(t("po_f_rates_saved", n=changed), "success")
     return redirect(url_for("po.po_review", po_id=po.id))
 
 
@@ -1644,15 +1653,15 @@ def po_ask_rates(po_id):
     """
     po = PurchaseOrder.query.get_or_404(po_id)
     if po.status != "pending":
-        flash("Ye order aage badh chuka hai.", "error")
+        flash(t("po_f_already_moved"), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
     try:
         left = ask_rates(po)
     except telegram_bot.TelegramError as exc:
         flash(str(exc), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
-    flash(f"Telegram pe bhej diya — {left} line ka rate poochha hai."
-          if left else "Telegram pe bhej diya — saare rate pehle se hain.", "success")
+    flash(t("po_f_asked_telegram", n=left) if left
+          else t("po_f_asked_nothing"), "success")
     return redirect(url_for("po.po_review", po_id=po.id))
 
 
@@ -1662,18 +1671,22 @@ def po_confirm(po_id):
     """Office ne review poora kiya — ab card operator group me jayega."""
     po = PurchaseOrder.query.get_or_404(po_id)
     if po.status != "pending":
-        flash("Ye order pehle hi aage badh chuka hai.", "error")
+        flash(t("po_f_already_moved"), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.unresolved_count:
-        flash(f"{po.unresolved_count} line abhi map nahi hui — pehle wo poori karo.", "error")
+        flash(t("po_f_unmapped", n=po.unresolved_count), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.no_qty_count:
-        flash(f"{po.no_qty_count} line me qty nahi hai — kitne banane hain "
-              f"wo likhe bina bill khaali (\u20b90) ban jayega.", "error")
+        flash(t("po_f_qty_missing", n=po.no_qty_count), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.no_rate_count:
-        flash(f"{po.no_rate_count} line ka rate nahi hai — bill isi se banega, "
-              f"isliye pehle rate daalo.", "error")
+        flash(t("po_f_rate_missing", n=po.no_rate_count), "error")
+        return redirect(url_for("po.po_review", po_id=po.id))
+    # Bill isi rate se banta hai, isliye rate pe aapki mohar chahiye — wo
+    # Telegram pe lagti hai. Telegram set hi na ho toh rok lagana bemani hai:
+    # jis bot pe haan karni hai wo hai hi nahi.
+    if chat_for_role("owner") and not po.rates_ok_at:
+        flash(t("po_f_rates_not_ok"), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
 
     po.confirmed_at = datetime.utcnow()
@@ -1682,9 +1695,9 @@ def po_confirm(po_id):
         sent = send_order_to_operator(po)
     except telegram_bot.TelegramError as exc:
         db.session.rollback()
-        flash(f"Operator ko bhej nahi paye — {exc}", "error")
+        flash(t("po_f_send_failed", reason=exc), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
-    flash(f"{po.po_number} operator group me chala gaya ({sent} card).", "success")
+    flash(t("po_f_sent", no=po.po_number, n=sent), "success")
     return redirect(url_for("po.po_review", po_id=po.id))
 
 
@@ -1707,9 +1720,10 @@ def po_set_status(po_id):
         refresh_order_card(po)
         if target == "made":
             notify_manager(po)
-        flash(f"{po.po_number} — ab {msg}.", "success")
+        flash(t("po_f_status_now", no=po.po_number,
+                label=t("po_status_" + target)), "success")
     else:
-        flash(msg, "error")
+        flash(t("po_f_already_moved"), "error")
     back = request.form.get("back") or url_for("po.po_review", po_id=po.id)
     return redirect(back)
 
@@ -1722,9 +1736,9 @@ def po_reject(po_id):
     moved, msg = move_status(po, "rejected")
     if moved:
         refresh_order_card(po)
-        flash(f"{po.po_number} cancel kar diya.", "success")
+        flash(t("po_f_cancelled", no=po.po_number), "success")
     else:
-        flash(msg, "error")
+        flash(t("po_f_already_moved"), "error")
     return redirect(url_for("po.po_list"))
 
 
@@ -1743,9 +1757,9 @@ def po_mark_dispatched(po_id):
     moved, msg = move_status(po, "dispatched")
     if moved:
         refresh_order_card(po)
-        flash(f"{po.po_number} dispatched mark ho gaya.", "success")
+        flash(t("po_f_dispatched", no=po.po_number), "success")
     else:
-        flash(msg, "error")
+        flash(t("po_f_already_moved"), "error")
     return redirect(url_for("po.po_dispatch"))
 
 
@@ -1805,7 +1819,7 @@ def drive_set_folder():
     link = request.form.get("root_link", "").strip()
     folder_id = drive_sync.folder_id_from_link(link)
     if not folder_id:
-        flash("Drive folder ka link ya ID daalo.", "error")
+        flash(t("po_f_drive_need_link"), "error")
         return redirect(url_for("po.drive_page"))
     try:
         service = drive_sync.drive_service()
@@ -1816,8 +1830,7 @@ def drive_set_folder():
         return redirect(url_for("po.drive_page"))
     POSetting.put(DRIVE_ROOT_KEY, link)
     db.session.commit()
-    flash(f"'{meta['name']}' khul gaya — {len(found)} party folder mile"
-          + (f", {added} naye." if added else "."), "success")
+    flash(t("po_f_drive_opened", name=meta["name"], n=len(found)), "success")
     return redirect(url_for("po.drive_page"))
 
 
@@ -1833,7 +1846,7 @@ def drive_link_folder(folder_id):
     if folder.customer_id:
         PartyPOConfig.set_unit(folder.customer_id, folder.size_unit)
     db.session.commit()
-    flash("Folder jud gaya. Ab sync chala do.", "success")
+    flash(t("po_f_drive_linked"), "success")
     return redirect(url_for("po.drive_page"))
 
 
@@ -1847,7 +1860,7 @@ def drive_sync_now():
         q = q.filter(PartyFolder.id == int(only))
     folders = q.all()
     if not folders:
-        flash("Pehle kam se kam ek folder ko party se jodo.", "error")
+        flash(t("po_f_drive_link_first"), "error")
         return redirect(url_for("po.drive_page"))
 
     try:
@@ -1868,12 +1881,12 @@ def drive_sync_now():
             total[k] += r[k]
         skipped.extend(r["skipped"])
 
-    flash(f"Sync ho gaya — {total['seen']} file dekhi, {total['added']} naye product, "
-          f"{total['updated']} update, {total['photos']} photo aayi.", "success")
+    flash(t("po_f_drive_synced", seen=total["seen"], added=total["added"],
+            updated=total["updated"], photos=total["photos"]), "success")
     for s in skipped[:8]:
-        flash("Chhod diya: " + s, "error")
+        flash(t("po_f_drive_skipped", list=s), "error")
     if len(skipped) > 8:
-        flash(f"…aur {len(skipped) - 8} aur chhodi gayin.", "error")
+        flash(t("po_f_drive_skipped_more", n=len(skipped) - 8), "error")
     return redirect(url_for("po.drive_page"))
 
 
@@ -1914,7 +1927,7 @@ def bills_print():
     show = request.args.get("show", "unprinted")
     rows, _ = bills_for(sel_date, show)
     if not rows:
-        flash("Is din ka koi bill print karne ko nahi hai.", "error")
+        flash(t("po_f_no_bills_to_print"), "error")
         return redirect(url_for("po.bills_page", date=sel_date, show=show))
     return render_template("po_bills_print.html", rows=rows, sel_date=sel_date,
                            settings=Settings.get())
@@ -1962,7 +1975,8 @@ def telegram_set_role(row_id):
                 other.role = ""
     row.role = role
     db.session.commit()
-    flash(f"'{row.title or row.chat_id}' ab {role or 'kisi role me nahi'} hai.", "success")
+    flash(t("po_f_role_set", name=row.title or row.chat_id,
+            role=role or t("po_f_role_none")), "success")
     return redirect(url_for("po.telegram_page"))
 
 
@@ -1972,8 +1986,8 @@ def telegram_set_operator(row_id):
     row = db.session.get(TelegramPerson, row_id) or abort(404)
     row.is_operator = request.form.get("is_operator") == "1"
     db.session.commit()
-    flash(f"{row.name or row.tg_user_id} — "
-          + ("ab button daba sakta hai." if row.is_operator else "ab button nahi daba sakta."),
+    flash(t("po_f_operator_set", name=row.name or row.tg_user_id,
+            state=t("po_f_can_press") if row.is_operator else t("po_f_cannot_press")),
           "success")
     return redirect(url_for("po.telegram_page"))
 
@@ -1995,7 +2009,7 @@ def telegram_set_hook():
     except telegram_bot.TelegramError as exc:
         flash(str(exc), "error")
         return redirect(url_for("po.telegram_page"))
-    flash("Bot jud gaya. Ab dono group me ek msg bhej do taaki wo yahan dikhne lagen.",
+    flash(t("po_f_bot_connected"),
           "success")
     return redirect(url_for("po.telegram_page"))
 
@@ -2063,9 +2077,9 @@ def set_map_categories():
         changed += 1
     db.session.commit()
     if changed:
-        flash(f"{changed} product ki category badal gayi.", "success")
+        flash(t("po_f_categories_changed", n=changed), "success")
     else:
-        flash("Kuch badla nahi.", "success")
+        flash(t("po_f_nothing_changed"), "success")
     return redirect(url_for("po.mappings_page",
                             customer_id=request.form.get("customer_id") or None))
 
@@ -2075,12 +2089,12 @@ def set_map_categories():
 def delete_mapping(map_id):
     m = PartyProductMap.query.get_or_404(map_id)
     if not current_user.is_owner:
-        flash("Sirf owner mapping delete kar sakta hai.", "error")
+        flash(t("po_f_owner_only_delete"), "error")
         return redirect(url_for("po.mappings_page"))
     if POLine.query.filter_by(map_id=m.id).first():
-        flash("Ye mapping kisi PO me use ho chuki hai — delete nahi kar sakte.", "error")
+        flash(t("po_f_product_in_use"), "error")
         return redirect(url_for("po.mappings_page"))
     db.session.delete(m)
     db.session.commit()
-    flash("Mapping delete ho gayi.", "success")
+    flash(t("po_f_product_deleted"), "success")
     return redirect(url_for("po.mappings_page"))
