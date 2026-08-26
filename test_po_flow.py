@@ -455,6 +455,22 @@ check("bill number attribute me saaf jaata hai", f'data-bill-no="{inv_no}"' in t
 # kat jaata tha — link chup-chaap naye page pe le jaata. Isliye row me inline JS nahi.
 check("bill ke link me inline JS nahi", "onclick=" in table, False)
 
+# Bill sirf invoices list se nahi khulta — order ke andar se bhi, aur bill
+# edit karte waqt bhi. Teenon jagah ek jaisa khulna chahiye. Invoices list
+# theek karne ke baad bhi ye do jagah purani reh gayi thi, aur ye baat test ne
+# nahi, live screen ne pakdi. Isliye ab har jagah ki apni ginti hai.
+for where, url in [("order ke andar", f"/po/{po_id}"),
+                   ("bill edit karte waqt", f"/invoices/{old_inv_id}/edit")]:
+    page = ok(where, client.get(url)).data.decode("utf8", "ignore")
+    check(f"{where} bill overlay se khulta hai", f'data-bill="{old_inv_id}"' in page)
+    check(f"{where} overlay saath me aata hai", 'id="billOverlay"' in page)
+    # Overlay ke andar khud ek "naye tab me kholo" wala raasta hai — wo tabhi
+    # dikhta hai jab overlay na khul paye. Isliye ginti overlay se pehle wale
+    # hisse ki hai. Yahi wo galti thi: link seedha printer pe le jaata tha.
+    above = page.split('id="billOverlay"', 1)[0]
+    check(f"{where} naye tab me nahi jaata",
+          '/print" target="_blank"' in above, False)
+
 r = ok("bill ka preview", client.get(f"/invoices/{old_inv_id}/preview"))
 prev = r.data.decode("utf8", "ignore")
 check("preview me poora page nahi aata", "<html" not in prev.lower())
