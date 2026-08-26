@@ -59,6 +59,11 @@ tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:mi
 .table-wrap{overflow-x:auto;}
 .num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 
+/* `hidden` ka matlab chhupa hua hi hona chahiye. Iske bina .btn aur .field
+   jaise class apne display rule se use dabaa dete hain, aur JS se chhupayi
+   hui cheez screen pe padi rehti hai. */
+[hidden]{display:none !important;}
+
 .btn{padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;display:inline-block;text-decoration:none;}
 .btn-primary{background:var(--ink);color:#fff;}
 .btn-primary:hover{background:#2A3760;}
