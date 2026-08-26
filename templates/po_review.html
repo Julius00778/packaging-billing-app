@@ -197,6 +197,12 @@
             <button class="btn btn-ghost btn-sm" type="submit">Rate save karo</button>
           </div>
         </form>
+        {% if has_owner_chat and po.no_rate_count %}
+          <form method="POST" action="{{ url_for('po.po_ask_rates', po_id=po.id) }}"
+                style="margin-top:8px;">
+            <button class="btn btn-ghost btn-sm" type="submit">Telegram pe poochho</button>
+          </form>
+        {% endif %}
       </div>
     {% elif po.invoice_id %}
       <div class="card panel-pad" style="margin-bottom:12px;">
