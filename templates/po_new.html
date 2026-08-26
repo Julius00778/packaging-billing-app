@@ -172,7 +172,10 @@
   function fillRows(rows) {
     body.innerHTML = '';
     rows.forEach(addRow);
-    addRow();                       // ek khaali line hamesha, jodne ke liye
+    // Khaali form teen line ke saath khulta hai — aam order itna hi hota hai.
+    // Photo se bhara ho toh ek khaali line kaafi, aur jodne ke liye.
+    var spare = rows.length ? 1 : 3;
+    while (spare--) addRow();
   }
 
   document.getElementById('addRow').addEventListener('click', function () { addRow(); });
