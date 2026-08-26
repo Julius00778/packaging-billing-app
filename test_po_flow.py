@@ -175,6 +175,29 @@ check("mismatch ka warning text aaya", "code aur size match nahi" in r.data.deco
 
 ok("reject PO-4473", client.post(f"/po/{po3_id}/reject", follow_redirects=True))
 
+# -------------------------------------------------------------------- qty
+# Qty 0 ka matlab bill me amount 0 — party ko khaali bill chala jayega.
+with app.app_context():
+    po = db.session.get(PurchaseOrder, po_id)
+    saved_qty = po.lines[0].qty
+    po.lines[0].qty = 0
+    db.session.commit()
+    check("qty 0 pakdi gayi", po.no_qty_count, 1)
+r = ok("confirm bina qty ke", client.post(f"/po/{po_id}/confirm", follow_redirects=True))
+with app.app_context():
+    check("bina qty ke order pending hi raha",
+          db.session.get(PurchaseOrder, po_id).status, "pending")
+check("qty ki wajah batayi gayi", "qty nahi hai" in r.data.decode("utf8", "ignore"))
+r = ok("review screen pe qty ka warning", client.get(f"/po/{po_id}"))
+body = r.data.decode("utf8", "ignore")
+check("screen pe qty ki baat likhi hai", "line me qty nahi likhi" in body)
+check("bhejne ka button band hai", "disabled" in body)
+with app.app_context():
+    po = db.session.get(PurchaseOrder, po_id)
+    po.lines[0].qty = saved_qty
+    db.session.commit()
+    check("qty wapas aa gayi", db.session.get(PurchaseOrder, po_id).no_qty_count, 0)
+
 # ------------------------------------------------------------------- rate
 # Rate ke bina order aage nahi badhna chahiye — bill isi se banta hai.
 r = ok("confirm bina rate ke", client.post(f"/po/{po_id}/confirm", follow_redirects=True))

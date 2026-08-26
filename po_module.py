@@ -317,6 +317,15 @@ class PurchaseOrder(db.Model):
         return sum(1 for l in self.lines if not l.rate)
 
     @property
+    def no_qty_count(self):
+        """Jin lines me kitne banane hain wahi nahi likha.
+
+        Qty 0 ka matlab bill me amount 0 — party ko khaali bill chala jayega.
+        Isliye ise rate ki tarah hi rok maana hai.
+        """
+        return sum(1 for l in self.lines if not l.qty or l.qty <= 0)
+
+    @property
     def total(self):
         return round(sum(l.amount for l in self.lines), 2)
 
@@ -976,6 +985,8 @@ def make_invoice(po):
         return db.session.get(Invoice, po.invoice_id), False
     if po.no_rate_count:
         raise ValueError("kuch lines ka rate nahi hai")
+    if po.no_qty_count:
+        raise ValueError("kuch lines me qty nahi hai")
 
     settings = Settings.get()
     n = settings.next_invoice_no or 1
@@ -1527,6 +1538,10 @@ def po_confirm(po_id):
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.unresolved_count:
         flash(f"{po.unresolved_count} line abhi map nahi hui — pehle wo poori karo.", "error")
+        return redirect(url_for("po.po_review", po_id=po.id))
+    if po.no_qty_count:
+        flash(f"{po.no_qty_count} line me qty nahi hai — kitne banane hain "
+              f"wo likhe bina bill khaali (\u20b90) ban jayega.", "error")
         return redirect(url_for("po.po_review", po_id=po.id))
     if po.no_rate_count:
         flash(f"{po.no_rate_count} line ka rate nahi hai — bill isi se banega, "
