@@ -246,12 +246,52 @@ with app.app_context():
     check("invoice number mil gaya", bool(inv.invoice_no))
     check("bill me order ka zikr", "PO-4471" in (inv.notes or ""))
     old_inv_id = po.invoice_id
+    inv_no = inv.invoice_no
     po_module.move_status(po, "in_production")
     po_module.move_status(po, "made")
     check("dobara made karne se naya bill nahi banta", po.invoice_id, old_inv_id)
     check("ek hi bill bana", Invoice.query.filter_by(customer_id=cust_id).count(), 1)
 
 ok("bill print khulta hai", client.get(f"/invoices/{old_inv_id}/print"))
+
+# ------------------------------------------------------- accountant ka print page
+r = ok("GET /po/bills", client.get("/po/bills"))
+check("aaj ka bill list me hai", b"PO-4471" in r.data)
+check("print baaki dikh raha hai", "baaki" in r.data.decode("utf8", "ignore"))
+
+r = ok("sab ek saath print", client.get("/po/bills/print"))
+body = r.data.decode("utf8", "ignore")
+check("print page pe bill number hai", inv_no in body)
+check("do copy banti hain (party + office)",
+      body.count('class="pinv-half"'), 2)     # ek hi bill hai, uski do copy
+check("har bill apne kaagaz pe", 'class="bill-sheet"' in body)
+
+# nishan lagao
+ok("print ho gaya nishan", client.post(f"/po/bills/{po_id}/printed",
+                                       data={"printed": "1"}, follow_redirects=True))
+with app.app_context():
+    check("nishan lag gaya", bool(db.session.get(PurchaseOrder, po_id).bill_printed_at))
+r = ok("ab 'baaki' list khaali", client.get("/po/bills"))
+check("print ho chuka bill baaki list me nahi", b"PO-4471" not in r.data)
+r = ok("saare dikhao", client.get("/po/bills?show=all"))
+check("saare wali list me hai", b"PO-4471" in r.data)
+check("ho gaya dikh raha hai", "ho gaya" in r.data.decode("utf8", "ignore"))
+
+ok("nishan hata do", client.post(f"/po/bills/{po_id}/printed",
+                                 data={"printed": "0"}, follow_redirects=True))
+with app.app_context():
+    check("nishan hat gaya", db.session.get(PurchaseOrder, po_id).bill_printed_at, None)
+
+# aur din ka koi bill nahi
+r = ok("purane din ka page", client.get("/po/bills?date=2020-01-01&show=all"))
+check("us din kuch nahi tha", "koi bill nahi bana" in r.data.decode("utf8", "ignore"))
+r = ok("purane din ka baaki-wala page", client.get("/po/bills?date=2020-01-01"))
+check("us din print karne ko bhi kuch nahi",
+      "koi bill print karna baaki nahi" in r.data.decode("utf8", "ignore"))
+r = ok("bina bill ke print", client.get("/po/bills/print?date=2020-01-01", follow_redirects=True))
+check("print karne ko kuch nahi hai toh wapas bhej deta hai",
+      "koi bill print karne ko nahi" in r.data.decode("utf8", "ignore"))
+
 
 r = ok("GET /po/dispatch", client.get("/po/dispatch"))
 check("ban gaya order dispatch list me hai", b"PO-4471" in r.data)

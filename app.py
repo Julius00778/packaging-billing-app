@@ -1178,6 +1178,7 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "po_line", "rate", "rate FLOAT DEFAULT 0.0")
     _add_column_if_missing(inspector, "po_line", "rate_from_memory", "rate_from_memory BOOLEAN DEFAULT FALSE")
     _add_column_if_missing(inspector, "po_line", "tg_rate_msg_id", "tg_rate_msg_id VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "bill_printed_at", "bill_printed_at TIMESTAMP")
 
     # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
     # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.

@@ -290,6 +290,8 @@ class PurchaseOrder(db.Model):
     tg_message_ids = db.Column(db.String(300), default="")   # comma se jude
     tg_rate_summary_id = db.Column(db.String(40), default="")  # aapke chat wala card
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True)
+    # Accountant ka nishan — "ye bill nikal chuka". App printer se nahi poochhta.
+    bill_printed_at = db.Column(db.DateTime, nullable=True)
     sent_at = db.Column(db.DateTime, nullable=True)
     accepted_at = db.Column(db.DateTime, nullable=True)      # operator ne OK kiya
     made_at = db.Column(db.DateTime, nullable=True)          # operator ne Done kiya
@@ -1730,6 +1732,58 @@ def drive_sync_now():
     if len(skipped) > 8:
         flash(f"…aur {len(skipped) - 8} aur chhodi gayin.", "error")
     return redirect(url_for("po.drive_page"))
+
+
+def bills_for(sel_date, show):
+    """Us din ke order-wale bill. Ek order ka ek bill, isliye order ke saath hi laate hain."""
+    q = (PurchaseOrder.query
+         .filter(PurchaseOrder.invoice_id.isnot(None))
+         .order_by(PurchaseOrder.made_at))
+    rows = []
+    total = 0.0
+    for po in q.all():
+        inv = db.session.get(Invoice, po.invoice_id)
+        if not inv or inv.date != sel_date:
+            continue
+        if show == "unprinted" and po.bill_printed_at:
+            continue
+        rows.append({"po": po, "inv": inv})
+        total += inv.grand_total or 0
+    return rows, round(total, 2)
+
+
+@po_bp.route("/bills")
+@login_required
+def bills_page():
+    sel_date = request.args.get("date") or date.today().isoformat()
+    show = request.args.get("show", "unprinted")
+    rows, total = bills_for(sel_date, show)
+    return render_template("po_bills.html", rows=rows, total=total,
+                           sel_date=sel_date, show=show)
+
+
+@po_bp.route("/bills/print")
+@login_required
+def bills_print():
+    """Saare bill ek page pe, har ek apne kaagaz pe. Wahi shakal jo ek bill ki hai."""
+    from models import Settings
+    sel_date = request.args.get("date") or date.today().isoformat()
+    show = request.args.get("show", "unprinted")
+    rows, _ = bills_for(sel_date, show)
+    if not rows:
+        flash("Is din ka koi bill print karne ko nahi hai.", "error")
+        return redirect(url_for("po.bills_page", date=sel_date, show=show))
+    return render_template("po_bills_print.html", rows=rows, sel_date=sel_date,
+                           settings=Settings.get())
+
+
+@po_bp.route("/bills/<int:po_id>/printed", methods=["POST"])
+@login_required
+def bill_mark_printed(po_id):
+    po = PurchaseOrder.query.get_or_404(po_id)
+    po.bill_printed_at = datetime.utcnow() if request.form.get("printed") == "1" else None
+    db.session.commit()
+    return redirect(request.referrer or url_for("po.bills_page"))
 
 
 @po_bp.route("/telegram")
