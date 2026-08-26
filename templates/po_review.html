@@ -164,13 +164,27 @@
         <form method="POST" action="{{ url_for('po.po_set_rates', po_id=po.id) }}">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Code</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+              <thead><tr><th>Code</th><th>Product</th><th>Qty</th><th>Unit</th>
+                         <th>Rate</th><th>Amount</th></tr></thead>
               <tbody>
               {% for line in po.lines %}
+                {% set choices = line.mapping.unit_choices() if line.mapping else [] %}
                 <tr>
                   <td class="mono" style="font-weight:600;">{{ line.item_code or '—' }}</td>
                   <td>{{ line.mapping.label if line.mapping else line.raw_size_text }}</td>
-                  <td class="num">{{ line.qty|round(2) }} {{ line.qty_unit }}</td>
+                  <td class="num">{{ line.qty|round(2) }}</td>
+                  <td style="width:110px;">
+                    {# Sirf usi maal ki units — foam piece ya roll me, scrap kilo me.
+                       Category tay na ho toh saari aam units khuli rehti hain. #}
+                    <select name="unit_{{ line.id }}">
+                      {% for u in (choices or common_units) %}
+                        <option value="{{ u }}" {% if u == line.qty_unit %}selected{% endif %}>{{ u }}</option>
+                      {% endfor %}
+                      {% if line.qty_unit not in (choices or common_units) %}
+                        <option value="{{ line.qty_unit }}" selected>{{ line.qty_unit }}</option>
+                      {% endif %}
+                    </select>
+                  </td>
                   <td style="width:130px;">
                     <input type="number" step="0.01" min="0" name="rate_{{ line.id }}"
                            value="{{ line.rate or '' }}" placeholder="per {{ line.qty_unit }}">

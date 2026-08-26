@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = "po" %}
-{% block title %}Size mappings{% endblock %}
+{% block title %}Products{% endblock %}
 {% block content %}
 
 <div class="toolbar">
@@ -17,10 +17,24 @@
   <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back to POs</a>
 </div>
 
+{% set uncat = maps | rejectattr('item.category_id') | list | length %}
+{% if maps and uncat %}
+  <div class="card panel-pad" style="margin-bottom:14px;">
+    <div style="font-size:13px;">
+      <strong>{{ uncat }} product ki category abhi tay nahi hai.</strong>
+      Category se hi pata chalta hai ki maal kis unit me bikta hai — foam piece ya roll me,
+      scrap sirf kilo me. Jab tak khaali hai, order me har unit khuli rehti hai.
+    </div>
+  </div>
+{% endif %}
+
+<form method="POST" action="{{ url_for('po.set_map_categories') }}">
+<input type="hidden" name="customer_id" value="{{ cid }}">
 <div class="card panel-pad">
   <div class="table-wrap">
     <table>
-      <thead><tr><th></th><th>Party</th><th>Code</th><th>Size as written</th><th>Matched on</th><th>Product</th><th>Item</th><th>Used</th><th></th></tr></thead>
+      <thead><tr><th></th><th>Party</th><th>Code</th><th>Size as written</th>
+                 <th>Product</th><th>Category</th><th>Units</th><th>Used</th><th></th></tr></thead>
       <tbody>
       {% for m in maps %}
         <tr>
@@ -35,16 +49,25 @@
           <td>{{ m.customer.name }}</td>
           <td class="mono" style="font-weight:600;">{{ m.item_code or '—' }}</td>
           <td class="mono">{{ m.raw_size_text }}</td>
-          <td class="mono" style="font-size:11px;color:var(--ink-faint);">{{ m.canonical_key }}</td>
           <td>{{ m.label }}</td>
-          <td>{{ m.item.name if m.item else '—' }}</td>
+          <td>
+            <select name="cat_{{ m.id }}">
+              <option value="">— tay nahi —</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}"
+                  {% if m.item and m.item.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="mono" style="font-size:11px;color:var(--ink-faint);">
+            {% if m.unit_choices() %}{{ m.unit_choices()|join(', ') }}{% else %}sab{% endif %}
+          </td>
           <td class="num">{{ m.times_used }}</td>
           <td>
             {% if current_user.is_owner %}
-              <form method="POST" action="{{ url_for('po.delete_mapping', map_id=m.id) }}" style="display:inline;"
-                    onsubmit="return confirm('Delete this mapping?');">
-                <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
-              </form>
+              <a class="btn btn-ghost btn-sm" href="#"
+                 onclick="event.preventDefault();
+                          if(confirm('Delete this mapping?')) document.getElementById('del{{ m.id }}').submit();">Delete</a>
             {% endif %}
           </td>
         </tr>
@@ -52,12 +75,28 @@
       </tbody>
     </table>
   </div>
-  {% if not maps %}
+
+  {% if maps %}
+    <div class="toolbar" style="margin:12px 0 0;">
+      <div style="flex:1;font-size:12px;color:var(--ink-faint);">
+        Category badal ke Save dabao — item ki unit apne aap us category ki pehli unit pe aa jayegi.
+      </div>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </div>
+  {% else %}
     <div class="empty-state">
-      <div class="big">Abhi koi mapping nahi</div>
-      <div>Pehla PO review karte waqt jo sizes map karoge, wo yahan jama hote jayenge.</div>
+      <div class="big">Abhi koi product nahi</div>
+      <div>Drive sync se, ya pehla PO review karte waqt jo sizes map karoge, wo yahan jama honge.</div>
     </div>
   {% endif %}
 </div>
+</form>
+
+{% for m in maps %}
+  {% if current_user.is_owner %}
+    <form id="del{{ m.id }}" method="POST"
+          action="{{ url_for('po.delete_mapping', map_id=m.id) }}" style="display:none;"></form>
+  {% endif %}
+{% endfor %}
 
 {% endblock %}
