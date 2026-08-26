@@ -663,6 +663,55 @@ def parse_po_text(text, party_default_unit="inch", known_codes=None):
     return out
 
 
+def lines_from_rows(form, party_unit="inch"):
+    """Ek-ek karke bhare hue form se lines banao.
+
+    Jab photo dhundhli ho ya likhawat tedhi, tab poora text paste karna kaam
+    nahi aata — aadmi photo dekh ke ek line bharta hai. Yahan andaza lagane ki
+    zaroorat hi nahi: code, size, qty aur unit sab alag alag khaano me aaye
+    hain, isliye unit "guessed" bhi nahi hoti.
+
+    Nateeja bilkul wahi shakal ka hai jo parse_po_text deta hai, taaki aage ka
+    raasta ek hi rahe.
+    """
+    codes = form.getlist("line_code")
+    sizes = form.getlist("line_size")
+    qtys = form.getlist("line_qty")
+    units = form.getlist("line_unit")
+
+    out = []
+    for i in range(max(len(codes), len(sizes), len(qtys))):
+        code = normalize_code(codes[i] if i < len(codes) else "")
+        size_text = (sizes[i] if i < len(sizes) else "").strip()
+        raw_qty = (qtys[i] if i < len(qtys) else "").strip().replace(",", "")
+        unit = (units[i] if i < len(units) else "").strip() or "pcs"
+
+        # Na code, na size — ye khaali row hai, chhod do
+        if not code and not size_text:
+            continue
+        try:
+            qty = float(raw_qty) if raw_qty else 0.0
+        except ValueError:
+            qty = 0.0
+
+        row = {
+            "raw_text": " ".join(x for x in (code, size_text,
+                                             f"{qty:g} {unit}" if qty else "") if x),
+            "item_code": code,
+            "raw_size_text": size_text,
+            "canonical_key": "",
+            "unit_source": "",
+            "qty": qty,
+            "qty_unit": unit,
+        }
+        m = SIZE_RE.search(size_text)
+        if m:
+            row["canonical_key"] = canonical_size(size_dims(m), party_unit)
+            row["unit_source"] = "form"     # form me unit khud chuni gayi hai
+        out.append(row)
+    return out
+
+
 # --------------------------------------------------------------------------
 # Matching
 # --------------------------------------------------------------------------
@@ -1469,8 +1518,14 @@ def po_new():
             flash(t("po_f_scan_too_big"), "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
 
-        raw_text = request.form.get("raw_text", "")
-        parsed = parse_po_text(raw_text, unit, known_codes_for(customer_id))
+        # Do raaste, ek hi manzil: ya poora text paste karo, ya photo dekh ke
+        # ek-ek line bharo. Aage dono ek jaise chalte hain.
+        if request.form.get("entry_mode") == "rows":
+            parsed = lines_from_rows(request.form, unit)
+            raw_text = "\n".join(p["raw_text"] for p in parsed)
+        else:
+            raw_text = request.form.get("raw_text", "")
+            parsed = parse_po_text(raw_text, unit, known_codes_for(customer_id))
         if not parsed:
             flash(t("po_f_no_lines"), "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())

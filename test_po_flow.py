@@ -105,6 +105,47 @@ client.post("/po/new", data={"customer_id": str(cust_id), "po_number": "PO-4471"
 with app.app_context():
     check("duplicate PO nahi bana", PurchaseOrder.query.filter_by(po_number="PO-4471").count(), 1)
 
+# ------------------------------------------- ek-ek line wala raasta
+# Photo dhundhli ho toh text paste karna kaam nahi aata — aadmi dekh ke ek
+# line bharta hai. Yahan kuch andaza nahi lagta, sab khaano me aata hai.
+r = ok("naye order ka page", client.get("/po/new"))
+page = r.data.decode("utf8", "ignore")
+check("photo lagane ka rasta hai", 'id="scanInput"' in page)
+check("dono raaste dikhte hain", page.count('data-mode="'), 2)
+
+ok("rows se order", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-ROW-1", "size_unit": "cm",
+    "entry_mode": "rows",
+    "line_code": ["hm 01", "", "  "],          # chhota-bada aur space chalega
+    "line_size": ["", "23x14x5", ""],          # bina code, sirf size
+    "line_qty": ["120", "40", ""],             # teesri row poori khaali
+    "line_unit": ["pcs", "box", "pcs"],
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    rp = PurchaseOrder.query.filter_by(po_number="PO-ROW-1").first()
+    check("khaali row chhod di gayi", len(rp.lines), 2)
+    check("code saaf hoke aaya", rp.lines[0].item_code, "HM01")
+    check("code wali line ki qty", rp.lines[0].qty, 120.0)
+    check("uski unit bhi wahi", rp.lines[0].qty_unit, "pcs")
+    check("bina size ke koi key nahi", rp.lines[0].canonical_key, "")
+    check("size wali line ka key bana (cm)", rp.lines[1].canonical_key, "50.0x140.0x230.0")
+    check("box wali unit rahi", rp.lines[1].qty_unit, "box")
+    check("unit yahan andaze se nahi aayi",
+          [l.unit_source for l in rp.lines], ["", "form"])
+    check("raw_text bhi bana", "HM01" in rp.lines[0].raw_text)
+    ok("rows wala order khulta hai", client.get(f"/po/{rp.id}"))
+    client.post(f"/po/{rp.id}/reject", follow_redirects=True)
+
+r = ok("sab khaali rows", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-ROW-2", "size_unit": "cm",
+    "entry_mode": "rows", "line_code": ["", ""], "line_size": ["", ""],
+    "line_qty": ["", ""], "line_unit": ["pcs", "pcs"],
+}, content_type="multipart/form-data", follow_redirects=True))
+check("khaali form pe wajah batayi", "No order line was found" in r.data.decode("utf8", "ignore"))
+with app.app_context():
+    check("khaali form se order nahi bana",
+          PurchaseOrder.query.filter_by(po_number="PO-ROW-2").count(), 0)
+
 ok("GET /po/<id> review", client.get(f"/po/{po_id}"))
 
 # confirm abhi block hona chahiye

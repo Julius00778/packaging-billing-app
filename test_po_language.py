@@ -31,13 +31,20 @@ HINGLISH = [
     "abhi", "saare", "sirf", "pehle", "yahan", "wahan", "koi ", "jaise",
 ]
 
-COMMENT_RE = re.compile(r"\{#.*?#\}", re.S)
+# Code ke comment Hinglish me hain aur rehne chahiye — wo user ko dikhte
+# nahi. Isliye teen tarah ke comment hata ke hi shikayat dhoondhi jaati hai.
+JINJA_COMMENT = re.compile(r"\{#.*?#\}", re.S)
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+JS_COMMENT = re.compile(r"^[ \t]*//.*$", re.M)
 
 
 def visible_text(path):
     """Template ka wo hissa jo user ko dikh sakta hai — comment hata ke."""
     with open(path, encoding="utf8") as fh:
-        return COMMENT_RE.sub(" ", fh.read())
+        text = fh.read()
+    for pattern in (JINJA_COMMENT, HTML_COMMENT, JS_COMMENT):
+        text = pattern.sub(" ", text)
+    return text
 
 
 tpl_dir = os.path.join(HERE, "templates")
@@ -55,7 +62,9 @@ from translations import TRANSLATIONS                      # noqa: E402
 
 # Sirf poore likhe hue key — t('po_status_' + x) jaise jude hue key alag se
 # neeche jaanche jaate hain.
-KEY_RE = re.compile(r"t\(\s*'([a-z0-9_]+)'\s*[,)]")
+# `t(` se pehle koi akshar na ho — warna createElement('tr') bhi t('tr') jaisa
+# dikhta hai aur test jhoothi shikayat karta hai.
+KEY_RE = re.compile(r"(?<![\w.])t\(\s*'([a-z0-9_]+)'\s*[,)]")
 missing = set()
 for name in po_templates:
     with open(os.path.join(tpl_dir, name), encoding="utf8") as fh:
