@@ -67,6 +67,11 @@ tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:mi
 .btn-danger{background:var(--danger);color:#fff;}
 .btn-sm{padding:6px 12px;font-size:12.5px;border-radius:6px;}
 .btn-row{display:flex;gap:10px;margin-top:20px;}
+/* Band button band dikhna bhi chahiye — warna user dabata rehta hai aur
+   sochta hai app hi tuta hua hai. */
+.btn:disabled,.btn[disabled]{opacity:.45;cursor:not-allowed;}
+.btn-primary:disabled:hover,.btn-primary[disabled]:hover{background:var(--ink);}
+.btn-ghost:disabled:hover,.btn-ghost[disabled]:hover{border-color:var(--border);color:var(--ink-soft);}
 
 .badge{padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;}
 .badge.paid{background:var(--success-soft);color:var(--success);}
