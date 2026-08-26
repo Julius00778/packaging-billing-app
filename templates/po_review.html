@@ -227,6 +227,11 @@
             {{ po.no_qty_count }} line me qty nahi likhi — kitne banane hain wo bhare bina
             bill khaali (₹0) ban jayega.
           </div>
+        {% elif po.no_rate_count %}
+          <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
+            {{ po.no_rate_count }} line ka rate baaki hai — bill isi se banta hai,
+            isliye rate aane tak operator ko nahi bhejenge.
+          </div>
         {% else %}
           <div style="font-size:13px;margin-bottom:10px;">
             Sab theek lage toh operator group me bhej do — photo ke saath card chala jayega.
@@ -235,7 +240,7 @@
         <div class="toolbar" style="margin:0;">
           <form method="POST" action="{{ url_for('po.po_confirm', po_id=po.id) }}" style="display:inline;">
             <button class="btn btn-primary" type="submit"
-                    {% if po.unresolved_count or po.no_qty_count %}disabled{% endif %}>
+                    {% if po.unresolved_count or po.no_qty_count or po.no_rate_count %}disabled{% endif %}>
               Operator ko bhejo
             </button>
           </form>
