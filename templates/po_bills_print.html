@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ rows|length }} bill — {{ sel_date }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  /* Har bill apne alag kaagaz pe. Aakhri ke baad khaali page na nikle. */
+  .bill-sheet { page-break-after: always; break-after: page; }
+  .bill-sheet:last-of-type { page-break-after: auto; break-after: auto; }
+  @media print { .no-print { display: none !important; } }
+</style>
+</head>
+<body>
+
+{% from "invoice_copy.html" import render_copy with context %}
+
+<div class="print-trigger no-print">
+  <button class="btn btn-primary" onclick="window.print()">
+    {{ rows|length }} bill print karo
+  </button>
+  <button class="btn btn-ghost" type="button" onclick="window.close()">Band karo</button>
+  <span style="margin-left:10px;color:#5B6378;font-size:12px;">
+    Har bill do copy me — party aur office. Print ke baad wapas jaake "Ho gaya" laga dena.
+  </span>
+</div>
+
+{% for row in rows %}
+  {% set inv = row.inv %}
+  <div class="bill-sheet">
+    <div class="pinv-page">
+      {{ render_copy(inv, settings, t('party_copy')) }}
+      <div class="cut-line no-print"><span>- - - - - - - - - - - - {{ t('cut_here') }} - - - - - - - - - - - -</span></div>
+      {{ render_copy(inv, settings, t('office_copy')) }}
+    </div>
+  </div>
+{% endfor %}
+
+</body>
+</html>
