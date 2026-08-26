@@ -282,6 +282,75 @@ with app.app_context():
     check("bill ki khabar gayi", len(bill_msgs), 2)   # aapko aur manager ko
     check("khabar me invoice number", inv.invoice_no in bill_msgs[0][1]["text"], True)
 
+    # ------------------------------- rate bina reply ke bhi, jab saaf ho ki kiska hai
+    po4 = M.PurchaseOrder(po_number="PO-80", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add(po4)
+    db.session.flush()
+    # 'sheet' unit ka rate abhi tak nahi diya gaya, isliye sawaal banega
+    db.session.add(M.POLine(po_id=po4.id, line_no=1, item_code="GME02", qty=5,
+                            qty_unit="sheet", canonical_key="40.0x140.0x230.0",
+                            match_status="code", map_id=product.id))
+    db.session.commit()
+    po4_id = po4.id
+    M.ask_rates(db.session.get(M.PurchaseOrder, po4_id))
+    check("yaad na hone par sawaal banta hai",
+          db.session.get(M.PurchaseOrder, po4_id).no_rate_count, 1)
+
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "40"}})
+    check("ek hi line baaki thi toh bina reply ke bhi rate lag gaya",
+          db.session.get(M.PurchaseOrder, po4_id).lines[0].rate, 40.0)
+
+    # ab do order rate ka intezaar kar rahe hain — andaza nahi lagana chahiye
+    po5 = M.PurchaseOrder(po_number="PO-81", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    po6 = M.PurchaseOrder(po_number="PO-82", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add_all([po5, po6])
+    db.session.flush()
+    db.session.add_all([
+        M.POLine(po_id=po5.id, line_no=1, item_code="GME02", qty=5, qty_unit="kg",
+                 match_status="code", map_id=product.id),
+        M.POLine(po_id=po6.id, line_no=1, item_code="GME02", qty=7, qty_unit="roll",
+                 match_status="code", map_id=product.id),
+    ])
+    db.session.commit()
+    po5_id, po6_id = po5.id, po6.id
+
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "60"}})
+    check("do line baaki hon toh andaza nahi lagta",
+          db.session.get(M.PurchaseOrder, po5_id).lines[0].rate, 0.0)
+    check("aur wajah bata di jaati hai",
+          "reply karo" in TG.of("sendMessage")[-1][1]["text"], True)
+
+    # code ke saath bhejo toh chal jaata hai — par yahan dono ka code ek hi hai
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "GME02 60"}})
+    check("ek hi code ki do line hon toh bhi andaza nahi lagta",
+          db.session.get(M.PurchaseOrder, po5_id).lines[0].rate, 0.0)
+
+    # reply se hamesha chalta hai
+    TG.calls.clear()
+    l5 = db.session.get(M.PurchaseOrder, po5_id).lines[0]
+    M.ask_rates(db.session.get(M.PurchaseOrder, po5_id))
+    l5 = db.session.get(M.PurchaseOrder, po5_id).lines[0]
+    M.handle_update({"message": {
+        "chat": OWNER_CHAT, "from": JULIUS, "text": "60",
+        "reply_to_message": {"message_id": int(l5.tg_rate_msg_id)}}})
+    check("reply se saaf hai ki kis line ka hai",
+          db.session.get(M.PurchaseOrder, po5_id).lines[0].rate, 60.0)
+    check("doosra order waisa hi pada hai",
+          db.session.get(M.PurchaseOrder, po6_id).lines[0].rate, 0.0)
+
+    # aam baatcheet ko rate nahi samajhna chahiye
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "theek hai bhai"}})
+    check("aam msg pe kuch nahi hota", len(TG.calls), 0)
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "/start"}})
+    check("command pe bhi kuch nahi hota", len(TG.calls), 0)
+
     # --------------------------------------------------- galat chhalang nahi chalti
     po2 = M.PurchaseOrder(po_number="PO-78", customer_id=cust.id, status="pending",
                           created_by=u.id)

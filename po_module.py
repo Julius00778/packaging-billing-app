@@ -1172,26 +1172,82 @@ def handle_update(update, token=None):
     return reply(msg if moved else msg, alert=not moved)
 
 
+RATE_TEXT_RE = re.compile(r"^\s*(?:(?P<code>[A-Za-z]{1,6}\s*-?\s*\d{1,4})\s*[-:=]?\s*)?"
+                          r"(?P<num>\d+(?:\.\d+)?)\s*$")
+
+
+def pending_rate_lines():
+    """Jin lines ka rate abhi tak nahi aaya — purane order pehle."""
+    return (POLine.query.join(PurchaseOrder)
+            .filter(PurchaseOrder.status == "pending",
+                    (POLine.rate == 0) | (POLine.rate.is_(None)))
+            .order_by(POLine.po_id, POLine.line_no).all())
+
+
+def find_rate_line(parent_msg_id, code):
+    """Number kis line ka hai — teen tareeke se dhoondho.
+
+    1. Us sawaal ka reply hai (sabse pakka)
+    2. Number ke saath code likha hai ("GME01 25")
+    3. Sirf number hai — tab tabhi maanenge jab ek hi line ka rate baaki ho
+
+    Teesra isliye ki phone pe log seedha number type kar dete hain, reply karna
+    yaad nahi rehta. Par ek se zyada line baaki ho toh andaza lagana khatarnaak
+    hai — tab poochh lete hain.
+    """
+    if parent_msg_id:
+        line = POLine.query.filter_by(tg_rate_msg_id=str(parent_msg_id)).first()
+        if line:
+            return line, ""
+
+    waiting = pending_rate_lines()
+    if code:
+        hits = [l for l in waiting if l.item_code == normalize_code(code)]
+        if len(hits) == 1:
+            return hits[0], ""
+        if len(hits) > 1:
+            return None, (f"{normalize_code(code)} ki ek se zyada line rate ka "
+                          f"intezaar kar rahi hai — us sawaal pe reply karke bhejo.")
+        return None, f"{normalize_code(code)} ki koi line rate ka intezaar nahi kar rahi."
+
+    if len(waiting) == 1:
+        return waiting[0], ""
+    if not waiting:
+        return None, "Abhi kisi line ka rate baaki nahi hai."
+    return None, (f"{len(waiting)} line ka rate baaki hai — jis sawaal ka rate hai "
+                  f"us msg pe reply karo, ya code ke saath bhejo jaise "
+                  f"<code>{waiting[0].item_code or 'GME01'} 25</code>.")
+
+
 def handle_rate_reply(update, token=None):
-    """Aapke chat me kisi rate-wale msg ka reply — usme sirf number hota hai."""
+    """Aapke apne chat me aaya number — kisi line ka rate."""
     msg = update.get("message") or {}
-    parent = msg.get("reply_to_message") or {}
-    text = (msg.get("text") or "").strip().replace("₹", "").replace(",", "")
+    text = (msg.get("text") or "").strip().replace("\u20b9", "").replace(",", "")
     chat = msg.get("chat") or {}
 
     owner = chat_for_role("owner")
-    if not (parent and text and owner and str(chat.get("id")) == owner.chat_id):
+    if not (text and owner and str(chat.get("id")) == owner.chat_id):
+        return "noted"
+    if text.startswith("/"):
         return "noted"
 
-    line = POLine.query.filter_by(tg_rate_msg_id=str(parent.get("message_id"))).first()
+    m = RATE_TEXT_RE.match(text)
+    parent = (msg.get("reply_to_message") or {}).get("message_id")
+    if not m:
+        if parent:
+            telegram_bot.send_message(
+                owner.chat_id, "Sirf number bhejo — jaise <code>25</code>.", token=token)
+            return "bad number"
+        return "noted"
+
+    line, problem = find_rate_line(parent, m.group("code"))
+    if problem:
+        telegram_bot.send_message(owner.chat_id, problem, token=token)
+        return "unclear"
     if not line:
         return "noted"
-    try:
-        rate = float(text)
-    except ValueError:
-        telegram_bot.send_message(owner.chat_id,
-                                  "Sirf number bhejo — jaise <code>25</code>.", token=token)
-        return "bad number"
+
+    rate = float(m.group("num"))
     if rate <= 0:
         telegram_bot.send_message(owner.chat_id, "Rate zero se bada hona chahiye.",
                                   token=token)
@@ -1203,7 +1259,8 @@ def handle_rate_reply(update, token=None):
     left = po.no_rate_count
     telegram_bot.send_message(
         owner.chat_id,
-        f"✅ <b>{line.item_code}</b> — ₹{rate:g}/{line.qty_unit} yaad rakh liya."
+        f"\u2705 <b>{line.item_code or line.raw_size_text}</b> \u2014 "
+        f"\u20b9{rate:g}/{line.qty_unit} yaad rakh liya."
         + ("" if left else "\n\nSab rate aa gaye. Upar wale card se operator ko bhej do."),
         token=token)
     return "rate set"
@@ -1341,6 +1398,7 @@ def po_review(po_id):
         party_unit=PartyPOConfig.unit_for(po.customer_id),
         status_label=STATUS_LABEL, status_moves=moves,
         invoice=db.session.get(Invoice, po.invoice_id) if po.invoice_id else None,
+        has_owner_chat=bool(chat_for_role("owner")),
     )
 
 
@@ -1432,6 +1490,28 @@ def po_set_rates(po_id):
     if changed:
         refresh_rate_summary(po)
         flash(f"{changed} rate save ho gaye — is party ke liye yaad rahenge.", "success")
+    return redirect(url_for("po.po_review", po_id=po.id))
+
+
+@po_bp.route("/<int:po_id>/ask-rates", methods=["POST"])
+@login_required
+def po_ask_rates(po_id):
+    """Rate ka sawaal Telegram pe dobara bhejo.
+
+    Zaroorat tab padti hai jab order aate waqt aapka chat set na ho, ya purane
+    msg kahin dab gaye hon.
+    """
+    po = PurchaseOrder.query.get_or_404(po_id)
+    if po.status != "pending":
+        flash("Ye order aage badh chuka hai.", "error")
+        return redirect(url_for("po.po_review", po_id=po.id))
+    try:
+        left = ask_rates(po)
+    except telegram_bot.TelegramError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("po.po_review", po_id=po.id))
+    flash(f"Telegram pe bhej diya — {left} line ka rate poochha hai."
+          if left else "Telegram pe bhej diya — saare rate pehle se hain.", "success")
     return redirect(url_for("po.po_review", po_id=po.id))
 
 
