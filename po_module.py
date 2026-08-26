@@ -29,7 +29,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from models import db, Customer, Item, Invoice
+from models import db, Customer, Item, Invoice, Category, Settings
 
 import drive_sync
 import telegram_bot
@@ -40,6 +40,17 @@ except ImportError:            # Pillow na ho toh module chale, bas compress na 
     Image = ImageOps = None
 
 po_bp = Blueprint("po", __name__, url_prefix="/po")
+
+
+@po_bp.app_context_processor
+def _po_template_globals():
+    """`common_units` har template me mile.
+
+    Jis product ki category tay na ho uske liye koi rok nahi — wahan yahi
+    poori list dikhti hai.
+    """
+    from app import COMMON_UNITS
+    return {"common_units": COMMON_UNITS}
 
 # Phone se aane wali photo 4-8 MB ki hoti hai. Reject karne ke bajaye accept karke
 # server pe chhoti kar dete hain — operator ko resize ka jhanjhat nahi.
@@ -151,6 +162,75 @@ class PartyProductMap(db.Model):
     @property
     def has_image(self):
         return bool(self.image_data)
+
+    def unit_choices(self):
+        """Is product ki jaayaz units.
+
+        Item ki category batati hai ki ye maal kis cheez me bikta hai — foam
+        piece ya roll me, scrap sirf kilo me. Category na juddi ho toh saari
+        aam units khuli rehti hain, kyunki galat rok lagane se accha hai koi
+        rok na lagana.
+        """
+        cat = self.item.category if self.item else None
+        return cat.unit_list() if cat else []
+
+
+def ensure_item_for(mapping, category_id=None):
+    """Har PO product ka Item master me apna ghar ho.
+
+    Pehle PO ke product aur Item master do alag duniya the — isliye bill me
+    item ki jagah khaali jaati thi, naam description me thus jaata tha, aur
+    kisi product pe unit ka niyam laga hi nahi sakte the. Ab har mapping ke
+    saath ek Item banta hai.
+
+    Stock track nahi hota: "operation me daal do" sirf status badalta hai,
+    maal ghatata nahi — ye Julius ne shuru me hi tay kiya tha.
+    """
+    if mapping.item_id and db.session.get(Item, mapping.item_id):
+        if category_id is not None:
+            item = db.session.get(Item, mapping.item_id)
+            item.category_id = category_id or None
+            _align_item_unit(item)
+        return db.session.get(Item, mapping.item_id)
+
+    name = (mapping.label or mapping.item_code or mapping.raw_size_text or "").strip()
+    if not name:
+        return None
+
+    # Wahi naam pehle se ho toh nayi entry mat banao — usi se jod do.
+    item = Item.query.filter_by(name=name).first()
+    if item is None:
+        settings = Settings.get()
+        item = Item(
+            name=name[:200],
+            unit=settings.default_unit or "pcs",
+            gst_rate=0.0,                 # GST abhi off hai
+            sale_price=0.0,
+            track_stock=False,
+            category_id=category_id or None,
+        )
+        db.session.add(item)
+        db.session.flush()
+    elif category_id is not None:
+        item.category_id = category_id or None
+
+    _align_item_unit(item)
+    mapping.item_id = item.id
+    return item
+
+
+def _align_item_unit(item):
+    """Item ki unit uski category ke hisaab se rakho.
+
+    Category badle aur purani unit us list me na ho toh pehli jaayaz unit pe
+    le aao — warna item apni hi category ke niyam todta rehta hai.
+    """
+    cat = item.category if item.category_id else None
+    if not cat:
+        return
+    allowed = cat.unit_list()
+    if allowed and item.unit not in allowed:
+        item.unit = allowed[0]
 
 
 class POSetting(db.Model):
@@ -770,6 +850,9 @@ def sync_one_folder(service, folder):
         row.raw_size_text = raw_size
         if not row.label:
             row.label = f"{code} ({raw_size})"
+        # Item master me bhi ghar do — bina iske bill me item khaali jaata hai
+        # aur unit ka koi niyam lag hi nahi sakta.
+        ensure_item_for(row)
 
         # Photo tabhi laao jab pehle na aayi ho ya Drive pe badli ho
         changed = (row.drive_file_id != f["id"]
@@ -972,6 +1055,35 @@ def set_line_rate(line, rate):
     line.rate_from_memory = False
     PartyRate.remember(line.mapping, line.qty_unit, line.rate)
     db.session.commit()
+
+
+def set_line_unit(line, unit):
+    """Line ki unit badlo, aur rate ko us unit ke hisaab se dobara dekho.
+
+    Rate hamesha unit ke saath bandha hota hai — piece ka ₹25 roll pe lagana
+    galat hai. Isliye unit badalte hi rate dobara dekha jaata hai, chahe wo
+    yaad se aaya ho ya user ne khud daala ho: dono soorat me wo *purani* unit
+    ka rate tha. Nayi unit ka rate mile toh lag jaata hai, na mile toh line
+    khaali rehti hai taaki poochha ja sake.
+
+    Purana rate kahin gaya nahi — wo apni unit pe yaad hai, aur unit wapas
+    karte hi laut aata hai.
+    """
+    unit = (unit or "").strip()
+    if not unit or unit == line.qty_unit:
+        return False
+    allowed = line.mapping.unit_choices() if line.mapping else []
+    if allowed and unit not in allowed:
+        return False
+    line.qty_unit = unit
+    known = PartyRate.look_up(line.map_id, unit) if line.map_id else None
+    if known and known.rate:
+        line.rate = known.rate
+        line.rate_from_memory = True
+    else:
+        line.rate = 0.0
+        line.rate_from_memory = False
+    return True
 
 
 def make_invoice(po):
@@ -1470,6 +1582,8 @@ def po_line_map(po_id, line_id):
     )
     db.session.add(m)
     db.session.flush()
+    if not m.item_id:
+        ensure_item_for(m)
     line.map_id = m.id
     line.match_status = "manual"
     line.size_mismatch = False
@@ -1484,6 +1598,16 @@ def po_line_map(po_id, line_id):
 def po_set_rates(po_id):
     """Screen se rate daalna — Telegram ka doosra raasta."""
     po = PurchaseOrder.query.get_or_404(po_id)
+
+    # Pehle unit, phir rate — kyunki unit badalne se rate dobara dekha jaata
+    # hai, aur usi submit me type kiya hua rate uske upar aana chahiye.
+    units_changed = 0
+    for line in po.lines:
+        if set_line_unit(line, request.form.get(f"unit_{line.id}", "")):
+            units_changed += 1
+    if units_changed:
+        db.session.commit()
+
     changed = 0
     for line in po.lines:
         raw = (request.form.get(f"rate_{line.id}", "") or "").strip().replace(",", "")
@@ -1500,8 +1624,12 @@ def po_set_rates(po_id):
         if rate != line.rate or line.rate_from_memory:
             set_line_rate(line, rate)
             changed += 1
-    if changed:
+    if changed or units_changed:
         refresh_rate_summary(po)
+    if units_changed:
+        flash(f"{units_changed} line ki unit badal gayi — us unit ka rate dobara dekha gaya hai.",
+              "success")
+    if changed:
         flash(f"{changed} rate save ho gaye — is party ke liye yaad rahenge.", "success")
     return redirect(url_for("po.po_review", po_id=po.id))
 
@@ -1900,8 +2028,46 @@ def mappings_page():
     if cid.isdigit():
         rows = rows.filter_by(customer_id=int(cid))
     rows = rows.order_by(PartyProductMap.customer_id, PartyProductMap.canonical_key).all()
+    # Jo product abhi tak Item master me nahi tha, use abhi ghar de do — screen
+    # khulte hi list saaf ho jaati hai, alag se koi button dabana nahi padta.
+    if any(r.item_id is None for r in rows):
+        for r in rows:
+            if r.item_id is None:
+                ensure_item_for(r)
+        db.session.commit()
     return render_template("po_mappings.html", maps=rows, cid=cid,
+                           categories=Category.query.order_by(Category.name).all(),
                            customers=Customer.query.order_by(Customer.name).all())
+
+
+@po_bp.route("/mappings/categories", methods=["POST"])
+@login_required
+def set_map_categories():
+    """Ek saath kai products ki category set karo.
+
+    Category hi batati hai ki maal kis unit me bikta hai, isliye ye screen
+    ek-ek karke bharne layak nahi — poori table ek form hai, ek hi Save.
+    """
+    changed = 0
+    for m in PartyProductMap.query.all():
+        field = f"cat_{m.id}"
+        if field not in request.form:
+            continue                      # is baar screen pe tha hi nahi
+        raw = (request.form.get(field) or "").strip()
+        new_id = int(raw) if raw.isdigit() else None
+        item = ensure_item_for(m)
+        if item is None or item.category_id == new_id:
+            continue
+        item.category_id = new_id
+        _align_item_unit(item)
+        changed += 1
+    db.session.commit()
+    if changed:
+        flash(f"{changed} product ki category badal gayi.", "success")
+    else:
+        flash("Kuch badla nahi.", "success")
+    return redirect(url_for("po.mappings_page",
+                            customer_id=request.form.get("customer_id") or None))
 
 
 @po_bp.route("/mappings/<int:map_id>/delete", methods=["POST"])

@@ -104,6 +104,11 @@ TRANSLATIONS = {
         "add_category": "Add Category",
         "add_category_sub": "Group items by product type, e.g. Foam Boxes, LD Pouches, Blister Packs, Bubble Wrap",
         "category_name": "Category Name",
+        "category_units": "Units sold in",
+        "category_units_hint": "Comma separated, e.g. pcs, roll. An order line for an item "
+                               "in this category can only use these units, so a roll rate "
+                               "never lands on a piece quantity. Leave blank to allow any unit.",
+        "flash_category_units_saved": "Units saved.",
         "all_categories": "All Categories",
         "no_category": "-- No Category --",
         "no_categories_yet": "No categories yet",
@@ -444,6 +449,11 @@ TRANSLATIONS = {
         "add_category": "श्रेणी जोड़ें",
         "add_category_sub": "सामान को प्रकार के अनुसार समूहित करें, जैसे फोम बॉक्स, एलडी पाउच, ब्लिस्टर पैक, बबल रैप",
         "category_name": "श्रेणी का नाम",
+        "category_units": "किन इकाइयों में बिकता है",
+        "category_units_hint": "कॉमा से अलग करें, जैसे pcs, roll। इस श्रेणी की वस्तु का ऑर्डर "
+                               "केवल इन्हीं इकाइयों में लिखा जा सकेगा, ताकि रोल का भाव पीस पर न लग जाए। "
+                               "खाली छोड़ें तो हर इकाई चलेगी।",
+        "flash_category_units_saved": "इकाइयाँ सहेज दी गईं।",
         "all_categories": "सभी श्रेणियाँ",
         "no_category": "-- कोई श्रेणी नहीं --",
         "no_categories_yet": "अभी तक कोई श्रेणी नहीं है",

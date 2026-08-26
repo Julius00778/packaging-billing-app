@@ -135,6 +135,22 @@ with app.app_context():
     check("sab lines resolve ho gayin", db.session.get(PurchaseOrder, po_id).unresolved_count, 0)
     map_id = m.id
 
+# ------------------------------------------------ har product ka apna Item
+# Pehle PO ke product aur Item master do alag duniya the — isliye bill me item
+# ki jagah khaali jaati thi aur naam description me thus jaata tha.
+with app.app_context():
+    maps = PartyProductMap.query.all()
+    check("har product Item master me hai", [m.item_id is not None for m in maps], [True] * 3)
+    m2 = [m for m in maps if m.label == "Product 2"][0]
+    check("naye Item ka naam product ka naam hai", m2.item.name, "Product 2")
+    check("stock track nahi hota", m2.item.track_stock, False)
+    check("GST abhi off hai", m2.item.gst_rate, 0.0)
+    # dobara chalane se duplicate Item nahi banta
+    before = Item.query.count()
+    po_module.ensure_item_for(m2)
+    db.session.commit()
+    check("dobara jodne se naya item nahi banta", Item.query.count(), before)
+
 ok("GET /po/map/<id>/image", client.get(f"/po/map/{map_id}/image"))
 r = ok("GET /po/map/<id>/thumb", client.get(f"/po/map/{map_id}/thumb"))
 check("thumb response chhota hai", len(r.data) <= 20 * 1024)
@@ -197,6 +213,91 @@ with app.app_context():
     po.lines[0].qty = saved_qty
     db.session.commit()
     check("qty wapas aa gayi", db.session.get(PurchaseOrder, po_id).no_qty_count, 0)
+
+# -------------------------------------------------------- category + unit
+# Category batati hai ki maal kis unit me bikta hai. Foam piece ya roll me,
+# scrap sirf kilo me — is rok ke bina roll ka rate piece pe lag sakta hai.
+from models import Category                                  # noqa: E402
+with app.app_context():
+    foam = Category.query.filter_by(name="Foam").first()
+    check("shuruaati categories ban gayin", foam is not None)
+    check("foam ki units", foam.unit_list(), ["pcs", "roll"])
+    check("scrap sirf kilo me",
+          Category.query.filter_by(name="Scrap").first().unit_list(), ["kg"])
+    check("category na ho toh koi rok nahi", Category(name="x").unit_list(), [])
+    foam_id = foam.id
+    map_ids = [m.id for m in PartyProductMap.query.order_by(PartyProductMap.id).all()]
+
+r = ok("GET /po/mappings", client.get("/po/mappings"))
+check("category tay na hone ki baat likhi hai",
+      "category abhi tay nahi hai" in r.data.decode("utf8", "ignore"))
+
+# Categories screen se units badalna
+r = ok("GET /items/categories", client.get("/items/categories"))
+check("units ka khana screen pe hai", 'name="units_' in r.data.decode("utf8", "ignore"))
+ok("units badlo", client.post("/items/categories/units",
+                              data={f"units_{foam_id}": "pcs, roll, sheet"},
+                              follow_redirects=True))
+with app.app_context():
+    check("nayi units save hui",
+          db.session.get(Category, foam_id).unit_list(), ["pcs", "roll", "sheet"])
+ok("units wapas", client.post("/items/categories/units",
+                              data={f"units_{foam_id}": "pcs, roll"},
+                              follow_redirects=True))
+
+ok("sab products ko Foam me daalo",
+   client.post("/po/mappings/categories",
+               data={f"cat_{mid}": str(foam_id) for mid in map_ids},
+               follow_redirects=True))
+with app.app_context():
+    m = db.session.get(PartyProductMap, map_ids[0])
+    check("category lag gayi", m.item.category_id, foam_id)
+    check("ab sirf foam wali units", m.unit_choices(), ["pcs", "roll"])
+    check("item ki unit category ke andar hai", m.item.unit in ["pcs", "roll"], True)
+
+# unit badlo — us unit ka apna rate hona chahiye, piece wala nahi
+with app.app_context():
+    line = db.session.get(PurchaseOrder, po_id).lines[0]
+    line_id, old_unit = line.id, line.qty_unit
+    po_module.set_line_rate(line, 30.0)
+ok("unit ko roll karo",
+   client.post(f"/po/{po_id}/rates", data={f"unit_{line_id}": "roll"},
+               follow_redirects=True))
+with app.app_context():
+    line = db.session.get(POLine, line_id)
+    check("unit badal gayi", line.qty_unit, "roll")
+    check("piece wala rate roll pe nahi chipka", line.rate, 0.0)
+    check("piece wala rate ab bhi yaad hai",
+          po_module.PartyRate.look_up(line.map_id, old_unit).rate, 30.0)
+
+ok("roll ka apna rate do",
+   client.post(f"/po/{po_id}/rates", data={f"rate_{line_id}": "900"},
+               follow_redirects=True))
+with app.app_context():
+    line = db.session.get(POLine, line_id)
+    check("roll ka rate laga", line.rate, 900.0)
+ok("wapas piece karo",
+   client.post(f"/po/{po_id}/rates", data={f"unit_{line_id}": old_unit},
+               follow_redirects=True))
+with app.app_context():
+    line = db.session.get(POLine, line_id)
+    check("unit wapas aa gayi", line.qty_unit, old_unit)
+    check("piece ka purana rate khud bhar gaya", line.rate, 30.0)
+    check("aur wo yaad se aaya hai", line.rate_from_memory, True)
+
+# category ke bahar ki unit nahi lag sakti
+ok("kilo me daalne ki koshish",
+   client.post(f"/po/{po_id}/rates", data={f"unit_{line_id}": "kg"},
+               follow_redirects=True))
+with app.app_context():
+    check("foam kilo me nahi bikta — unit nahi badli",
+          db.session.get(POLine, line_id).qty_unit, old_unit)
+
+with app.app_context():
+    line = db.session.get(POLine, line_id)
+    line.rate = 0.0
+    line.rate_from_memory = False
+    db.session.commit()
 
 # ------------------------------------------------------------------- rate
 # Rate ke bina order aage nahi badhna chahiye — bill isi se banta hai.
@@ -272,6 +373,15 @@ with app.app_context():
     check("GST abhi off hai", (inv.cgst_amount, inv.sgst_amount, inv.igst_amount), (0.0, 0.0, 0.0))
     check("invoice number mil gaya", bool(inv.invoice_no))
     check("bill me order ka zikr", "PO-4471" in (inv.notes or ""))
+    # Bill ki har line asli Item se judi ho — warna invoice edit me Item ka
+    # khana khaali rehta hai aur naam sirf description me dikhta hai.
+    check("bill ki har line ka apna item hai",
+          [bool(li.item_id) for li in inv.items], [True] * len(inv.items))
+    check("bill ki line ka item wahi hai jo product ka hai",
+          sorted(li.item_id for li in inv.items),
+          sorted(l.mapping.item_id for l in po.lines))
+    check("bill me unit line ki unit hai",
+          sorted(li.unit for li in inv.items), sorted(l.qty_unit for l in po.lines))
     old_inv_id = po.invoice_id
     inv_no = inv.invoice_no
     po_module.move_status(po, "in_production")
@@ -280,6 +390,18 @@ with app.app_context():
     check("ek hi bill bana", Invoice.query.filter_by(customer_id=cust_id).count(), 1)
 
 ok("bill print khulta hai", client.get(f"/invoices/{old_inv_id}/print"))
+
+# Invoice edit screen pe item ka naam Item ke khane me aana chahiye
+r = ok("bill edit khulta hai", client.get(f"/invoices/{old_inv_id}/edit"))
+body = r.data.decode("utf8", "ignore")
+check("edit me koi line item_id null nahi hai", "item_id: null" not in body)
+with app.app_context():
+    names = [db.session.get(Item, li.item_id).name
+             for li in db.session.get(Invoice, old_inv_id).items]
+# Item ka dropdown JS se bharta hai, isliye list wahin se check karo
+master = ok("item master API", client.get("/api/items")).get_json()
+master_names = [it["name"] for it in master]
+check("bill ke saare item master list me hain", all(n in master_names for n in names))
 
 # ------------------------------------------------------- accountant ka print page
 r = ok("GET /po/bills", client.get("/po/bills"))

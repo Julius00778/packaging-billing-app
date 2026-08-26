@@ -17,7 +17,23 @@ from po_module import po_bp
 
 # Common packaging-firm units. Item.unit stays a free-text column — this list just
 # drives the dropdown; "Other" in the form reveals a text box for anything not listed.
-COMMON_UNITS = ["pcs", "box", "bundle", "roll", "kg", "mtr", "ltr", "dozen", "set", "sheet"]
+COMMON_UNITS = ["pcs", "box", "bundle", "roll", "kg", "mtr", "ltr", "dozen",
+                "set", "sheet", "pouch", "carton"]
+
+# Har tarah ka maal apni hi unit me jaata hai — foam piece ya roll me, scrap
+# sirf tol ke. Ye list nayi installation pe ek baar ban jaati hai; baad me
+# Categories screen se badli ja sakti hai. Pehle se maujood category ko haath
+# nahi lagaya jaata.
+SEED_CATEGORY_UNITS = [
+    ("Foam",         "pcs, roll"),
+    ("Thermacol",    "pcs"),
+    ("HM",           "pouch, roll"),
+    ("Bubble",       "pouch, roll"),
+    ("Tape",         "carton"),
+    ("Scrap",        "kg"),
+    ("Stretch roll", "kg"),
+    ("Blister",      "pcs"),
+]
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key-in-production")
@@ -328,13 +344,26 @@ def categories_page():
         elif Category.query.filter(db.func.lower(Category.name) == name.lower()).first():
             flash(t("flash_category_exists"), "error")
         else:
-            db.session.add(Category(name=name))
+            db.session.add(Category(name=name, units=request.form.get("units", "").strip()))
             db.session.commit()
             flash(t("flash_category_added"), "success")
         return redirect(url_for("categories_page"))
     cats = Category.query.order_by(Category.name).all()
     counts = {c.id: Item.query.filter_by(category_id=c.id).count() for c in cats}
     return render_template("categories.html", categories=cats, counts=counts)
+
+
+@app.route("/items/categories/units", methods=["POST"])
+@login_required
+def category_units():
+    """Har category ki units ek saath save — poori table ek hi form hai."""
+    for c in Category.query.all():
+        field = f"units_{c.id}"
+        if field in request.form:
+            c.units = (request.form.get(field) or "").strip()
+    db.session.commit()
+    flash(t("flash_category_units_saved"), "success")
+    return redirect(url_for("categories_page"))
 
 
 @app.route("/items/categories/<int:cid>/delete", methods=["POST"])
@@ -1179,10 +1208,57 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "po_line", "rate_from_memory", "rate_from_memory BOOLEAN DEFAULT FALSE")
     _add_column_if_missing(inspector, "po_line", "tg_rate_msg_id", "tg_rate_msg_id VARCHAR(40) DEFAULT ''")
     _add_column_if_missing(inspector, "purchase_order", "bill_printed_at", "bill_printed_at TIMESTAMP")
+    _add_column_if_missing(inspector, "category", "units", "units VARCHAR(200) DEFAULT ''")
 
     # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
     # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.
     _rename_po_status(inspector, "confirmed", "made")
+    _seed_category_units(inspector)
+    _link_products_to_items(inspector)
+
+
+def _seed_category_units(inspector):
+    """Categories ki shuruaati list.
+
+    Do halat sambhalni hoti hain. Category hai hi nahi — bana do. Ya category
+    pehle se hai par uski units khaali hain (kyunki `units` column abhi juda
+    hai) — bhar do. Jis category me user ne khud units daal rakhi hain use
+    haath nahi lagate.
+    """
+    if "category" not in inspector.get_table_names():
+        return
+    touched = 0
+    for name, units in SEED_CATEGORY_UNITS:
+        row = Category.query.filter_by(name=name).first()
+        if row is None:
+            db.session.add(Category(name=name, units=units))
+            touched += 1
+        elif not (row.units or "").strip():
+            row.units = units
+            touched += 1
+    if touched:
+        db.session.commit()
+
+
+def _link_products_to_items(inspector):
+    """Purane PO products jo Item master me the hi nahi — unke Item bana do.
+
+    Iske bina bill me item ki jagah khaali jaati thi aur naam description me
+    thus jaata tha. Ek baar ka sudhaar; dobara chalane par kuch nahi milta.
+    """
+    tables = inspector.get_table_names()
+    if "party_product_map" not in tables or "item" not in tables:
+        return
+    try:
+        from po_module import PartyProductMap, ensure_item_for
+    except Exception:
+        return
+    rows = PartyProductMap.query.filter(PartyProductMap.item_id.is_(None)).all()
+    if not rows:
+        return
+    for row in rows:
+        ensure_item_for(row)
+    db.session.commit()
 
 
 def _rename_po_status(inspector, old, new):

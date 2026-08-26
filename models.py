@@ -115,10 +115,21 @@ class Customer(db.Model):
 
 
 class Category(db.Model):
-    """Product category/group, e.g. 'Foam Boxes', 'LD Pouches', 'Blister Packs', 'Bubble Wrap'."""
+    """Product category/group, e.g. 'Foam Boxes', 'LD Pouches', 'Blister Packs', 'Bubble Wrap'.
+
+    `units` holds the units this kind of product is actually sold in, comma
+    separated — foam goes out as pieces or rolls, scrap only by weight. An
+    order line for an item in this category may only pick from this list, so a
+    roll rate can never land on a piece quantity.
+    """
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
+    units = db.Column(db.String(200), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def unit_list(self):
+        """Allowed units, in the order they were entered. Empty means 'no rule'."""
+        return [u.strip() for u in (self.units or "").split(",") if u.strip()]
 
 
 class Item(db.Model):
