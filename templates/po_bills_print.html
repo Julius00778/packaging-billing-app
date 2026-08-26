@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>{{ rows|length }} bill — {{ sel_date }}</title>
+<title>{{ t('po_bills_count', n=rows|length) }} — {{ sel_date }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <style>
   /* Har bill apne alag kaagaz pe. Aakhri ke baad khaali page na nikle. */
@@ -17,11 +17,11 @@
 
 <div class="print-trigger no-print">
   <button class="btn btn-primary" onclick="window.print()">
-    {{ rows|length }} bill print karo
+    {{ t('po_print_n_bills', n=rows|length) }}
   </button>
-  <button class="btn btn-ghost" type="button" onclick="window.close()">Band karo</button>
+  <button class="btn btn-ghost" type="button" onclick="window.close()">{{ t('po_close') }}</button>
   <span style="margin-left:10px;color:#5B6378;font-size:12px;">
-    Har bill do copy me — party aur office. Print ke baad wapas jaake "Ho gaya" laga dena.
+    {{ t('po_print_sheet_note') }}
   </span>
 </div>
 

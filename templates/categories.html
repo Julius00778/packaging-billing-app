@@ -33,7 +33,7 @@
 <td>
 {% if current_user.is_owner %}
 <a class="btn btn-ghost btn-sm" href="#"
-   onclick="event.preventDefault(); if(confirm('{{ t('confirm_delete') }}')) document.getElementById('delcat{{ c.id }}').submit();">{{ t('delete') }}</a>
+   onclick="event.preventDefault(); if(confirm({{ t('confirm_delete')|tojson }})) document.getElementById('delcat{{ c.id }}').submit();">{{ t('delete') }}</a>
 {% endif %}
 </td>
 </tr>

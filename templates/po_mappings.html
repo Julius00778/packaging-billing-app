@@ -1,29 +1,28 @@
 {% extends "base.html" %}
 {% set active = "po" %}
-{% block title %}Products{% endblock %}
+{% block title %}{{ t('po_products') }}{% endblock %}
 {% block content %}
 
 <div class="toolbar">
   <form method="GET" style="display:flex;gap:10px;flex:1;">
     <select name="customer_id">
-      <option value="">All parties</option>
+      <option value="">{{ t('po_all_parties') }}</option>
       {% for c in customers %}
         <option value="{{ c.id }}" {% if cid == c.id|string %}selected{% endif %}>{{ c.name }}</option>
       {% endfor %}
     </select>
-    <button class="btn btn-ghost" type="submit">Filter</button>
+    <button class="btn btn-ghost" type="submit">{{ t('po_filter') }}</button>
   </form>
-  <a class="btn btn-ghost" href="{{ url_for('po.drive_page') }}">Drive samples</a>
-  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back to POs</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.drive_page') }}">{{ t('po_drive_samples') }}</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_all_orders') }}</a>
 </div>
 
 {% set uncat = maps | rejectattr('item.category_id') | list | length %}
 {% if maps and uncat %}
   <div class="card panel-pad" style="margin-bottom:14px;">
     <div style="font-size:13px;">
-      <strong>{{ uncat }} product ki category abhi tay nahi hai.</strong>
-      Category se hi pata chalta hai ki maal kis unit me bikta hai — foam piece ya roll me,
-      scrap sirf kilo me. Jab tak khaali hai, order me har unit khuli rehti hai.
+      <strong>{{ t('po_uncategorised', n=uncat) }}</strong>
+      {{ t('po_uncategorised_hint') }}
     </div>
   </div>
 {% endif %}
@@ -33,8 +32,10 @@
 <div class="card panel-pad">
   <div class="table-wrap">
     <table>
-      <thead><tr><th></th><th>Party</th><th>Code</th><th>Size as written</th>
-                 <th>Product</th><th>Category</th><th>Units</th><th>Used</th><th></th></tr></thead>
+      <thead><tr><th></th><th>{{ t('po_party') }}</th><th>{{ t('po_code') }}</th>
+                 <th>{{ t('po_size_as_written') }}</th><th>{{ t('po_product') }}</th>
+                 <th>{{ t('po_category') }}</th><th>{{ t('po_units') }}</th>
+                 <th>{{ t('po_used') }}</th><th></th></tr></thead>
       <tbody>
       {% for m in maps %}
         <tr>
@@ -52,7 +53,7 @@
           <td>{{ m.label }}</td>
           <td>
             <select name="cat_{{ m.id }}">
-              <option value="">— tay nahi —</option>
+              <option value="">{{ t('po_not_set') }}</option>
               {% for c in categories %}
                 <option value="{{ c.id }}"
                   {% if m.item and m.item.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
@@ -60,14 +61,14 @@
             </select>
           </td>
           <td class="mono" style="font-size:11px;color:var(--ink-faint);">
-            {% if m.unit_choices() %}{{ m.unit_choices()|join(', ') }}{% else %}sab{% endif %}
+            {% if m.unit_choices() %}{{ m.unit_choices()|join(', ') }}{% else %}{{ t('po_units_any') }}{% endif %}
           </td>
           <td class="num">{{ m.times_used }}</td>
           <td>
             {% if current_user.is_owner %}
               <a class="btn btn-ghost btn-sm" href="#"
                  onclick="event.preventDefault();
-                          if(confirm('Delete this mapping?')) document.getElementById('del{{ m.id }}').submit();">Delete</a>
+                          if(confirm({{ t('confirm_delete')|tojson }})) document.getElementById('del{{ m.id }}').submit();">{{ t('delete') }}</a>
             {% endif %}
           </td>
         </tr>
@@ -79,14 +80,14 @@
   {% if maps %}
     <div class="toolbar" style="margin:12px 0 0;">
       <div style="flex:1;font-size:12px;color:var(--ink-faint);">
-        Category badal ke Save dabao — item ki unit apne aap us category ki pehli unit pe aa jayegi.
+        {{ t('po_category_save_hint') }}
       </div>
-      <button class="btn btn-primary" type="submit">Save</button>
+      <button class="btn btn-primary" type="submit">{{ t('po_save') }}</button>
     </div>
   {% else %}
     <div class="empty-state">
-      <div class="big">Abhi koi product nahi</div>
-      <div>Drive sync se, ya pehla PO review karte waqt jo sizes map karoge, wo yahan jama honge.</div>
+      <div class="big">{{ t('po_products_empty') }}</div>
+      <div>{{ t('po_products_empty_hint') }}</div>
     </div>
   {% endif %}
 </div>

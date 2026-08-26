@@ -128,6 +128,17 @@
 </form>
 </div>
 
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('po_setup_title') }}</h2>
+<p class="section-sub">{{ t('po_setup_sub') }}</p>
+<div class="btn-row">
+<a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">{{ t('po_products') }}</a>
+<a class="btn btn-ghost" href="{{ url_for('po.drive_page') }}">{{ t('po_drive_samples') }}</a>
+<a class="btn btn-ghost" href="{{ url_for('po.telegram_page') }}">{{ t('po_telegram') }}</a>
+<a class="btn btn-ghost" href="{{ url_for('categories_page') }}">{{ t('categories') }}</a>
+</div>
+</div>
+
 <div class="card panel-pad">
 <h2 class="section-title">{{ t('data_backup') }}</h2>
 <p class="section-sub">{{ t('data_backup_hint') }}</p>

@@ -1,27 +1,27 @@
 {% extends "base.html" %}
 {% set active = "po" %}
-{% block title %}PO {{ po.po_number }}{% endblock %}
+{% block title %}{{ po.po_number }}{% endblock %}
 {% block content %}
 
 <div class="toolbar">
   <div style="flex:1;">
-    <div style="font-weight:600;">PO {{ po.po_number }} — {{ po.customer.name }}</div>
+    <div style="font-weight:600;">{{ po.po_number }} — {{ po.customer.name }}</div>
     <div style="font-size:12px;color:var(--ink-faint);">
-      {{ po.po_date }} · via {{ po.source }} · sizes read as {{ party_unit }}
-      {% if mixed %} · <strong>this party orders more than one product per size</strong>{% endif %}
+      {{ po.po_date }} · {{ t('po_via') }} {{ po.source }} · {{ t('po_sizes_read_as') }} {{ party_unit }}
+      {% if mixed %} · <strong>{{ t('po_mixed_warning') }}</strong>{% endif %}
     </div>
   </div>
   <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
-    {{ status_label.get(po.status, po.status) }}
+    {{ t('po_status_' + po.status) }}
   </span>
-  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_back') }}</a>
 </div>
 
 <div style="display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:16px;align-items:start;">
 
   <!-- Left: the original PO, always visible while reviewing -->
   <div class="card panel-pad">
-    <div style="font-weight:600;margin-bottom:8px;">Original PO</div>
+    <div style="font-weight:600;margin-bottom:8px;">{{ t('po_original_order') }}</div>
     {% if po.has_scan %}
       {% if po.scan_mime.startswith('image/') %}
         <a href="{{ url_for('po.po_scan', po_id=po.id) }}" target="_blank">
@@ -30,16 +30,16 @@
         </a>
       {% else %}
         <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_scan', po_id=po.id) }}" target="_blank">
-          Open {{ po.scan_name or 'attachment' }}
+          {{ t('po_open_attachment', name=po.scan_name or t('po_attachment')) }}
         </a>
       {% endif %}
     {% else %}
-      <div style="font-size:12px;color:var(--ink-faint);">Koi scan attach nahi hua.</div>
+      <div style="font-size:12px;color:var(--ink-faint);">{{ t('po_no_scan') }}</div>
     {% endif %}
 
-    <div style="font-weight:600;margin:14px 0 6px;">As typed</div>
+    <div style="font-weight:600;margin:14px 0 6px;">{{ t('po_as_typed') }}</div>
     <pre class="mono" style="white-space:pre-wrap;font-size:12px;margin:0;">{{ po.raw_text }}</pre>
-    {% if po.note %}<div style="margin-top:10px;font-size:12px;">Note: {{ po.note }}</div>{% endif %}
+    {% if po.note %}<div style="margin-top:10px;font-size:12px;">{{ t('po_note') }}: {{ po.note }}</div>{% endif %}
   </div>
 
   <!-- Right: line by line -->
@@ -55,50 +55,50 @@
           <span>× {{ line.qty|round(2) }} {{ line.qty_unit }}</span>
           {% if line.map_id %}
             {% if line.match_status == 'code' %}
-              <span class="badge paid">matched by item code</span>
+              <span class="badge paid">{{ t('po_matched_code') }}</span>
             {% elif line.match_status == 'size' %}
-              <span class="badge paid">matched by size</span>
+              <span class="badge paid">{{ t('po_matched_size') }}</span>
             {% else %}
-              <span class="badge paid">chosen by operator</span>
+              <span class="badge paid">{{ t('po_chosen_operator') }}</span>
             {% endif %}
           {% elif line.match_status == 'multiple' %}
-            <span class="badge partial">more than one product fits — pick one</span>
+            <span class="badge partial">{{ t('po_many_fit') }}</span>
           {% else %}
-            <span class="badge unpaid">new — map it once</span>
+            <span class="badge unpaid">{{ t('po_new_map_once') }}</span>
           {% endif %}
           {% if line.size_mismatch %}
-            <span class="badge unpaid">code aur size match nahi — check karo</span>
+            <span class="badge unpaid">{{ t('po_mismatch_badge') }}</span>
           {% endif %}
           {% if line.unit_source == 'magnitude' %}
-            <span class="badge challan">unit guessed — check this</span>
+            <span class="badge challan">{{ t('po_unit_guessed') }}</span>
           {% endif %}
         </div>
         <div class="mono" style="font-size:11px;color:var(--ink-faint);margin-top:4px;">
-          from PO: {{ line.raw_text }}{% if line.canonical_key %} · key {{ line.canonical_key }}{% endif %}
+          {{ t('po_from_order') }}: {{ line.raw_text }}{% if line.canonical_key %} · {{ t('po_key') }} {{ line.canonical_key }}{% endif %}
         </div>
         {% if line.size_mismatch and line.mapping %}
           <div style="font-size:12px;color:var(--ink-faint);margin-top:4px;">
-            PO me <span class="mono">{{ line.raw_size_text }}</span> likha hai, par
-            <span class="mono">{{ line.mapping.item_code }}</span> ka size
-            <span class="mono">{{ line.mapping.raw_size_text or line.mapping.canonical_key }}</span> hai.
-            Photo dekh ke tay karo — galat ho toh line theek karke PO dobara banao.
+            {{ t('po_mismatch_detail',
+                   written=line.raw_size_text,
+                   code=line.mapping.item_code,
+                   actual=line.mapping.raw_size_text or line.mapping.canonical_key) }}
           </div>
         {% endif %}
 
         {% if line.map_id %}
           <div style="display:flex;gap:12px;align-items:center;margin-top:12px;">
             {% if line.mapping.has_image %}
-              <a href="{{ url_for('po.map_image', map_id=line.mapping.id) }}" target="_blank" title="Bada karke dekho">
+              <a href="{{ url_for('po.map_image', map_id=line.mapping.id) }}" target="_blank" title="{{ t('po_zoom') }}">
                 <img src="{{ url_for('po.map_thumb', map_id=line.mapping.id) }}" alt="" loading="lazy"
                      style="width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
               </a>
             {% else %}
-              <div style="width:96px;height:96px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-faint);">no photo</div>
+              <div style="width:96px;height:96px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-faint);">{{ t('po_no_photo') }}</div>
             {% endif %}
             <div>
               <div style="font-weight:600;">{{ line.mapping.label }}</div>
-              {% if line.mapping.item %}<div style="font-size:12px;color:var(--ink-faint);">Item: {{ line.mapping.item.name }}</div>{% endif %}
-              <div style="font-size:11px;color:var(--ink-faint);">used {{ line.mapping.times_used }} times before</div>
+              {% if line.mapping.item %}<div style="font-size:12px;color:var(--ink-faint);">{{ t('po_item') }}: {{ line.mapping.item.name }}</div>{% endif %}
+              <div style="font-size:11px;color:var(--ink-faint);">{{ t('po_used_before', n=line.mapping.times_used) }}</div>
             </div>
           </div>
         {% endif %}
@@ -115,12 +115,12 @@
                   {% endif %}
                   <span>
                     <span style="font-weight:600;">{{ c.label }}</span><br>
-                    <span style="font-size:11px;color:var(--ink-faint);">used {{ c.times_used }}×</span>
+                    <span style="font-size:11px;color:var(--ink-faint);">{{ t('po_used_times', n=c.times_used) }}</span>
                   </span>
                 </label>
               {% endfor %}
             </div>
-            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">Use this one</button>
+            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">{{ t('po_use_this') }}</button>
           </form>
         {% endif %}
 
@@ -129,26 +129,26 @@
                 enctype="multipart/form-data" style="margin-top:12px;">
             <div class="form-grid three">
               <div class="field">
-                <label>Item code</label>
-                <input type="text" name="item_code" value="{{ line.item_code }}" placeholder="e.g. HM01">
+                <label>{{ t('po_item_code') }}</label>
+                <input type="text" name="item_code" value="{{ line.item_code }}" placeholder="HM01">
               </div>
               <div class="field">
-                <label>Product name *</label>
-                <input type="text" name="label" required placeholder="e.g. 2mm EPE Sheet 12x18">
+                <label>{{ t('po_product_name') }} *</label>
+                <input type="text" name="label" required placeholder="2mm EPE Sheet 12x18">
               </div>
               <div class="field">
-                <label>Link to item (optional)</label>
+                <label>{{ t('po_link_item') }}</label>
                 <select name="item_id">
-                  <option value="">— none —</option>
+                  <option value="">{{ t('po_none') }}</option>
                   {% for it in items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}
                 </select>
               </div>
               <div class="field">
-                <label>Photo (phone se seedha chalega)</label>
+                <label>{{ t('po_photo_label') }}</label>
                 <input type="file" name="image" accept="image/*">
               </div>
             </div>
-            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">Save mapping</button>
+            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px;">{{ t('po_save_product') }}</button>
           </form>
         {% endif %}
       </div>
@@ -156,16 +156,16 @@
 
     {% if po.status == 'pending' and not po.unresolved_count %}
       <div class="card panel-pad" style="margin-bottom:12px;">
-        <div style="font-weight:600;margin-bottom:4px;">Rate</div>
+        <div style="font-weight:600;margin-bottom:4px;">{{ t('po_rate') }}</div>
         <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
-          Bill isi se banega. Jo rate aap yahan daaloge wo is party ke liye us code
-          aur us unit pe yaad rah jayega — agli baar apne aap bhar jayega.
+          {{ t('po_rate_hint') }}
         </div>
         <form method="POST" action="{{ url_for('po.po_set_rates', po_id=po.id) }}">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Code</th><th>Product</th><th>Qty</th><th>Unit</th>
-                         <th>Rate</th><th>Amount</th></tr></thead>
+              <thead><tr><th>{{ t('po_code') }}</th><th>{{ t('po_product') }}</th>
+                         <th>{{ t('po_qty') }}</th><th>{{ t('po_unit') }}</th>
+                         <th>{{ t('po_rate') }}</th><th>{{ t('po_amount') }}</th></tr></thead>
               <tbody>
               {% for line in po.lines %}
                 {% set choices = line.mapping.unit_choices() if line.mapping else [] %}
@@ -187,9 +187,9 @@
                   </td>
                   <td style="width:130px;">
                     <input type="number" step="0.01" min="0" name="rate_{{ line.id }}"
-                           value="{{ line.rate or '' }}" placeholder="per {{ line.qty_unit }}">
+                           value="{{ line.rate or '' }}" placeholder="{{ t('po_per_unit', unit=line.qty_unit) }}">
                     {% if line.rate_from_memory %}
-                      <div style="font-size:11px;color:var(--ink-faint);">pichli baar wala</div>
+                      <div style="font-size:11px;color:var(--ink-faint);">{{ t('po_from_last_time') }}</div>
                     {% endif %}
                   </td>
                   <td class="num mono">{{ '₹%.0f'|format(line.amount) if line.rate else '—' }}</td>
@@ -202,30 +202,30 @@
             <div style="flex:1;font-weight:600;">
               {% if po.no_rate_count %}
                 <span style="color:var(--ink-faint);font-weight:400;font-size:13px;">
-                  {{ po.no_rate_count }} line ka rate baaki hai
+                  {{ t('po_rates_left', n=po.no_rate_count) }}
                 </span>
               {% else %}
-                Total ₹{{ '%.0f'|format(po.total) }}
+                {{ t('po_total') }} ₹{{ '%.0f'|format(po.total) }}
               {% endif %}
             </div>
-            <button class="btn btn-ghost btn-sm" type="submit">Rate save karo</button>
+            <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save_rates') }}</button>
           </div>
         </form>
         {% if has_owner_chat and po.no_rate_count %}
           <form method="POST" action="{{ url_for('po.po_ask_rates', po_id=po.id) }}"
                 style="margin-top:8px;">
-            <button class="btn btn-ghost btn-sm" type="submit">Telegram pe poochho</button>
+            <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_ask_on_telegram') }}</button>
           </form>
         {% endif %}
       </div>
     {% elif po.invoice_id %}
       <div class="card panel-pad" style="margin-bottom:12px;">
         <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
-          <span style="font-weight:600;">Bill ban gaya</span>
+          <span style="font-weight:600;">{{ t('po_bill_made') }}</span>
           <span class="mono">{{ invoice.invoice_no }}</span>
           <span class="mono">₹{{ '%.0f'|format(invoice.grand_total) }}</span>
           <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=invoice.id) }}"
-             target="_blank">Print</a>
+             target="_blank">{{ t('po_print') }}</a>
         </div>
       </div>
     {% endif %}
@@ -234,54 +234,57 @@
       {% if po.status == 'pending' %}
         {% if po.unresolved_count %}
           <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
-            {{ po.unresolved_count }} line abhi map nahi hui — operator ko tabhi bhejenge jab sab ho jayen.
+            {{ t('po_unmapped_left', n=po.unresolved_count) }}
           </div>
         {% elif po.no_qty_count %}
           <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
-            {{ po.no_qty_count }} line me qty nahi likhi — kitne banane hain wo bhare bina
-            bill khaali (₹0) ban jayega.
+            {{ t('po_qty_missing', n=po.no_qty_count) }}
           </div>
         {% elif po.no_rate_count %}
           <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
-            {{ po.no_rate_count }} line ka rate baaki hai — bill isi se banta hai,
-            isliye rate aane tak operator ko nahi bhejenge.
+            {{ t('po_rate_missing', n=po.no_rate_count) }}
+          </div>
+        {% elif has_owner_chat and not po.rates_ok_at %}
+          <div style="color:var(--ink-faint);font-size:13px;margin-bottom:10px;">
+            {{ t('po_rates_wait') }}
           </div>
         {% else %}
           <div style="font-size:13px;margin-bottom:10px;">
-            Sab theek lage toh operator group me bhej do — photo ke saath card chala jayega.
+            {% if po.rates_ok_at %}{{ t('po_rates_ok') }} {% endif %}{{ t('po_all_good') }}
           </div>
         {% endif %}
         <div class="toolbar" style="margin:0;">
           <form method="POST" action="{{ url_for('po.po_confirm', po_id=po.id) }}" style="display:inline;">
             <button class="btn btn-primary" type="submit"
-                    {% if po.unresolved_count or po.no_qty_count or po.no_rate_count %}disabled{% endif %}>
-              Operator ko bhejo
+                    {% if po.unresolved_count or po.no_qty_count or po.no_rate_count
+                          or (has_owner_chat and not po.rates_ok_at) %}disabled{% endif %}>
+              {{ t('po_send_operator') }}
             </button>
           </form>
           <form method="POST" action="{{ url_for('po.po_reject', po_id=po.id) }}" style="display:inline;"
-                onsubmit="return confirm('Ye order cancel kar dein?');">
-            <button class="btn btn-ghost" type="submit">Cancel order</button>
+                onsubmit="return confirm({{ t('po_confirm_cancel')|tojson }});">
+            <button class="btn btn-ghost" type="submit">{{ t('po_cancel_order') }}</button>
           </form>
         </div>
 
       {% else %}
         <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
-          <span style="font-weight:600;">Abhi:</span>
+          <span style="font-weight:600;">{{ t('po_now') }}</span>
           <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
-            {{ status_label.get(po.status, po.status) }}
+            {{ t('po_status_' + po.status) }}
           </span>
           {% if po.operator_name %}
             <span style="font-size:12px;color:var(--ink-faint);">{{ po.operator_name }}</span>
           {% endif %}
         </div>
         <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
-          Aage badhana operator ka kaam hai — wo Telegram pe karega. Yahan se sirf galti
-          sudhaaro: peeche le jao, ya order cancel kar do.
+          {{ t('po_operator_next') }}
         </div>
         <div class="toolbar" style="margin:0;flex-wrap:wrap;">
-          {% for target, label in status_moves %}
+          {% for target in status_moves %}
+            {% set label = t('po_move_' + target) %}
             <form method="POST" action="{{ url_for('po.po_set_status', po_id=po.id) }}" style="display:inline;"
-                  onsubmit="return confirm('Order ko {{ label }} karna hai?');">
+                  onsubmit="return confirm({{ t('po_confirm_move', label=label)|tojson }});">
               <input type="hidden" name="to" value="{{ target }}">
               <button class="btn btn-ghost btn-sm" type="submit">{{ label }}</button>
             </form>

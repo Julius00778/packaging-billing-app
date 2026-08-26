@@ -1,50 +1,58 @@
 {% extends "base.html" %}
 {% set active = "po" %}
-{% block title %}Purchase Orders{% endblock %}
+{% block title %}{{ t('po_orders') }}{% endblock %}
 {% block content %}
 
+{# Ek hi manzil: Orders. Setup wale link (Products, Drive, Telegram) Settings me
+   hain — wo roz ka kaam nahi hain. Yahan sirf wahi rehta hai jo roz chahiye. #}
 <div class="toolbar">
-  <div style="flex:1;font-weight:600;">Purchase Orders</div>
-  <a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">Products</a>
-  <a class="btn btn-ghost" href="{{ url_for('po.telegram_page') }}">Telegram</a>
-  <a class="btn btn-ghost" href="{{ url_for('po.po_dispatch') }}">Dispatch list</a>
-  <a class="btn btn-ghost" href="{{ url_for('po.bills_page') }}">Bill print</a>
-  <a class="btn btn-primary" href="{{ url_for('po.po_new') }}">+ New PO</a>
+  <div style="flex:1;font-weight:600;">{{ t('po_orders') }}</div>
+  <a class="btn btn-primary" href="{{ url_for('po.po_new') }}">+ {{ t('po_new_order') }}</a>
 </div>
 
 <div class="toolbar" style="margin-top:-8px;flex-wrap:wrap;">
-  {% for key, label in [('pending','Review me'), ('with_operator','Operator ke paas'),
-                        ('in_production','Operation me'), ('made','Ban gaya'),
-                        ('dispatched','Dispatch ho gaya'), ('rejected','Cancel')] %}
+  {% for key in ['pending','with_operator','in_production','made','dispatched','rejected'] %}
     <a class="btn btn-ghost btn-sm {% if status==key %}active{% endif %}"
-       href="{{ url_for('po.po_list', status=key) }}">{{ label }} ({{ counts[key] }})</a>
+       href="{{ url_for('po.po_list', status=key) }}">{{ t('po_status_' + key) }} ({{ counts[key] }})</a>
   {% endfor %}
   <a class="btn btn-ghost btn-sm {% if status not in counts %}active{% endif %}"
-     href="{{ url_for('po.po_list', status='all') }}">Sab</a>
+     href="{{ url_for('po.po_list', status='all') }}">{{ t('po_all') }}</a>
 </div>
+
+{# Ban gaye order ka agla padav dispatch aur bill hai — wo raasta wahin dikhna
+   chahiye jahan zaroorat hai, alag manzil banke nahi. #}
+{% if status in ('made', 'dispatched') %}
+  <div class="toolbar" style="margin-top:-4px;">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_dispatch') }}">{{ t('po_dispatch_list') }}</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('po.bills_page') }}">{{ t('po_bill_print') }}</a>
+  </div>
+{% endif %}
 
 <div class="card panel-pad">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>PO No.</th><th>Date</th><th>Party</th><th>Lines</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>{{ t('po_order_no') }}</th><th>{{ t('date') }}</th><th>{{ t('po_party') }}</th>
+                 <th>{{ t('po_lines') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
       <tbody>
       {% for po in pos %}
         <tr>
           <td class="mono">{{ po.po_number }}
-            {% if po.has_scan %}<span class="badge">scan</span>{% endif %}
+            {% if po.has_scan %}<span class="badge">{{ t('po_src_upload') }}</span>{% endif %}
           </td>
           <td>{{ po.po_date }}</td>
           <td>{{ po.customer.name }}</td>
           <td class="num">{{ po.lines|length }}
-            {% if po.unresolved_count %}<span class="badge challan">{{ po.unresolved_count }} to map</span>{% endif %}
+            {% if po.unresolved_count %}
+              <span class="badge challan">{{ t('po_to_map', n=po.unresolved_count) }}</span>
+            {% endif %}
           </td>
           <td>
             <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
-              {{ status_label.get(po.status, po.status) }}
+              {{ t('po_status_' + po.status) }}
             </span>
             {% if po.operator_name %}<div style="font-size:11px;color:var(--ink-faint);">{{ po.operator_name }}</div>{% endif %}
           </td>
-          <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">Open</a></td>
+          <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open') }}</a></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -52,8 +60,8 @@
   </div>
   {% if not pos %}
     <div class="empty-state">
-      <div class="big">Is list me abhi kuch nahi hai</div>
-      <div>Naya PO aaye toh "+ New PO" se add karo.</div>
+      <div class="big">{{ t('po_list_empty') }}</div>
+      <div>{{ t('po_list_empty_hint') }}</div>
     </div>
   {% endif %}
 </div>

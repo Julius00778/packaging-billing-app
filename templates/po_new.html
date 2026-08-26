@@ -1,74 +1,72 @@
 {% extends "base.html" %}
 {% set active = "po" %}
-{% block title %}New PO{% endblock %}
+{% block title %}{{ t('po_new_order') }}{% endblock %}
 {% block content %}
 
 <div class="toolbar">
-  <div style="flex:1;font-weight:600;">New Purchase Order</div>
-  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Back</a>
+  <div style="flex:1;font-weight:600;">{{ t('po_new_order') }}</div>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_back') }}</a>
 </div>
 
 <form method="POST" enctype="multipart/form-data">
   <div class="card panel-pad">
     <div class="form-grid three">
       <div class="field">
-        <label>Party *</label>
+        <label>{{ t('po_party') }} *</label>
         <select name="customer_id" required>
-          <option value="">— select —</option>
+          <option value="">{{ t('po_select') }}</option>
           {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
       </div>
       <div class="field">
-        <label>PO Number *</label>
-        <input type="text" name="po_number" required placeholder="e.g. PO-4471">
+        <label>{{ t('po_order_number') }} *</label>
+        <input type="text" name="po_number" required placeholder="PO-4471">
       </div>
       <div class="field">
-        <label>PO Date</label>
+        <label>{{ t('po_order_date') }}</label>
         <input type="date" name="po_date" value="{{ today }}">
       </div>
     </div>
 
     <div class="form-grid three">
       <div class="field">
-        <label>Sizes are written in</label>
+        <label>{{ t('po_sizes_written_in') }}</label>
         <select name="size_unit">
-          <option value="inch">Inch</option>
-          <option value="mm">Millimetre</option>
-          <option value="cm">Centimetre</option>
+          <option value="inch">{{ t('po_unit_inch') }}</option>
+          <option value="mm">{{ t('po_unit_mm') }}</option>
+          <option value="cm">{{ t('po_unit_cm') }}</option>
         </select>
       </div>
       <div class="field">
-        <label>Came from</label>
+        <label>{{ t('po_came_from') }}</label>
         <select name="source">
-          <option value="upload">Scan / upload</option>
-          <option value="email">Email</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="manual">Phone / verbal</option>
+          <option value="upload">{{ t('po_src_upload') }}</option>
+          <option value="email">{{ t('po_src_email') }}</option>
+          <option value="whatsapp">{{ t('po_src_whatsapp') }}</option>
+          <option value="manual">{{ t('po_src_manual') }}</option>
         </select>
       </div>
       <div class="field">
-        <label>PO scan (optional — phone ki photo chalegi)</label>
+        <label>{{ t('po_scan_label') }}</label>
         <input type="file" name="scan" accept="image/*,application/pdf">
       </div>
     </div>
 
     <div class="field">
-      <label>PO lines *</label>
+      <label>{{ t('po_lines_label') }} *</label>
       <textarea name="raw_text" rows="8" required
-        placeholder="Har line me ek item. Jaise:&#10;12x18 - 500 pcs&#10;18 X 24  qty 200&#10;300x450 mm 150 nos"></textarea>
-      <div style="font-size:12px;color:var(--ink-faint);">
-        Sirf wahi lines padhi jayengi jinme size likha ho (12x18 jaisa). Baaki lines chhod di jayengi.
-      </div>
+                placeholder="{{ t('po_lines_placeholder') }}"></textarea>
+      <div style="font-size:12px;color:var(--ink-faint);">{{ t('po_lines_hint') }}</div>
     </div>
 
     <div class="field">
-      <label>Note (optional)</label>
-      <input type="text" name="note" placeholder="Delivery date, transport, etc.">
+      <label>{{ t('po_note_optional') }}</label>
+      <input type="text" name="note" placeholder="{{ t('po_note_placeholder') }}">
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" type="submit">Read PO</button>
-      <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">Cancel</a>
+      <button class="btn btn-primary" type="submit">{{ t('po_read_order') }}</button>
+      <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('cancel') }}</a>
     </div>
   </div>
 </form>
