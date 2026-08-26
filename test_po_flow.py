@@ -205,6 +205,10 @@ with app.app_context():
     check("bina rate ke order pending hi raha",
           db.session.get(PurchaseOrder, po_id).status, "pending")
 check("rate ki wajah batayi gayi", "rate nahi hai" in r.data.decode("utf8", "ignore"))
+r = ok("review screen pe rate ka warning", client.get(f"/po/{po_id}"))
+body = r.data.decode("utf8", "ignore")
+check("screen pe rate ki baat likhi hai", "line ka rate baaki hai" in body)
+check("rate baaki ho toh bhejne ka button band", "disabled" in body)
 
 with app.app_context():
     lines = db.session.get(PurchaseOrder, po_id).lines
