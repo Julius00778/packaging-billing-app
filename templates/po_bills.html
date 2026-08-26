@@ -74,7 +74,7 @@
             </td>
             <td style="white-space:nowrap;">
               <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=row.inv.id) }}"
-                 onclick="event.preventDefault(); openBill({{ row.inv.id }}, {{ row.inv.invoice_no|tojson }});">{{ t('bill_open') }}</a>
+                 data-bill="{{ row.inv.id }}" data-bill-no="{{ row.inv.invoice_no }}">{{ t('bill_open') }}</a>
               <form method="POST" style="display:inline;"
                     action="{{ url_for('po.bill_mark_printed', po_id=row.po.id) }}">
                 <input type="hidden" name="printed" value="{{ '0' if row.po.bill_printed_at else '1' }}">

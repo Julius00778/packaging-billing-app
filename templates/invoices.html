@@ -36,7 +36,7 @@
 <td>{% if inv.hide_pricing %}<span class="badge challan">{{ t('pending_rate') if not inv.consolidated_into_id else t('converted') }}</span>{% else %}<span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span>{% endif %}</td>
 <td>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=inv.id) }}"
-   onclick="event.preventDefault(); openBill({{ inv.id }}, {{ inv.invoice_no|tojson }});">{{ t('bill_open') }}</a>
+   data-bill="{{ inv.id }}" data-bill-no="{{ inv.invoice_no }}">{{ t('bill_open') }}</a>
 {% if not inv.consolidated_into_id %}
 <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_invoice', invid=inv.id) }}">{{ t('edit') }}</a>
 {% endif %}

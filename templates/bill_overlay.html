@@ -84,6 +84,17 @@
   overlay.addEventListener('click', function (e) {
     if (e.target.hasAttribute && e.target.hasAttribute('data-close')) close();
   });
+
+  // Har "Open" link khud bolta hai ki kaunsa bill hai. Inline onclick likhne
+  // se bill number attribute ke andar quote leke aa jaata tha aur handler
+  // beech me kat jaata tha — link chup-chaap naye page pe le jaata tha.
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest && e.target.closest('[data-bill]');
+    if (!link) return;
+    e.preventDefault();
+    window.openBill(parseInt(link.getAttribute('data-bill'), 10),
+                    link.getAttribute('data-bill-no') || '');
+  });
   copies.addEventListener('change', load);
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !overlay.hidden) close();
