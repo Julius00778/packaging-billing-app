@@ -1,0 +1,9 @@
+# Railway ka build. Photo/PDF padhne ke liye do system package chahiye jo
+# pip se nahi aate:
+#   tesseract-ocr  — photo me se text
+#   poppler-utils  — PDF ka text layer (pdftotext) aur scan ko tasveer banana
+# Ye na hon toh app phir bhi chalta hai; sirf "photo se padho" wala button
+# saaf-saaf mana kar deta hai.
+[phases.setup]
+nixPkgs = ["python312", "gcc"]
+aptPkgs = ["tesseract-ocr", "poppler-utils"]

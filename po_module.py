@@ -18,6 +18,7 @@ Design notes
   source of truth nahi banna chahiye.
 """
 
+import difflib
 import io
 import os
 import re
@@ -25,7 +26,7 @@ import uuid
 from datetime import datetime, date
 
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, abort, Response
+    Blueprint, render_template, request, redirect, url_for, flash, abort, Response, jsonify
 )
 from flask_login import login_required, current_user
 
@@ -33,6 +34,7 @@ from models import db, Customer, Item, Invoice, Category, Settings
 from translations import t
 
 import drive_sync
+import ocr_read
 import telegram_bot
 
 try:
@@ -572,7 +574,56 @@ def normalize_code(text):
     return re.sub(r"[\s\-_.]+", "", (text or "")).upper()
 
 
-def find_item_code(line, known_codes):
+# Jahan OCR ank ki jagah akshar padh deta hai. Ye map sirf code ke ank wale
+# hisse pe lagta hai — poore token pe lagate toh "GME" ka "G" bhi "6" ban
+# jaata aur code pehchana hi na jaata.
+LOOKS_LIKE_DIGIT = str.maketrans({"O": "0", "D": "0", "Q": "0",
+                                  "I": "1", "L": "1", "|": "1",
+                                  "S": "5", "B": "8", "Z": "2",
+                                  "G": "6", "T": "7"})
+
+
+def nearest_known_code(token, known_codes):
+    """Galat padhe hue code ko us party ke asli code se milao.
+
+    OCR akela bharose ka nahi — `GME01` ko `GMEO1` padh dena aam baat hai. Par
+    hum jaante hain ki is party ke code kaun se hain, aur wo list chhoti hoti
+    hai. Isliye sawaal "ye kya likha hai" nahi rehta, "in paanch me se kaunsa
+    hai" ban jaata hai — aur wo sawaal aasan hai.
+
+    Code ki shakal hoti hai: kuch akshar, phir kuch ank. Isliye har maujooda
+    code ko usi tarah kaat ke dekha jaata hai — akshar wala hissa waisa hi
+    milna chahiye, aur ank wale hisse me O/0 jaisi chhoot di jaati hai.
+
+    Kuch bhi na baithe toh None — galat code lagane se accha kuch na lagana.
+    """
+    known = {normalize_code(c) for c in (known_codes or []) if c}
+    if not known:
+        return None
+    t = normalize_code(token)
+    if not t:
+        return None
+    if t in known:
+        return t
+
+    for code in sorted(known):
+        if len(t) != len(code):
+            continue
+        head = 0
+        while head < len(code) and code[head].isalpha():
+            head += 1
+        if t[:head] != code[:head]:
+            continue
+        if t[head:].translate(LOOKS_LIKE_DIGIT) == code[head:]:
+            return code
+
+    # Aakhri koshish: sabse paas ka. Cutoff ooncha rakha hai — GME01 aur GME02
+    # me ek hi akshar ka farq hai, isliye dhili chhoot khatarnak hogi.
+    close = difflib.get_close_matches(t, sorted(known), n=1, cutoff=0.86)
+    return close[0] if close else None
+
+
+def find_item_code(line, known_codes, fuzzy=False):
     """Line me se us party ka item code dhoondho.
 
     Sirf un codes pe bharosa karte hain jo us party ke liye pehle se maujood
@@ -587,10 +638,36 @@ def find_item_code(line, known_codes):
         candidate = normalize_code(m.group(1) + m.group(2))
         if candidate in known:
             return candidate, m.span()
+    if not fuzzy:
+        return None
+    # Photo se aaya text — ab galat padhe hue token ko list se milane do
+    for m in CODE_RE.finditer(line or ""):
+        fixed = nearest_known_code(m.group(1) + m.group(2), known)
+        if fixed:
+            return fixed, m.span()
     return None
 
 
-def parse_qty(rest_text):
+def nearest_unit(word):
+    """Galat padhe hue unit ko jaani-pehchani list se milao.
+
+    Wahi tarkeeb jo code pe lagti hai: OCR `roll` ko `rll` padh deta hai, par
+    units ki list chhoti aur tay hai. Kuch na baithe toh None — galat unit
+    lagane se accha kuch na lagana, kyunki rate unit ke saath bandha hai.
+    """
+    w = (word or "").strip(".,;:").lower()
+    if not w or len(w) < 2:
+        return None
+    if w in UNIT_ALIASES:
+        return UNIT_ALIASES[w]
+    close = difflib.get_close_matches(w, sorted(UNIT_ALIASES), n=1, cutoff=0.75)
+    return UNIT_ALIASES[close[0]] if close else None
+
+
+UNIT_GUESS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*([A-Za-z.]{2,10})")
+
+
+def parse_qty(rest_text, fuzzy=False):
     """Line me se (qty, unit) nikalo — size hata dene ke baad."""
     m = QTY_LABEL_RE.search(rest_text)
     if m:
@@ -599,13 +676,20 @@ def parse_qty(rest_text):
     if m:
         unit = UNIT_ALIASES.get(m.group(2).lower().rstrip("."), "pcs")
         return float(m.group(1)), unit
+    if fuzzy:
+        # Photo se aaya hai: number ke baad wala shabd unit ho sakta hai, bas
+        # galat padha gaya ho. Use list se milane ki chhoot yahin milti hai.
+        for m in UNIT_GUESS_RE.finditer(rest_text or ""):
+            unit = nearest_unit(m.group(2))
+            if unit:
+                return float(m.group(1)), unit
     numbers = NUMBER_RE.findall(rest_text)
     if numbers:
         return float(numbers[-1]), "pcs"
     return 0.0, "pcs"
 
 
-def parse_po_text(text, party_default_unit="inch", known_codes=None):
+def parse_po_text(text, party_default_unit="inch", known_codes=None, fuzzy=False):
     """PO ka text lo, har line se item code + size + qty nikalo.
 
     Ek line tabhi order-line maani jaati hai jab usme ya toh us party ka item
@@ -615,7 +699,9 @@ def parse_po_text(text, party_default_unit="inch", known_codes=None):
     `known_codes` us party ke maujooda codes ki list hai. Ye na do toh sirf
     size se kaam chalega (purana behaviour).
 
-    OCR lagane ke baad bhi yahi function chalega — bas input badlega.
+    `fuzzy` sirf tab chalu karo jab text photo/PDF se aaya ho. Tab galat padhe
+    hue code ko us party ki list se milane ki chhoot mil jaati hai — aadmi ke
+    likhe order me ye chhoot dena galat hoga.
     """
     out = []
     for raw_line in (text or "").splitlines():
@@ -623,7 +709,7 @@ def parse_po_text(text, party_default_unit="inch", known_codes=None):
         if not line:
             continue
 
-        code_hit = find_item_code(line, known_codes)
+        code_hit = find_item_code(line, known_codes, fuzzy=fuzzy)
         m = SIZE_RE.search(line)
         if not code_hit and not m:
             continue
@@ -658,7 +744,7 @@ def parse_po_text(text, party_default_unit="inch", known_codes=None):
             row["canonical_key"] = canonical_size(size_dims(m), unit)
             row["unit_source"] = unit_source
 
-        row["qty"], row["qty_unit"] = parse_qty(rest)
+        row["qty"], row["qty_unit"] = parse_qty(rest, fuzzy=fuzzy)
         out.append(row)
     return out
 
@@ -1518,8 +1604,9 @@ def po_new():
             flash(t("po_f_scan_too_big"), "error")
             return render_template("po_new.html", customers=customers, today=date.today().isoformat())
 
-        # Do raaste, ek hi manzil: ya poora text paste karo, ya photo dekh ke
-        # ek-ek line bharo. Aage dono ek jaise chalte hain.
+        # Screen pe jo lines dikh rahi thi, wahi yahan aati hain — chahe wo
+        # photo se bhari gayi hon, paste se, ya haath se. Padhna pehle ho
+        # chuka hota hai; yahan sirf wahi darj hota hai jo aadmi ne dekha.
         if request.form.get("entry_mode") == "rows":
             parsed = lines_from_rows(request.form, unit)
             raw_text = "\n".join(p["raw_text"] for p in parsed)
@@ -1562,6 +1649,70 @@ def po_new():
         return redirect(url_for("po.po_review", po_id=po.id))
 
     return render_template("po_new.html", customers=customers, today=date.today().isoformat())
+
+
+def _rows_for_form(text, customer_id, unit, fuzzy):
+    """Padhe hue text ko form ki lines me badlo.
+
+    Photo se aaya ho ya paste kiya gaya ho — aage dono ek jaise chalte hain.
+    """
+    known = known_codes_for(customer_id) if customer_id else []
+    rows = []
+    for p in parse_po_text(text, unit, known, fuzzy=fuzzy):
+        size = p["raw_size_text"]
+        # Code pehchaan me aa gaya par size padha hi nahi gaya — toh product ka
+        # apna size bhar do. Ye khaali khaana bharna hai, kisi padhe hue ko
+        # kaatna nahi.
+        if not size and p["item_code"] and customer_id:
+            m = map_by_code(customer_id, p["item_code"])
+            if m:
+                size = m.raw_size_text
+        rows.append({"code": p["item_code"], "size": size,
+                     "qty": p["qty"] or "", "unit": p["qty_unit"]})
+    return rows
+
+
+@po_bp.route("/read-text", methods=["POST"])
+@login_required
+def po_read_text():
+    """Paste kiya hua text — usi form ki lines me badal ke lauta do."""
+    cid = request.form.get("customer_id") or ""
+    rows = _rows_for_form(request.form.get("text", ""),
+                          int(cid) if cid.isdigit() else None,
+                          request.form.get("size_unit", "inch"),
+                          fuzzy=False)
+    return jsonify({"ok": True, "rows": rows})
+
+
+@po_bp.route("/read-file", methods=["POST"])
+@login_required
+def po_read_file():
+    """Photo ya PDF lo, aur form ke liye lines lauta do.
+
+    Yahan order banta nahi. Sirf padha jaata hai, aur nateeja form me bhar
+    diya jaata hai — taaki aadmi har line dekh ke haan kahe. OCR kabhi poora
+    sahi nahi padhta, isliye aakhri faisla screen pe hi hota hai.
+    """
+    cid = request.form.get("customer_id") or ""
+    unit = request.form.get("size_unit", "inch")
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"ok": False, "error": t("po_ocr_no_file")}), 400
+
+    data = upload.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        return jsonify({"ok": False, "error": t("po_f_scan_too_big")}), 400
+
+    try:
+        text = ocr_read.read_text(data, upload.mimetype, upload.filename)
+    except ocr_read.OcrUnavailable:
+        return jsonify({"ok": False, "error": t("po_ocr_off")}), 503
+    except ocr_read.OcrFailed as exc:
+        return jsonify({"ok": False, "error": t("po_ocr_failed", reason=exc)}), 422
+
+    # Photo se aaya hai, isliye galat padhe code ko party ki list se milane do
+    rows = _rows_for_form(text, int(cid) if cid.isdigit() else None, unit, fuzzy=True)
+    return jsonify({"ok": True, "rows": rows, "text": text})
 
 
 @po_bp.route("/<int:po_id>")

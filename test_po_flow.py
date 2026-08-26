@@ -110,8 +110,10 @@ with app.app_context():
 # line bharta hai. Yahan kuch andaza nahi lagta, sab khaano me aata hai.
 r = ok("naye order ka page", client.get("/po/new"))
 page = r.data.decode("utf8", "ignore")
-check("photo lagane ka rasta hai", 'id="scanInput"' in page)
-check("dono raaste dikhte hain", page.count('data-mode="'), 2)
+check("page ek form hai — lines ka khaana hamesha dikhta hai", 'id="rowsBody"' in page)
+check("photo se padhne ka button hai", 'id="scanPick"' in page)
+check("paste ka rasta bhi hai", 'id="pasteDo"' in page)
+check("form seedha rows bhejta hai", 'name="entry_mode" value="rows"' in page)
 
 ok("rows se order", client.post("/po/new", data={
     "customer_id": str(cust_id), "po_number": "PO-ROW-1", "size_unit": "cm",
