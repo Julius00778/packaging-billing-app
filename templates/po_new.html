@@ -8,12 +8,17 @@
   <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_back') }}</a>
 </div>
 
-<form method="POST" enctype="multipart/form-data">
+<form method="POST" enctype="multipart/form-data" id="orderForm">
+  {# Ye page ek form hai. Photo padhna ek madad hai jo isi form ko bharti hai —
+     alag raasta nahi. Jo bhi aaye, aakhir me aadmi wahi lines dekh ke haan
+     kehta hai. #}
+  <input type="hidden" name="entry_mode" value="rows">
+
   <div class="card panel-pad" style="margin-bottom:14px;">
     <div class="form-grid three">
       <div class="field">
         <label>{{ t('po_party') }} *</label>
-        <select name="customer_id" required>
+        <select name="customer_id" id="partySel" required>
           <option value="">{{ t('po_select') }}</option>
           {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
@@ -31,7 +36,7 @@
     <div class="form-grid three">
       <div class="field">
         <label>{{ t('po_sizes_written_in') }}</label>
-        <select name="size_unit">
+        <select name="size_unit" id="sizeUnit">
           <option value="inch">{{ t('po_unit_inch') }}</option>
           <option value="mm">{{ t('po_unit_mm') }}</option>
           <option value="cm">{{ t('po_unit_cm') }}</option>
@@ -53,18 +58,29 @@
     </div>
   </div>
 
-  {# Photo baayen, likhna daayen. Aankh ko khidki badalni na pade — order
-     saamne khula rehta hai jab tak aap use utaar rahe ho. #}
   <div class="intake">
     <div class="card panel-pad intake-scan">
       <div style="font-weight:600;margin-bottom:2px;">{{ t('po_attach') }}</div>
-      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">{{ t('po_attach_hint') }}</div>
+      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
+        {{ t('po_ocr_hint', save=t('po_read_order')) }}
+      </div>
 
       <input type="file" name="scan" id="scanInput" accept="image/*,application/pdf" hidden>
-      <div class="btn-row" style="margin:0 0 10px;">
-        <button class="btn btn-ghost btn-sm" type="button" id="scanPick">{{ t('po_attach_pick') }}</button>
+      <div class="btn-row" style="margin:0 0 10px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" type="button" id="scanPick">{{ t('po_read_from_file') }}</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="pasteOpen">{{ t('po_paste_open') }}</button>
         <button class="btn btn-ghost btn-sm" type="button" id="scanClear" hidden>{{ t('po_attach_remove') }}</button>
         <a class="btn btn-ghost btn-sm" id="scanOpen" target="_blank" rel="noopener" hidden>{{ t('po_attach_open') }}</a>
+      </div>
+
+      <div id="ocrNote" class="ocr-note" hidden></div>
+
+      <div id="pasteWrap" class="field" hidden>
+        <label>{{ t('po_paste_title') }}</label>
+        <textarea id="pasteText" rows="6" placeholder="{{ t('po_lines_placeholder') }}"></textarea>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" type="button" id="pasteDo">{{ t('po_paste_do') }}</button>
+        </div>
       </div>
 
       <div id="scanBox" class="intake-preview">
@@ -76,34 +92,20 @@
     </div>
 
     <div class="card panel-pad intake-entry">
-      <div style="font-weight:600;margin-bottom:8px;">{{ t('po_how_enter') }}</div>
-      <input type="hidden" name="entry_mode" id="entryMode" value="text">
-      <div class="toolbar" style="margin:0 0 10px;">
-        <button class="btn btn-ghost btn-sm active" type="button" data-mode="text">{{ t('po_mode_text') }}</button>
-        <button class="btn btn-ghost btn-sm" type="button" data-mode="rows">{{ t('po_mode_rows') }}</button>
+      <div style="font-weight:600;margin-bottom:2px;">{{ t('po_lines_title') }}</div>
+      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">{{ t('po_lines_sub') }}</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>{{ t('po_item_code') }}</th><th>{{ t('po_size') }}</th>
+                     <th>{{ t('po_qty') }}</th><th>{{ t('po_unit') }}</th><th></th></tr></thead>
+          <tbody id="rowsBody"></tbody>
+        </table>
       </div>
 
-      <div data-pane="text">
-        <div style="font-size:12px;color:var(--ink-faint);margin-bottom:8px;">{{ t('po_mode_text_hint') }}</div>
-        <div class="field">
-          <label>{{ t('po_lines_label') }}</label>
-          <textarea name="raw_text" rows="12" placeholder="{{ t('po_lines_placeholder') }}"></textarea>
-        </div>
-      </div>
-
-      <div data-pane="rows" hidden>
-        <div style="font-size:12px;color:var(--ink-faint);margin-bottom:8px;">{{ t('po_mode_rows_hint') }}</div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>{{ t('po_item_code') }}</th><th>{{ t('po_size') }}</th>
-                       <th>{{ t('po_qty') }}</th><th>{{ t('po_unit') }}</th><th></th></tr></thead>
-            <tbody id="rowsBody"></tbody>
-          </table>
-        </div>
-        <div class="toolbar" style="margin:10px 0 0;">
-          <div style="flex:1;font-size:12px;color:var(--ink-faint);">{{ t('po_row_hint') }}</div>
-          <button class="btn btn-ghost btn-sm" type="button" id="addRow">+ {{ t('po_add_line') }}</button>
-        </div>
+      <div class="toolbar" style="margin:10px 0 0;">
+        <div style="flex:1;font-size:12px;color:var(--ink-faint);">{{ t('po_row_hint') }}</div>
+        <button class="btn btn-ghost btn-sm" type="button" id="addRow">+ {{ t('po_add_line') }}</button>
       </div>
 
       <div class="btn-row">
@@ -116,71 +118,41 @@
 
 <script>
 (function () {
-  // ---------- attached order, shown right here ----------
-  // File browser me hi padi hai — server pe bhejne ki zaroorat nahi jab tak
-  // form submit na ho. Isliye preview turant dikhta hai.
-  var input = document.getElementById('scanInput');
-  var box   = document.getElementById('scanBox');
-  var pick  = document.getElementById('scanPick');
-  var clear = document.getElementById('scanClear');
-  var open  = document.getElementById('scanOpen');
-  var url   = null;
+  var UNITS   = {{ common_units|tojson }};
+  var input   = document.getElementById('scanInput');
+  var box     = document.getElementById('scanBox');
+  var pick    = document.getElementById('scanPick');
+  var clear   = document.getElementById('scanClear');
+  var openBtn = document.getElementById('scanOpen');
+  var note    = document.getElementById('ocrNote');
+  var body    = document.getElementById('rowsBody');
+  var party   = document.getElementById('partySel');
+  var url     = null;
+  var emptyHtml = box.innerHTML;
 
-  function release() { if (url) { URL.revokeObjectURL(url); url = null; } }
+  var TXT = {
+    reading:   {{ t('po_reading')|tojson }},
+    filled:    {{ t('po_ocr_filled')|tojson }},
+    nothing:   {{ t('po_ocr_nothing')|tojson }},
+    pickParty: {{ t('po_ocr_pick_party')|tojson }},
+    remove:    {{ t('po_remove_line')|tojson }},
+    pickFile:  {{ t('po_read_from_file')|tojson }},
+    again:     {{ t('po_read_again')|tojson }}
+  };
 
-  function show() {
-    release();
-    var file = input.files && input.files[0];
-    clear.hidden = open.hidden = !file;
-    if (!file) {
-      box.innerHTML = document.getElementById('scanEmpty').innerHTML;
-      pick.textContent = {{ t('po_attach_pick')|tojson }};
-      return;
-    }
-    pick.textContent = {{ t('po_attach_change')|tojson }};
-    url = URL.createObjectURL(file);
-    open.href = url;
-    if (file.type === 'application/pdf') {
-      box.innerHTML = '<iframe src="' + url + '" class="intake-frame"><\/iframe>';
-    } else {
-      box.innerHTML = '<img src="' + url + '" alt="" class="intake-img">';
-    }
+  function say(msg, bad) {
+    note.hidden = false;
+    note.textContent = msg;
+    note.classList.toggle('bad', !!bad);
   }
 
-  // Khaali haalat ka HTML sambhaal ke rakho — file hataane pe wahi wapas aata hai
-  var empty = document.createElement('template');
-  empty.id = 'scanEmpty';
-  empty.innerHTML = box.innerHTML;
-  document.body.appendChild(empty);
-
-  pick.addEventListener('click', function () { input.click(); });
-  clear.addEventListener('click', function () { input.value = ''; show(); });
-  input.addEventListener('change', show);
-
-  // ---------- do raaste ----------
-  var mode = document.getElementById('entryMode');
-  document.querySelectorAll('[data-mode]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var want = btn.getAttribute('data-mode');
-      mode.value = want;
-      document.querySelectorAll('[data-mode]').forEach(function (b) {
-        b.classList.toggle('active', b === btn);
-      });
-      document.querySelectorAll('[data-pane]').forEach(function (p) {
-        p.hidden = p.getAttribute('data-pane') !== want;
-      });
-      if (want === 'rows' && !body.children.length) { addRow(); addRow(); addRow(); }
-    });
-  });
-
-  // ---------- ek-ek line ----------
-  var body  = document.getElementById('rowsBody');
-  var UNITS = {{ common_units|tojson }};
-
-  function addRow() {
+  // ---------------- lines ----------------
+  function addRow(v) {
+    v = v || {};
     var tr = document.createElement('tr');
     var opts = UNITS.map(function (u) {
-      return '<option value="' + u + '"' + (u === 'pcs' ? ' selected' : '') + '>' + u + '<\/option>';
+      return '<option value="' + u + '"' +
+             (u === (v.unit || 'pcs') ? ' selected' : '') + '>' + u + '<\/option>';
     }).join('');
     tr.innerHTML =
       '<td><input type="text" name="line_code" placeholder="HM01"><\/td>' +
@@ -188,23 +160,117 @@
       '<td><input type="number" step="0.01" min="0" name="line_qty"><\/td>' +
       '<td><select name="line_unit">' + opts + '<\/select><\/td>' +
       '<td><button class="btn btn-ghost btn-sm" type="button" data-drop="1">' +
-      {{ t('po_remove_line')|tojson }} + '<\/button><\/td>';
+      TXT.remove + '<\/button><\/td>';
+    // Value attribute me nahi, property me — warna quote wala text HTML tod deta hai
+    tr.querySelector('[name=line_code]').value = v.code || '';
+    tr.querySelector('[name=line_size]').value = v.size || '';
+    tr.querySelector('[name=line_qty]').value  = v.qty  || '';
     body.appendChild(tr);
+    return tr;
   }
 
-  document.getElementById('addRow').addEventListener('click', addRow);
+  function fillRows(rows) {
+    body.innerHTML = '';
+    rows.forEach(addRow);
+    addRow();                       // ek khaali line hamesha, jodne ke liye
+  }
+
+  document.getElementById('addRow').addEventListener('click', function () { addRow(); });
   body.addEventListener('click', function (e) {
     var btn = e.target.closest && e.target.closest('[data-drop]');
-    if (btn) btn.closest('tr').remove();
+    if (btn && body.children.length > 1) btn.closest('tr').remove();
   });
-
-  // Aakhri khaane me Enter dabao toh nayi line — haath keyboard pe hi rahe
+  // Aakhri line ke aakhir me Enter — nayi line. Haath keyboard pe hi rehta hai.
   body.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (e.target.closest('tr') === body.lastElementChild) addRow();
-    var next = e.target.closest('tr').nextElementSibling;
+    var tr = e.target.closest('tr');
+    if (tr === body.lastElementChild) addRow();
+    var next = tr.nextElementSibling;
     if (next) next.querySelector('input').focus();
+  });
+
+  fillRows([]);
+
+  // ---------------- photo / PDF ----------------
+  function preview(file) {
+    if (url) { URL.revokeObjectURL(url); url = null; }
+    clear.hidden = openBtn.hidden = !file;
+    pick.textContent = file ? TXT.again : TXT.pickFile;
+    if (!file) { box.innerHTML = emptyHtml; return; }
+    url = URL.createObjectURL(file);
+    openBtn.href = url;
+    box.innerHTML = file.type === 'application/pdf'
+      ? '<iframe src="' + url + '" class="intake-frame"><\/iframe>'
+      : '<img src="' + url + '" alt="" class="intake-img">';
+  }
+
+  function readFile(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('customer_id', party.value || '');
+    fd.append('size_unit', document.getElementById('sizeUnit').value);
+    say(TXT.reading);
+    pick.disabled = true;
+
+    fetch({{ url_for('po.po_read_file')|tojson }}, {
+      method: 'POST', body: fd, credentials: 'same-origin'
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.j.ok) { say(res.j.error || 'error', true); return; }
+        if (!res.j.rows.length) { say(TXT.nothing, true); return; }
+        fillRows(res.j.rows);
+        say(TXT.filled.replace('{n}', res.j.rows.length));
+      })
+      .catch(function () { say(TXT.nothing, true); })
+      .finally(function () { pick.disabled = false; });
+  }
+
+  pick.addEventListener('click', function () { input.click(); });
+  clear.addEventListener('click', function () {
+    input.value = ''; preview(null); note.hidden = true;
+  });
+  input.addEventListener('change', function () {
+    var file = input.files && input.files[0];
+    preview(file);
+    if (!file) return;
+    // Party ke bina code kis list se milayen — isliye pehle wahi poochho.
+    // Photo phir bhi dikhti rehti hai, aadmi dekh ke khud bhar sakta hai.
+    if (!party.value) { say(TXT.pickParty, true); return; }
+    readFile(file);
+  });
+  // Party baad me chuni ho toh dobara padhne ka mauka do
+  party.addEventListener('change', function () {
+    var file = input.files && input.files[0];
+    if (file && party.value && note.classList.contains('bad')) readFile(file);
+  });
+
+  // ---------------- paste ----------------
+  var pasteWrap = document.getElementById('pasteWrap');
+  document.getElementById('pasteOpen').addEventListener('click', function () {
+    pasteWrap.hidden = !pasteWrap.hidden;
+    if (!pasteWrap.hidden) document.getElementById('pasteText').focus();
+  });
+  document.getElementById('pasteDo').addEventListener('click', function () {
+    var text = document.getElementById('pasteText').value;
+    if (!text.trim()) return;
+    var fd = new FormData();
+    fd.append('text', text);
+    fd.append('customer_id', party.value || '');
+    fd.append('size_unit', document.getElementById('sizeUnit').value);
+    say(TXT.reading);
+    fetch({{ url_for('po.po_read_text')|tojson }}, {
+      method: 'POST', body: fd, credentials: 'same-origin'
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok || !j.rows.length) { say(TXT.nothing, true); return; }
+        fillRows(j.rows);
+        pasteWrap.hidden = true;
+        say(TXT.filled.replace('{n}', j.rows.length));
+      })
+      .catch(function () { say(TXT.nothing, true); });
   });
 })();
 </script>
