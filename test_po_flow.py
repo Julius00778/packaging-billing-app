@@ -402,6 +402,40 @@ check("aur har line usi list se judi hai", 'list="productList"' in form)
 check("style ke link pe nishan lagta hai",
       bool(_re2.search(r'style\.css\?v=\d+', form)))
 
+# ---------------------------- form se aaya code: size product ka, form ka nahi
+# Form ka size khud product ki list se bhara hai. Uspe "size kis naap me likha
+# hai" wala chunav dobara lagana galat tha — usi ek galti se product ka apna
+# size hi "code aur size match nahi karte" dikhne lagta tha. Yahan party ka
+# naap jaan-boojh ke alag rakha hai (mm), jabki product inch me darj hua tha.
+with app.app_context():
+    st01 = PartyProductMap.query.filter_by(customer_id=cust_id, item_code="ST01").first()
+    st01_key, st01_size = st01.canonical_key, st01.raw_size_text
+
+ok("code se order, doosre naap me", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-SIZE-1", "size_unit": "mm",
+    "entry_mode": "rows",
+    "line_code": ["ST01"], "line_size": [st01_size],
+    "line_qty": ["10"], "line_unit": ["pcs"],
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    sp = PurchaseOrder.query.filter_by(po_number="PO-SIZE-1").first()
+    check("key product se aayi, form ke naap se nahi", sp.lines[0].canonical_key, st01_key)
+    check("aur code se match hua", sp.lines[0].match_status, "code")
+    check("jhoota size ka warning nahi aaya", sp.lines[0].size_mismatch, False)
+    check("rate bhi yaad se bhar gaya", sp.lines[0].rate, 20.0)
+    client.post(f"/po/{sp.id}/reject", follow_redirects=True)
+
+# Wahi size doosre naap me paste ho toh bhi ek jaisa likha hua size jhagda
+# nahi hai — farq sirf paimane ka hai, aur product ka apna naap hi sahi hai.
+ok("paste se wahi size", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-SIZE-2", "size_unit": "mm",
+    "raw_text": f"ST01 {st01_size} - 10 pcs",
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    sp2 = PurchaseOrder.query.filter_by(po_number="PO-SIZE-2").first()
+    check("ek jaisa likha size jhagda nahi hai", sp2.lines[0].size_mismatch, False)
+    client.post(f"/po/{sp2.id}/reject", follow_redirects=True)
+
 # Naya PO usi party ka — rate apne aap bhar jaana chahiye
 ok("POST /po/new (rate memory test)", client.post("/po/new", data={
     "customer_id": str(cust_id), "po_number": "PO-4474", "size_unit": "inch",

@@ -749,13 +749,17 @@ def parse_po_text(text, party_default_unit="inch", known_codes=None, fuzzy=False
     return out
 
 
-def lines_from_rows(form, party_unit="inch"):
+def lines_from_rows(form, party_unit="inch", customer_id=None):
     """Ek-ek karke bhare hue form se lines banao.
 
-    Jab photo dhundhli ho ya likhawat tedhi, tab poora text paste karna kaam
-    nahi aata — aadmi photo dekh ke ek line bharta hai. Yahan andaza lagane ki
-    zaroorat hi nahi: code, size, qty aur unit sab alag alag khaano me aaye
-    hain, isliye unit "guessed" bhi nahi hoti.
+    Form me code, size, qty aur unit sab alag alag khaano me aate hain, isliye
+    yahan andaza lagane ki zaroorat hi nahi — unit "guessed" bhi nahi hoti.
+
+    Ek baat khaas: code us party ke maal se mil jaye toh size bhi usi maal ka
+    maana jaata hai, form me likhe akshar se nahi. Ye zaroori hai — form ka
+    size product ki list se hi bhara hai, aur "size kis naap me likha hai"
+    wala chunav uspe dobara lagana galat hai. Isi ek galti se GME01 ka apna
+    size hi "code aur size match nahi karte" dikhne lagta tha.
 
     Nateeja bilkul wahi shakal ka hai jo parse_po_text deta hai, taaki aage ka
     raasta ek hi rahe.
@@ -790,10 +794,17 @@ def lines_from_rows(form, party_unit="inch"):
             "qty": qty,
             "qty_unit": unit,
         }
-        m = SIZE_RE.search(size_text)
-        if m:
-            row["canonical_key"] = canonical_size(size_dims(m), party_unit)
-            row["unit_source"] = "form"     # form me unit khud chuni gayi hai
+        known = map_by_code(customer_id, code) if (customer_id and code) else None
+        if known and known.canonical_key:
+            # Ek code = ek product = ek size. Product ka apna naap hi sahi hai.
+            row["canonical_key"] = known.canonical_key
+            row["raw_size_text"] = size_text or known.raw_size_text
+            row["unit_source"] = "form"
+        else:
+            m = SIZE_RE.search(size_text)
+            if m:
+                row["canonical_key"] = canonical_size(size_dims(m), party_unit)
+                row["unit_source"] = "form"   # form me unit khud chuni gayi hai
         out.append(row)
     return out
 
@@ -1615,10 +1626,23 @@ def notify_bill_ready(po, inv, token=None):
             pass
 
 
+def _same_size_text(a, b):
+    """Do size ek hi likhe hue hain ya nahi — × aur x, space, sab barabar."""
+    def flat(s):
+        return re.sub(r"[\s×xX*]+", "x", (s or "").strip().lower())
+    return bool(a) and flat(a) == flat(b)
+
+
 def _apply_match(line, customer_id):
     status, chosen, mismatch = match_line(customer_id, line.item_code, line.canonical_key)
     line.match_status = status
     line.map_id = chosen.id if chosen else None
+    # Likha hua size product ke size jaisa hi ho toh koi asli farq nahi hai —
+    # farq sirf is baat ka hai ki naap kis paimane me pada gaya. Aise me
+    # "code aur size match nahi karte" dikhana aadmi ko bhataka deta hai:
+    # dono taraf wahi 34x15x5 likha dikhta tha.
+    if mismatch and chosen and _same_size_text(line.raw_size_text, chosen.raw_size_text):
+        mismatch = False
     line.size_mismatch = mismatch
 
 
@@ -1669,7 +1693,7 @@ def po_new():
         # photo se bhari gayi hon, paste se, ya haath se. Padhna pehle ho
         # chuka hota hai; yahan sirf wahi darj hota hai jo aadmi ne dekha.
         if request.form.get("entry_mode") == "rows":
-            parsed = lines_from_rows(request.form, unit)
+            parsed = lines_from_rows(request.form, unit, customer_id)
             raw_text = "\n".join(p["raw_text"] for p in parsed)
         else:
             raw_text = request.form.get("raw_text", "")
