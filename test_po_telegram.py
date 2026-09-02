@@ -360,6 +360,112 @@ with app.app_context():
     check("doosra order waisa hi pada hai",
           db.session.get(M.PurchaseOrder, po6_id).lines[0].rate, 0.0)
 
+    # ------------------------- pehle se laga hua rate badalna (Julius ki shikayat)
+    # Pichli baar wala rate apne aap bhar jaata hai. Pehle uske baad card sirf
+    # "haan" kehne deta tha — badalne ka koi rasta hi nahi tha. Ab code ke saath
+    # number bhejo aur wo badal jaata hai.
+    for stale in (po4_id, po5_id, po6_id):
+        M.move_status(db.session.get(M.PurchaseOrder, stale), "rejected")
+    db.session.commit()
+
+    po7 = M.PurchaseOrder(po_number="PO-83", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add(po7)
+    db.session.flush()
+    db.session.add(M.POLine(po_id=po7.id, line_no=1, item_code="GME02", qty=10,
+                            qty_unit="pcs", canonical_key="40.0x140.0x230.0",
+                            match_status="code", map_id=product.id))
+    db.session.commit()
+    po7_id = po7.id
+
+    TG.calls.clear()
+    left = M.ask_rates(db.session.get(M.PurchaseOrder, po7_id))
+    po7 = db.session.get(M.PurchaseOrder, po7_id)
+    check("pichli baar ka rate apne aap bhar gaya", po7.lines[0].rate, 25.0)
+    check("isliye poochhne ko kuch nahi bacha", left, 0)
+    card = TG.of("sendMessage")[0][1]["text"]
+    check("phir bhi card batata hai ki rate badla ja sakta hai",
+          "badalna" in card and "GME02" in card, True)
+    check("aur bhejne ka button maujood hai",
+          "rates:" in str(TG.of("sendMessage")[0][1]), True)
+
+    # Aur screen pe wo raasta maujood hona chahiye. Pehle ye button sirf tab
+    # dikhta tha jab kisi line ka rate khaali ho — yaani jab saare rate yaad se
+    # bhar jaate the, tab bhejne ka button band aur poochhne ka button gayab.
+    # Order wahin phans jaata tha.
+    page = client.get(f"/po/{po7_id}").data.decode("utf8", "ignore")
+    check("sab rate bhare hon tab bhi Telegram wala rasta khula hai",
+          f"/po/{po7_id}/ask-rates" in page, True)
+    check("aur wajah likhi hai ki mohar wahin lagegi",
+          "GME01 30" in page, True)
+
+    # Koi sawaal wala msg bana hi nahi, isliye reply karne ko kuch nahi — code se
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "GME02 30"}})
+    po7 = db.session.get(M.PurchaseOrder, po7_id)
+    check("laga hua rate code ke saath badal gaya", po7.lines[0].rate, 30.0)
+    check("naya rate yaad bhi rakha gaya",
+          M.PartyRate.look_up(product.id, "pcs").rate, 30.0)
+    check("purana rate kya tha, ye bhi bataya",
+          "pehle" in TG.of("sendMessage")[-1][1]["text"], True)
+
+    # Rate badla toh mohar hat jaani chahiye — purani haan naye rate pe nahi chalti
+    po7.rates_ok_at = M.datetime.utcnow()
+    db.session.commit()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "GME02 32"}})
+    po7 = db.session.get(M.PurchaseOrder, po7_id)
+    check("rate badalte hi mohar hat gayi",
+          (po7.lines[0].rate, po7.rates_ok_at), (32.0, None))
+
+    # Sab bhare hon aur code na ho toh andaza bilkul nahi — galti seedhi bill me
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "99"}})
+    check("khaali number pe andaza nahi lagta",
+          db.session.get(M.PurchaseOrder, po7_id).lines[0].rate, 32.0)
+    check("balki code maanga jaata hai",
+          "code ke saath" in TG.of("sendMessage")[-1][1]["text"], True)
+
+    # Do order me ek hi code pada ho toh khula code kaafi nahi — par card ka
+    # reply order tay kar deta hai, aur wahi aadmi ka seedha raasta bhi hai.
+    po8 = M.PurchaseOrder(po_number="PO-84", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add(po8)
+    db.session.flush()
+    db.session.add(M.POLine(po_id=po8.id, line_no=1, item_code="GME02", qty=4,
+                            qty_unit="pcs", canonical_key="40.0x140.0x230.0",
+                            match_status="code", map_id=product.id))
+    db.session.commit()
+    po8_id = po8.id
+    M.ask_rates(db.session.get(M.PurchaseOrder, po8_id))
+
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "GME02 44"}})
+    check("ek hi code do order me ho toh andaza nahi lagta",
+          (db.session.get(M.PurchaseOrder, po7_id).lines[0].rate,
+           db.session.get(M.PurchaseOrder, po8_id).lines[0].rate), (32.0, 32.0))
+
+    TG.calls.clear()
+    card_id = int(db.session.get(M.PurchaseOrder, po8_id).tg_rate_summary_id)
+    M.handle_update({"message": {
+        "chat": OWNER_CHAT, "from": JULIUS, "text": "GME02 44",
+        "reply_to_message": {"message_id": card_id}}})
+    check("card ke reply se sahi order ka rate badla",
+          db.session.get(M.PurchaseOrder, po8_id).lines[0].rate, 44.0)
+    check("doosra order chhua tak nahi gaya",
+          db.session.get(M.PurchaseOrder, po7_id).lines[0].rate, 32.0)
+
+    # Us order me ek hi line hai — card ke reply me sirf number bhi kaafi hai
+    TG.calls.clear()
+    M.handle_update({"message": {
+        "chat": OWNER_CHAT, "from": JULIUS, "text": "46",
+        "reply_to_message": {"message_id": card_id}}})
+    check("ek line wale card pe khaali number bhi chal jaata hai",
+          db.session.get(M.PurchaseOrder, po8_id).lines[0].rate, 46.0)
+
+    for done in (po7_id, po8_id):
+        M.move_status(db.session.get(M.PurchaseOrder, done), "rejected")
+    db.session.commit()
+
     # aam baatcheet ko rate nahi samajhna chahiye
     TG.calls.clear()
     M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "theek hai bhai"}})

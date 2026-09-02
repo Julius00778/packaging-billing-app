@@ -1130,12 +1130,16 @@ def rate_summary_text(po):
         else:
             rows.append(f"{head}\n   ₹{line.rate:g}/{line.qty_unit} = ₹{line.amount:,.0f}")
     body = "\n\n".join(rows)
-    tail = ""
+    # Badalne ka tareeka hamesha likha rehta hai. Bina iske card sirf "haan"
+    # kehne ka rasta deta tha — aur pichli baar wala rate hamesha sahi nahi hota.
+    sample = next((l.item_code for l in po.lines if l.item_code), "GME01")
+    change = (f"\n\n<i>Rate badalna ho toh code ke saath bhejo — "
+              f"<code>{sample} 30</code></i>")
     if not po.no_rate_count:
-        tail = f"\n\n<b>Total ₹{po.total:,.0f}</b>"
+        tail = f"\n\n<b>Total ₹{po.total:,.0f}</b>{change}"
     else:
         tail = (f"\n\n{po.no_rate_count} line ka rate baaki hai — neeche wale msg pe "
-                f"reply karke sirf number bhej do.")
+                f"reply karke sirf number bhej do.{change}")
     return (f"<b>{po.po_number}</b> — {po.customer.name}\n"
             f"<i>naya order aaya hai</i>\n\n{body}{tail}")
 
@@ -1456,39 +1460,90 @@ def pending_rate_lines():
             .order_by(POLine.po_id, POLine.line_no).all())
 
 
+def open_rate_lines():
+    """Pending order ki saari lines — jinka rate hai unki bhi.
+
+    Pichli baar wala rate apne aap bhar jaata hai. Us par sirf haan kehna kaafi
+    nahi — rate badalna bhi utna hi aam hai. Isliye Telegram pe har line pakad
+    me rehti hai, sirf khaali wali nahi.
+    """
+    return (POLine.query.join(PurchaseOrder)
+            .filter(PurchaseOrder.status == "pending")
+            .order_by(POLine.po_id, POLine.line_no).all())
+
+
+def _pick(lines, want, where):
+    """Ek code ki ek hi line honi chahiye — warna andaza nahi lagate."""
+    hits = [l for l in lines if l.item_code == want]
+    if len(hits) == 1:
+        return hits[0], ""
+    if len(hits) > 1:
+        return None, (f"{want} ki {where} ek se zyada line hai — us sawaal pe "
+                      f"reply karke bhejo, ya screen se badal do.")
+    return None, ""
+
+
 def find_rate_line(parent_msg_id, code):
-    """Number kis line ka hai — teen tareeke se dhoondho.
+    """Number kis line ka hai — sabse pakke tareeke se shuru karke.
 
-    1. Us sawaal ka reply hai (sabse pakka)
-    2. Number ke saath code likha hai ("GME01 25")
-    3. Sirf number hai — tab tabhi maanenge jab ek hi line ka rate baaki ho
+    1. Us line ke apne sawaal ka reply (sabse pakka)
+    2. Us order ke card ka reply — tab dhoondh usi order tak simat jaati hai,
+       chahe ek jaisa code doosre order me bhi pada ho
+    3. Number ke saath code ("GME01 25") — chahe us line ka rate pehle se ho;
+       tab baat badalne ki hai
+    4. Sirf number — tab tabhi jab ek hi line ka rate baaki ho
 
-    Teesra isliye ki phone pe log seedha number type kar dete hain, reply karna
-    yaad nahi rehta. Par ek se zyada line baaki ho toh andaza lagana khatarnaak
-    hai — tab poochh lete hain.
+    Aakhri isliye ki phone pe log seedha number type kar dete hain, reply karna
+    yaad nahi rehta. Par ek se zyada line ho toh andaza lagana khatarnaak hai —
+    galti seedhi bill me jaati hai. Tab poochh lete hain.
     """
     if parent_msg_id:
         line = POLine.query.filter_by(tg_rate_msg_id=str(parent_msg_id)).first()
         if line:
             return line, ""
 
+        # Card ka reply — order to pakka ho gaya, ab bas line chunni hai.
+        po = PurchaseOrder.query.filter_by(
+            tg_rate_summary_id=str(parent_msg_id)).first()
+        if po:
+            if code:
+                line, problem = _pick(po.lines, normalize_code(code), "is order me")
+                if line or problem:
+                    return line, problem
+                return None, f"{normalize_code(code)} is order me nahi hai."
+            if len(po.lines) == 1:
+                return po.lines[0], ""
+            waiting_here = [l for l in po.lines if not l.rate]
+            if len(waiting_here) == 1:
+                return waiting_here[0], ""
+            return None, ("Is order me ek se zyada line hai — code ke saath bhejo, "
+                          f"jaise <code>{po.lines[0].item_code or 'GME01'} 25</code>.")
+
     waiting = pending_rate_lines()
     if code:
-        hits = [l for l in waiting if l.item_code == normalize_code(code)]
-        if len(hits) == 1:
-            return hits[0], ""
-        if len(hits) > 1:
-            return None, (f"{normalize_code(code)} ki ek se zyada line rate ka "
-                          f"intezaar kar rahi hai — us sawaal pe reply karke bhejo.")
-        return None, f"{normalize_code(code)} ki koi line rate ka intezaar nahi kar rahi."
+        want = normalize_code(code)
+        # Pehle wo line jiska rate baaki hai — wahi sabse zyada ummeed hai.
+        # Na mile toh usi code ki bhari hui line, kyunki tab baat badalne ki hai.
+        for pool, where in ((waiting, ""), (open_rate_lines(), "")):
+            line, problem = _pick(pool, want, where)
+            if line or problem:
+                return line, problem
+        return None, f"{want} ka koi order abhi review me nahi hai."
 
     if len(waiting) == 1:
         return waiting[0], ""
-    if not waiting:
-        return None, "Abhi kisi line ka rate baaki nahi hai."
-    return None, (f"{len(waiting)} line ka rate baaki hai — jis sawaal ka rate hai "
-                  f"us msg pe reply karo, ya code ke saath bhejo jaise "
-                  f"<code>{waiting[0].item_code or 'GME01'} 25</code>.")
+    if waiting:
+        return None, (f"{len(waiting)} line ka rate baaki hai — jis sawaal ka rate hai "
+                      f"us msg pe reply karo, ya code ke saath bhejo jaise "
+                      f"<code>{waiting[0].item_code or 'GME01'} 25</code>.")
+
+    # Sab rate bhare hue hain. Khaali number kiska hai, ye andaza nahi lagana —
+    # yahan galti seedhi bill me jaati hai. Code maang lete hain.
+    open_lines = open_rate_lines()
+    if not open_lines:
+        return None, "Abhi koi order review me nahi hai."
+    return None, (f"Sab rate bhare hue hain. Badalna ho toh code ke saath bhejo — "
+                  f"jaise <code>{open_lines[0].item_code or 'GME01'} 25</code>.")
 
 
 def handle_rate_reply(update, token=None):
@@ -1525,14 +1580,20 @@ def handle_rate_reply(update, token=None):
                                   token=token)
         return "bad number"
 
+    # Pehle kya tha, ye batana zaroori hai \u2014 badalte waqt aadmi ko dikhna
+    # chahiye ki wo kis cheez ke upar likh raha hai.
+    was = line.rate or 0
     set_line_rate(line, rate)
     po = line.po
     refresh_rate_summary(po, token=token)
     left = po.no_rate_count
+    head = (f"\u2705 <b>{line.item_code or line.raw_size_text}</b> \u2014 "
+            f"\u20b9{rate:g}/{line.qty_unit}")
+    if was and was != rate:
+        head += f" (pehle \u20b9{was:g} tha)"
     telegram_bot.send_message(
         owner.chat_id,
-        f"\u2705 <b>{line.item_code or line.raw_size_text}</b> \u2014 "
-        f"\u20b9{rate:g}/{line.qty_unit} yaad rakh liya."
+        head + " yaad rakh liya."
         + ("" if left else "\n\nSab rate aa gaye. Upar wale card se operator ko bhej do."),
         token=token)
     return "rate set"
@@ -1677,6 +1738,38 @@ def _rows_for_form(text, customer_id, unit, fuzzy):
         rows.append({"code": p["item_code"], "size": size,
                      "qty": p["qty"] or "", "unit": p["qty_unit"]})
     return rows
+
+
+@po_bp.route("/party/<int:customer_id>/products")
+@login_required
+def po_party_products(customer_id):
+    """Is party ka saara maal — form ke dropdown ke liye.
+
+    Code yaad rakhna aadmi ka kaam nahi hona chahiye. Party chunte hi uska
+    saara maal aa jaata hai: code, naam, size, jaayaz units aur pichli baar ka
+    rate. Line pe product chunte hi ye sab apne aap bhar jaata hai, aur order
+    ki keemat wahin dikh jaati hai — bina rate ke page pe gaye.
+    """
+    from app import COMMON_UNITS
+
+    rows = []
+    for m in (PartyProductMap.query
+              .filter_by(customer_id=customer_id)
+              .order_by(PartyProductMap.item_code, PartyProductMap.label).all()):
+        units = m.unit_choices() or list(COMMON_UNITS)
+        rows.append({
+            "id": m.id,
+            "code": m.item_code or "",
+            "label": m.label or "",
+            "size": m.raw_size_text or "",
+            "units": units,
+            # Har unit ka apna rate — piece ka bhav roll pe nahi chalta
+            "rates": {u: r.rate for u in units
+                      for r in [PartyRate.look_up(m.id, u)] if r and r.rate},
+            "thumb": url_for("po.map_thumb", map_id=m.id) if m.image_thumb else "",
+            "used": m.times_used or 0,
+        })
+    return jsonify({"ok": True, "products": rows})
 
 
 @po_bp.route("/read-text", methods=["POST"])
@@ -1873,8 +1966,9 @@ def po_ask_rates(po_id):
     except telegram_bot.TelegramError as exc:
         flash(str(exc), "error")
         return redirect(url_for("po.po_review", po_id=po.id))
-    flash(t("po_f_asked_telegram", n=left) if left
-          else t("po_f_asked_nothing"), "success")
+    # Rate baaki hon toh poochha gaya; sab bhare hon toh mohar ke liye bheja
+    # gaya. Dono asli kaam hain — "kuch poochhne ko nahi tha" galat khabar thi.
+    flash(t("po_f_asked_telegram", n=left) if left else t("po_f_rates_sent"), "success")
     return redirect(url_for("po.po_review", po_id=po.id))
 
 

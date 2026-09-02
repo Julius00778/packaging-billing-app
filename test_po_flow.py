@@ -376,6 +376,25 @@ with app.app_context():
     check("dusre unit ka rate alag hi rehta hai",
           po_module.PartyRate.look_up(po.lines[0].map_id, "box"), None)
 
+# --------------------------------------------- form ko party ka maal milta hai
+# Code yaad rakhna aadmi ka kaam nahi. Party chunte hi uska saara maal aata hai,
+# aur line pe wo chunte hi size, unit aur pichla rate khud bhar jaate hain.
+r = ok("party ka maal", client.get(f"/po/party/{cust_id}/products"))
+data = r.get_json()
+check("maal ki list aayi", data["ok"] and len(data["products"]) >= 1, True)
+first = next(p for p in data["products"] if p["code"] == "ST01")
+check("code ke saath naam bhi", bool(first["label"]), True)
+check("size bhi saath aata hai", bool(first["size"]), True)
+check("jaayaz units bhi", len(first["units"]) >= 1, True)
+# Yahi wo cheez hai jisse form pe order ki keemat dikh jaati hai
+check("pichli baar ka rate uski unit pe aata hai", first["rates"].get("pcs"), 20.0)
+check("jis unit ka rate nahi, wo list me nahi", "box" in first["rates"], False)
+
+r = ok("naya order ka form", client.get("/po/new"))
+form = r.data.decode("utf8", "ignore")
+check("form me maal chunne ki list hai", 'id="productList"' in form)
+check("aur har line usi list se judi hai", 'list="productList"' in form)
+
 # Naya PO usi party ka — rate apne aap bhar jaana chahiye
 ok("POST /po/new (rate memory test)", client.post("/po/new", data={
     "customer_id": str(cust_id), "po_number": "PO-4474", "size_unit": "inch",
@@ -589,6 +608,31 @@ ok("GET /po/mappings?customer_id=", client.get(f"/po/mappings?customer_id={cust_
 # ---------------------------------------------- purani screens abhi bhi chalti hain
 for path in ("/", "/invoices", "/customers", "/items", "/accounts"):
     ok(f"GET {path} (regression)", client.get(path))
+
+# ------------------------------------------- page ka JS toota hua na jaye
+# Screen ke andar ka JS Jinja se ban ke nikalta hai, isliye ek galat quote ya
+# adhoora bracket sirf live pe pakda jaata tha — page chup-chaap aadha kaam
+# karta. Ab har page ka JS yahin parse karke dekh lete hain. Node na ho toh
+# ye jaanch chhod di jaati hai; baaki test phir bhi chalte hain.
+import re as _re2                                          # noqa: E402
+import shutil as _sh                                       # noqa: E402
+import subprocess as _sp                                   # noqa: E402
+import tempfile as _tf                                     # noqa: E402
+
+if _sh.which("node"):
+    for path in ("/po/new", "/invoices", f"/po/{po_id}", "/po/bills"):
+        html = client.get(path).data.decode("utf8", "ignore")
+        js = "\n;\n".join(_re2.findall(r"<script>(.*?)</script>", html, _re2.S))
+        if not js.strip():
+            continue
+        with _tf.NamedTemporaryFile("w", suffix=".js", delete=False) as fh:
+            fh.write(js)
+            tmp = fh.name
+        res = _sp.run(["node", "--check", tmp], capture_output=True)
+        check(f"{path} ka JS parse hota hai", res.returncode, 0)
+        if res.returncode:
+            print(res.stderr.decode("utf8", "ignore")[:400])
+        os.unlink(tmp)
 
 if fails:
     print(f"FAILED {len(fails)} check(s):\n")
