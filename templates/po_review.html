@@ -211,10 +211,21 @@
             <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save_rates') }}</button>
           </div>
         </form>
-        {% if has_owner_chat and po.no_rate_count %}
+        {# Ye button pehle sirf tab dikhta tha jab kisi line ka rate khaali ho.
+           Par jab saare rate pichli baar se apne aap bhar jaate hain, tab bhi
+           mohar Telegram pe hi lagti hai — aur button gayab tha. Order wahin
+           atak jaata tha: bhejne ka button band, aur poochhne ka rasta hi nahi.
+           Isliye ab ye pending order me hamesha rehta hai. #}
+        {% if has_owner_chat %}
           <form method="POST" action="{{ url_for('po.po_ask_rates', po_id=po.id) }}"
                 style="margin-top:8px;">
-            <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_ask_on_telegram') }}</button>
+            <button class="btn {{ 'btn-ghost' if po.no_rate_count else 'btn-primary' }} btn-sm"
+                    type="submit">
+              {{ t('po_ask_on_telegram') if po.no_rate_count else t('po_send_rates_telegram') }}
+            </button>
+            <span style="font-size:12px;color:var(--ink-faint);margin-left:8px;">
+              {{ t('po_rates_telegram_hint') }}
+            </span>
           </form>
         {% endif %}
       </div>

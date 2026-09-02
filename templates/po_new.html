@@ -3,18 +3,27 @@
 {% block title %}{{ t('po_new_order') }}{% endblock %}
 {% block content %}
 
-<div class="toolbar">
-  <div style="flex:1;font-weight:600;">{{ t('po_new_order') }}</div>
-  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_back') }}</a>
-</div>
+{# Ye page ek form hai — Odoo ke sale order ki tarah. Upar kiska order, neeche
+   kya-kya. Photo padhna isi form ki ek madad hai, alag raasta nahi.
 
-<form method="POST" enctype="multipart/form-data" id="orderForm">
-  {# Ye page ek form hai. Photo padhna ek madad hai jo isi form ko bharti hai —
-     alag raasta nahi. Jo bhi aaye, aakhir me aadmi wahi lines dekh ke haan
-     kehta hai. #}
+   Sabse badi baat: code yaad rakhna aadmi ka kaam nahi hona chahiye. Party
+   chunte hi uska saara maal aa jaata hai, aur line pe maal chunte hi size,
+   unit aur pichli baar ka rate khud bhar jaate hain. #}
+
+<form method="POST" enctype="multipart/form-data" id="orderForm" class="sheet">
   <input type="hidden" name="entry_mode" value="rows">
 
-  <div class="card panel-pad" style="margin-bottom:14px;">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-kicker">{{ t('po_new_order') }}</div>
+      <h1 class="sheet-title">{{ t('po_sheet_title') }}</h1>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_back') }}</a>
+  </div>
+
+  <div class="card sheet-card">
+    <div class="step-head"><span class="step-no">1</span>{{ t('po_step_whose') }}</div>
+
     <div class="form-grid three">
       <div class="field">
         <label>{{ t('po_party') }} *</label>
@@ -22,10 +31,12 @@
           <option value="">{{ t('po_select') }}</option>
           {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
+        <div class="field-help" id="partyNote">{{ t('po_party_help') }}</div>
       </div>
       <div class="field">
         <label>{{ t('po_order_number') }} *</label>
         <input type="text" name="po_number" required placeholder="PO-4471">
+        <div class="field-help">{{ t('po_order_number_help') }}</div>
       </div>
       <div class="field">
         <label>{{ t('po_order_date') }}</label>
@@ -33,102 +44,118 @@
       </div>
     </div>
 
-    <div class="form-grid three">
-      <div class="field">
-        <label>{{ t('po_sizes_written_in') }}</label>
-        <select name="size_unit" id="sizeUnit">
-          <option value="inch">{{ t('po_unit_inch') }}</option>
-          <option value="mm">{{ t('po_unit_mm') }}</option>
-          <option value="cm">{{ t('po_unit_cm') }}</option>
-        </select>
+    <details class="more">
+      <summary>{{ t('po_more_details') }}</summary>
+      <div class="form-grid three" style="margin-top:10px;">
+        <div class="field">
+          <label>{{ t('po_sizes_written_in') }}</label>
+          <select name="size_unit" id="sizeUnit">
+            <option value="inch">{{ t('po_unit_inch') }}</option>
+            <option value="mm">{{ t('po_unit_mm') }}</option>
+            <option value="cm">{{ t('po_unit_cm') }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>{{ t('po_came_from') }}</label>
+          <select name="source">
+            <option value="upload">{{ t('po_src_upload') }}</option>
+            <option value="email">{{ t('po_src_email') }}</option>
+            <option value="whatsapp">{{ t('po_src_whatsapp') }}</option>
+            <option value="manual">{{ t('po_src_manual') }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>{{ t('po_note_optional') }}</label>
+          <input type="text" name="note" placeholder="{{ t('po_note_placeholder') }}">
+        </div>
       </div>
-      <div class="field">
-        <label>{{ t('po_came_from') }}</label>
-        <select name="source">
-          <option value="upload">{{ t('po_src_upload') }}</option>
-          <option value="email">{{ t('po_src_email') }}</option>
-          <option value="whatsapp">{{ t('po_src_whatsapp') }}</option>
-          <option value="manual">{{ t('po_src_manual') }}</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>{{ t('po_note_optional') }}</label>
-        <input type="text" name="note" placeholder="{{ t('po_note_placeholder') }}">
-      </div>
-    </div>
+    </details>
   </div>
 
-  <div class="intake">
-    <div class="card panel-pad intake-scan">
-      <div style="font-weight:600;margin-bottom:2px;">{{ t('po_attach') }}</div>
-      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
-        {{ t('po_ocr_hint', save=t('po_read_order')) }}
+  <div class="card sheet-card">
+    <div class="step-head">
+      <span class="step-no">2</span>{{ t('po_step_what') }}
+      <span class="step-aside">{{ t('po_step_what_hint') }}</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="lines-table">
+        <thead>
+          <tr>
+            <th class="c-no"></th>
+            <th class="c-prod">{{ t('po_product') }}</th>
+            <th class="c-size">{{ t('po_size') }}</th>
+            <th class="c-qty num">{{ t('po_qty') }}</th>
+            <th class="c-unit">{{ t('po_unit') }}</th>
+            <th class="c-amt num">{{ t('po_amount') }}</th>
+            <th class="c-x"></th>
+          </tr>
+        </thead>
+        <tbody id="rowsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="lines-foot">
+      <button class="link-add" type="button" id="addRow">+ {{ t('po_add_line') }}</button>
+      <div class="lines-total">
+        <span>{{ t('po_est_total') }}</span>
+        <strong id="grandTotal">—</strong>
       </div>
+    </div>
+    <div class="field-help" id="totalNote" hidden>{{ t('po_est_total_hint') }}</div>
+  </div>
 
-      <input type="file" name="scan" id="scanInput" accept="image/*,application/pdf" hidden>
-      <div class="btn-row" style="margin:0 0 10px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" type="button" id="scanPick">{{ t('po_read_from_file') }}</button>
-        <button class="btn btn-ghost btn-sm" type="button" id="pasteOpen">{{ t('po_paste_open') }}</button>
-        <button class="btn btn-ghost btn-sm" type="button" id="scanClear" hidden>{{ t('po_attach_remove') }}</button>
-        <a class="btn btn-ghost btn-sm" id="scanOpen" target="_blank" rel="noopener" hidden>{{ t('po_attach_open') }}</a>
-      </div>
+  <div class="card sheet-card">
+    <div class="step-head">
+      <span class="step-no">3</span>{{ t('po_step_paper') }}
+      <span class="step-aside">{{ t('po_step_paper_hint') }}</span>
+    </div>
 
-      <div id="ocrNote" class="ocr-note" hidden></div>
+    <input type="file" name="scan" id="scanInput" accept="image/*,application/pdf" hidden>
+    <div class="btn-row" style="margin:0 0 10px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" type="button" id="scanPick">{{ t('po_read_from_file') }}</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="pasteOpen">{{ t('po_paste_open') }}</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="scanClear" hidden>{{ t('po_attach_remove') }}</button>
+      <a class="btn btn-ghost btn-sm" id="scanOpen" target="_blank" rel="noopener" hidden>{{ t('po_attach_open') }}</a>
+    </div>
 
-      <div id="pasteWrap" class="field" hidden>
-        <label>{{ t('po_paste_title') }}</label>
-        <textarea id="pasteText" rows="6" placeholder="{{ t('po_lines_placeholder') }}"></textarea>
-        <div class="btn-row" style="margin-top:8px;">
-          <button class="btn btn-ghost btn-sm" type="button" id="pasteDo">{{ t('po_paste_do') }}</button>
-        </div>
-      </div>
+    <div id="ocrNote" class="ocr-note" hidden></div>
 
-      <div id="scanBox" class="intake-preview">
-        <div class="empty-state" style="padding:24px 10px;">
-          <div class="big">{{ t('po_attach_none') }}</div>
-          <div>{{ t('po_attach_none_hint') }}</div>
-        </div>
+    <div id="pasteWrap" class="field" hidden>
+      <label>{{ t('po_paste_title') }}</label>
+      <textarea id="pasteText" rows="5" placeholder="{{ t('po_lines_placeholder') }}"></textarea>
+      <div class="btn-row" style="margin-top:8px;">
+        <button class="btn btn-ghost btn-sm" type="button" id="pasteDo">{{ t('po_paste_do') }}</button>
       </div>
     </div>
 
-    <div class="card panel-pad intake-entry">
-      <div style="font-weight:600;margin-bottom:2px;">{{ t('po_lines_title') }}</div>
-      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">{{ t('po_lines_sub') }}</div>
+    <div id="scanBox" class="intake-preview" hidden></div>
+  </div>
 
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>{{ t('po_item_code') }}</th><th>{{ t('po_size') }}</th>
-                     <th>{{ t('po_qty') }}</th><th>{{ t('po_unit') }}</th><th></th></tr></thead>
-          <tbody id="rowsBody"></tbody>
-        </table>
-      </div>
-
-      <div class="toolbar" style="margin:10px 0 0;">
-        <div style="flex:1;font-size:12px;color:var(--ink-faint);">{{ t('po_row_hint') }}</div>
-        <button class="btn btn-ghost btn-sm" type="button" id="addRow">+ {{ t('po_add_line') }}</button>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-primary" type="submit">{{ t('po_read_order') }}</button>
-        <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('cancel') }}</a>
-      </div>
-    </div>
+  <div class="sheet-actions">
+    <button class="btn btn-primary" type="submit">{{ t('po_read_order') }}</button>
+    <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('cancel') }}</a>
   </div>
 </form>
 
+<datalist id="productList"></datalist>
+
 <script>
 (function () {
-  var UNITS   = {{ common_units|tojson }};
-  var input   = document.getElementById('scanInput');
-  var box     = document.getElementById('scanBox');
-  var pick    = document.getElementById('scanPick');
-  var clear   = document.getElementById('scanClear');
-  var openBtn = document.getElementById('scanOpen');
-  var note    = document.getElementById('ocrNote');
-  var body    = document.getElementById('rowsBody');
-  var party   = document.getElementById('partySel');
-  var url     = null;
-  var emptyHtml = box.innerHTML;
+  var UNITS  = {{ common_units|tojson }};
+  var body   = document.getElementById('rowsBody');
+  var party  = document.getElementById('partySel');
+  var list   = document.getElementById('productList');
+  var input  = document.getElementById('scanInput');
+  var box    = document.getElementById('scanBox');
+  var pick   = document.getElementById('scanPick');
+  var clear  = document.getElementById('scanClear');
+  var openBt = document.getElementById('scanOpen');
+  var note   = document.getElementById('ocrNote');
+  var totalEl = document.getElementById('grandTotal');
+  var totalNote = document.getElementById('totalNote');
+  var partyNote = document.getElementById('partyNote');
+  var url = null;
 
   var TXT = {
     reading:   {{ t('po_reading')|tojson }},
@@ -137,8 +164,17 @@
     pickParty: {{ t('po_ocr_pick_party')|tojson }},
     remove:    {{ t('po_remove_line')|tojson }},
     pickFile:  {{ t('po_read_from_file')|tojson }},
-    again:     {{ t('po_read_again')|tojson }}
+    again:     {{ t('po_read_again')|tojson }},
+    pickProd:  {{ t('po_pick_product')|tojson }},
+    newItem:   {{ t('po_new_item_note')|tojson }},
+    noRate:    {{ t('po_no_rate_yet')|tojson }},
+    partyHelp: {{ t('po_party_help')|tojson }},
+    partyHas:  {{ t('po_party_has_n')|tojson }}
   };
+
+  // Party ka maal — code se dhoondhne ke liye ek naksha
+  var PRODUCTS = [];
+  var BY_CODE  = {};
 
   function say(msg, bad) {
     note.hidden = false;
@@ -146,63 +182,198 @@
     note.classList.toggle('bad', !!bad);
   }
 
-  // ---------------- lines ----------------
+  function money(n) { return '₹' + Math.round(n).toLocaleString('en-IN'); }
+  function rows() { return Array.prototype.slice.call(body.children); }
+  function get(tr, name) { return tr.querySelector('[name=' + name + ']'); }
+
+  // ------------------------------------------------------------ party ka maal
+  function loadProducts() {
+    PRODUCTS = []; BY_CODE = {}; list.innerHTML = '';
+    partyNote.textContent = TXT.partyHelp;
+    if (!party.value) { rows().forEach(paint); total(); return; }
+
+    fetch('/po/party/' + party.value + '/products', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        PRODUCTS = (j && j.products) || [];
+        var html = '';
+        PRODUCTS.forEach(function (p) {
+          if (p.code) BY_CODE[p.code.toUpperCase()] = p;
+          // Code type karo ya naam — dono se dhoondh mil jaati hai, isliye
+          // code yaad rakhna zaroori nahi rehta.
+          html += '<option value="' + p.code + '" label="' +
+                  String(p.label || '').replace(/"/g, '&quot;') + '"><\/option>';
+        });
+        list.innerHTML = html;
+        partyNote.textContent = TXT.partyHas.replace('{n}', PRODUCTS.length);
+        rows().forEach(paint);
+        total();
+      })
+      .catch(function () { /* list na aaye toh bhi form haath se bhara ja sakta hai */ });
+  }
+
+  // ------------------------------------------------------------------- lines
   function addRow(v) {
     v = v || {};
     var tr = document.createElement('tr');
-    var opts = UNITS.map(function (u) {
-      return '<option value="' + u + '"' +
-             (u === (v.unit || 'pcs') ? ' selected' : '') + '>' + u + '<\/option>';
-    }).join('');
     tr.innerHTML =
-      '<td><input type="text" name="line_code" placeholder="HM01"><\/td>' +
-      '<td><input type="text" name="line_size" placeholder="23x14x5"><\/td>' +
-      '<td><input type="number" step="0.01" min="0" name="line_qty"><\/td>' +
-      '<td><select name="line_unit">' + opts + '<\/select><\/td>' +
-      '<td><button class="btn btn-ghost btn-sm" type="button" data-drop="1">' +
-      TXT.remove + '<\/button><\/td>';
-    // Value attribute me nahi, property me — warna quote wala text HTML tod deta hai
-    tr.querySelector('[name=line_code]').value = v.code || '';
-    tr.querySelector('[name=line_size]').value = v.size || '';
-    tr.querySelector('[name=line_qty]').value  = v.qty  || '';
+      '<td class="c-no"><\/td>' +
+      '<td class="c-prod">' +
+        '<input type="text" name="line_code" list="productList" autocomplete="off">' +
+        '<div class="line-name"><\/div>' +
+      '<\/td>' +
+      '<td class="c-size"><input type="text" name="line_size" placeholder="23x14x5"><\/td>' +
+      '<td class="c-qty"><input type="number" step="0.01" min="0" name="line_qty" ' +
+             'inputmode="decimal"><\/td>' +
+      '<td class="c-unit"><select name="line_unit"><\/select><\/td>' +
+      '<td class="c-amt num mono line-amt">—<\/td>' +
+      '<td class="c-x"><button class="row-x" type="button" data-drop="1">×<\/button><\/td>';
     body.appendChild(tr);
+    // Value attribute me nahi, property me — warna quote wala text HTML tod deta hai
+    get(tr, 'line_code').placeholder = TXT.pickProd;
+    tr.querySelector('[data-drop]').title = TXT.remove;
+    setUnits(tr, UNITS, v.unit);
+    get(tr, 'line_code').value = v.code || '';
+    get(tr, 'line_size').value = v.size || '';
+    get(tr, 'line_qty').value  = v.qty  || '';
+    paint(tr);
     return tr;
   }
 
-  function fillRows(rows) {
-    body.innerHTML = '';
-    rows.forEach(addRow);
-    // Khaali form teen line ke saath khulta hai — aam order itna hi hota hai.
-    // Photo se bhara ho toh ek khaali line kaafi, aur jodne ke liye.
-    var spare = rows.length ? 1 : 3;
-    while (spare--) addRow();
+  function setUnits(tr, units, want) {
+    var sel = get(tr, 'line_unit');
+    var keep = want || sel.value || 'pcs';
+    sel.innerHTML = units.map(function (u) {
+      return '<option value="' + u + '">' + u + '<\/option>';
+    }).join('');
+    if (units.indexOf(keep) === -1) {
+      sel.insertAdjacentHTML('afterbegin',
+        '<option value="' + keep + '">' + keep + '<\/option>');
+    }
+    sel.value = keep;
   }
 
-  document.getElementById('addRow').addEventListener('click', function () { addRow(); });
+  // Line pe product chunte hi baaki khaane khud bhar jaate hain.
+  function paint(tr) {
+    var code = (get(tr, 'line_code').value || '').trim().toUpperCase();
+    var p = BY_CODE[code];
+    var name = tr.querySelector('.line-name');
+    var amt = tr.querySelector('.line-amt');
+    var sizeIn = get(tr, 'line_size');
+
+    if (!p) {
+      // Naya maal — ye jaayaz hai. Review screen pe iska product ban jayega.
+      name.textContent = code ? TXT.newItem : '';
+      name.className = 'line-name' + (code ? ' warn' : '');
+      sizeIn.readOnly = false;
+      amt.textContent = '—';
+      amt.title = '';
+      tr.dataset.amount = '';
+      return;
+    }
+
+    name.textContent = p.label || '';
+    name.className = 'line-name';
+    // Ek code = ek product = ek size. Size haath se badalne ka matlab nahi.
+    if (p.size) { sizeIn.value = p.size; sizeIn.readOnly = true; }
+    else { sizeIn.readOnly = false; }
+    setUnits(tr, (p.units && p.units.length) ? p.units : UNITS,
+             get(tr, 'line_unit').value);
+
+    var unit = get(tr, 'line_unit').value;
+    var rate = (p.rates && p.rates[unit]) || 0;
+    var qty = parseFloat(get(tr, 'line_qty').value) || 0;
+    if (rate && qty) {
+      amt.textContent = money(rate * qty);
+      amt.title = money(rate) + ' / ' + unit;
+      tr.dataset.amount = String(rate * qty);
+    } else {
+      amt.textContent = rate ? money(rate) + '/' + unit : TXT.noRate;
+      amt.title = '';
+      tr.dataset.amount = '';
+    }
+  }
+
+  // Kul jama tabhi dikhta hai jab har bhari hui line ka pichla rate maloom ho —
+  // warna aadha-adhoora number bharosa todta hai.
+  function total() {
+    var sum = 0, known = 0, filled = 0;
+    rows().forEach(function (tr) {
+      var code = (get(tr, 'line_code').value || '').trim();
+      var qty = parseFloat(get(tr, 'line_qty').value) || 0;
+      if (!code && !qty) return;
+      filled++;
+      if (tr.dataset.amount) { sum += parseFloat(tr.dataset.amount); known++; }
+    });
+    var all = filled && known === filled;
+    totalEl.textContent = all ? money(sum) : '—';
+    totalNote.hidden = !filled || !!all;
+  }
+
+  function renumber() {
+    rows().forEach(function (tr, i) { tr.querySelector('.c-no').textContent = i + 1; });
+  }
+
+  function fillRows(given) {
+    body.innerHTML = '';
+    given.forEach(addRow);
+    // Khaali form teen line ke saath khulta hai — aam order itna hi hota hai.
+    // Photo se bhara ho toh ek khaali line kaafi, aage jodne ke liye.
+    var spare = given.length ? 1 : 3;
+    while (spare--) addRow();
+    renumber();
+    total();
+  }
+
+  document.getElementById('addRow').addEventListener('click', function () {
+    var tr = addRow();
+    renumber();
+    get(tr, 'line_code').focus();
+  });
+
   body.addEventListener('click', function (e) {
     var btn = e.target.closest && e.target.closest('[data-drop]');
-    if (btn && body.children.length > 1) btn.closest('tr').remove();
+    if (btn && body.children.length > 1) {
+      btn.closest('tr').remove();
+      renumber();
+      total();
+    }
   });
+
+  body.addEventListener('input', function (e) {
+    var tr = e.target.closest('tr');
+    if (!tr) return;
+    if (e.target.name === 'line_code' || e.target.name === 'line_qty') paint(tr);
+    total();
+  });
+  body.addEventListener('change', function (e) {
+    var tr = e.target.closest('tr');
+    if (tr && e.target.name === 'line_unit') { paint(tr); total(); }
+  });
+
   // Aakhri line ke aakhir me Enter — nayi line. Haath keyboard pe hi rehta hai.
   body.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     var tr = e.target.closest('tr');
-    if (tr === body.lastElementChild) addRow();
+    if (tr === body.lastElementChild) { addRow(); renumber(); }
     var next = tr.nextElementSibling;
     if (next) next.querySelector('input').focus();
   });
 
+  party.addEventListener('change', loadProducts);
   fillRows([]);
+  loadProducts();
 
-  // ---------------- photo / PDF ----------------
+  // -------------------------------------------------------------- photo / PDF
   function preview(file) {
     if (url) { URL.revokeObjectURL(url); url = null; }
-    clear.hidden = openBtn.hidden = !file;
+    clear.hidden = openBt.hidden = !file;
     pick.textContent = file ? TXT.again : TXT.pickFile;
-    if (!file) { box.innerHTML = emptyHtml; return; }
+    if (!file) { box.hidden = true; box.innerHTML = ''; return; }
     url = URL.createObjectURL(file);
-    openBtn.href = url;
+    openBt.href = url;
+    box.hidden = false;
     box.innerHTML = file.type === 'application/pdf'
       ? '<iframe src="' + url + '" class="intake-frame"><\/iframe>'
       : '<img src="' + url + '" alt="" class="intake-img">';
@@ -239,17 +410,15 @@
     preview(file);
     if (!file) return;
     // Party ke bina code kis list se milayen — isliye pehle wahi poochho.
-    // Photo phir bhi dikhti rehti hai, aadmi dekh ke khud bhar sakta hai.
     if (!party.value) { say(TXT.pickParty, true); return; }
     readFile(file);
   });
-  // Party baad me chuni ho toh dobara padhne ka mauka do
   party.addEventListener('change', function () {
     var file = input.files && input.files[0];
     if (file && party.value && note.classList.contains('bad')) readFile(file);
   });
 
-  // ---------------- paste ----------------
+  // ------------------------------------------------------------------- paste
   var pasteWrap = document.getElementById('pasteWrap');
   document.getElementById('pasteOpen').addEventListener('click', function () {
     pasteWrap.hidden = !pasteWrap.hidden;
