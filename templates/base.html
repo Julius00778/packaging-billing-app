@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ firm_settings.firm_name or "Firm Billing" }} — {% block title %}{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{# ?v= file ke apne waqt se banta hai — style badli toh browser nayi hi laayega #}
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v('style.css') }}">
 <style>
 :root{
 --accent: {{ firm_settings.theme_color or '#A8722E' }};
