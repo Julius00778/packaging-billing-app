@@ -268,3 +268,70 @@ body.bill-overlay-open{overflow:hidden;}
   .intake-preview{max-height:44vh;}
   .intake-frame{height:44vh;}
 }
+
+
+/* ---------- Naya order ka form ----------
+   Odoo ke sale order jaisa: upar kiska, beech me kya-kya, aakhir me kagaz.
+   Har hisse pe ek number, taaki pehli baar wala aadmi bhi kram samajh jaye —
+   aur ek waqt me ek hi cheez soche. */
+.sheet{max-width:960px;}
+.sheet-head{display:flex;align-items:flex-end;justify-content:space-between;
+  gap:14px;margin:2px 0 16px;flex-wrap:wrap;}
+.sheet-kicker{font-size:11px;letter-spacing:0.07em;text-transform:uppercase;
+  color:var(--ink-faint);margin-bottom:2px;}
+.sheet-title{font-size:26px;}
+.sheet-card{padding:20px 22px;margin-bottom:14px;}
+.sheet-actions{display:flex;gap:10px;align-items:center;margin-top:4px;}
+
+.step-head{display:flex;align-items:center;gap:10px;font-weight:600;
+  font-size:15px;margin-bottom:16px;flex-wrap:wrap;}
+.step-no{width:23px;height:23px;border-radius:50%;background:var(--accent-soft);
+  color:var(--accent-deep);font-size:12px;font-weight:700;display:inline-flex;
+  align-items:center;justify-content:center;flex:0 0 auto;}
+.step-aside{font-weight:400;font-size:12.5px;color:var(--ink-faint);}
+
+.field-help{font-size:11.5px;color:var(--ink-faint);line-height:1.45;}
+.more{margin-top:2px;}
+.more summary{font-size:12.5px;color:var(--ink-soft);cursor:pointer;
+  padding:6px 0;user-select:none;}
+.more summary:hover{color:var(--accent-deep);}
+
+/* Lines ki table. Har khaana utna hi chauda jitni us cheez ko zaroorat hai —
+   quantity ke liye poori chaudai dena aankh ko bhatkata hai. */
+.lines-table{font-size:13.5px;}
+.lines-table thead th{padding-bottom:6px;}
+.lines-table tbody td{padding:7px 6px;vertical-align:top;}
+.lines-table input,.lines-table select{width:100%;padding:8px 10px;
+  border:1px solid var(--border);border-radius:6px;font-size:13.5px;
+  color:var(--ink);background:#FCFCFA;}
+.lines-table input[readonly]{background:#F1F1EB;color:var(--ink-soft);}
+.lines-table .c-no{width:26px;color:var(--ink-faint);font-size:12px;
+  padding-top:16px;text-align:right;}
+.lines-table .c-prod{min-width:190px;}
+.lines-table .c-size{width:150px;}
+.lines-table .c-qty{width:104px;}
+.lines-table .c-unit{width:112px;}
+.lines-table .c-amt{width:120px;padding-top:16px;white-space:nowrap;}
+.lines-table .c-x{width:32px;padding-top:12px;}
+.line-name{font-size:11.5px;color:var(--ink-faint);margin-top:4px;
+  line-height:1.35;min-height:15px;}
+.line-name.warn{color:var(--accent-deep);}
+.row-x{background:transparent;border:none;color:var(--ink-faint);font-size:17px;
+  line-height:1;padding:4px 6px;border-radius:6px;}
+.row-x:hover{background:var(--danger-soft);color:var(--danger);}
+
+.lines-foot{display:flex;align-items:center;justify-content:space-between;
+  gap:14px;margin-top:12px;flex-wrap:wrap;}
+.link-add{background:transparent;border:none;color:var(--accent-deep);
+  font-size:13.5px;font-weight:600;padding:4px 0;}
+.link-add:hover{text-decoration:underline;}
+.lines-total{display:flex;align-items:baseline;gap:10px;font-size:13px;
+  color:var(--ink-soft);}
+.lines-total strong{font-family:'IBM Plex Mono',monospace;font-size:18px;
+  color:var(--ink);}
+
+@media (max-width:760px){
+  .sheet-card{padding:16px 14px;}
+  .lines-table .c-prod{min-width:150px;}
+  .lines-table .c-size{width:120px;}
+}
