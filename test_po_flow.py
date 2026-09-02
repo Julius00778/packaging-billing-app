@@ -8,6 +8,7 @@ JPEG upload karke ye bhi check karta hai ki DB me chhoti hoke jaa rahi hai.
 import io
 import os
 import sys
+import re as _re2
 
 sys.path.insert(0, os.path.dirname(__file__))
 DB = os.path.join(os.path.dirname(__file__), "test_po.db")
@@ -395,6 +396,12 @@ form = r.data.decode("utf8", "ignore")
 check("form me maal chunne ki list hai", 'id="productList"' in form)
 check("aur har line usi list se judi hai", 'list="productList"' in form)
 
+# Style badalne pe browser purani file pakde rehta tha aur naya page toota hua
+# dikhta tha — jab tak aadmi khud hard-refresh na kare. Ab link pe file ka apna
+# nishan lagta hai, isliye nayi style apne aap aati hai.
+check("style ke link pe nishan lagta hai",
+      bool(_re2.search(r'style\.css\?v=\d+', form)))
+
 # Naya PO usi party ka — rate apne aap bhar jaana chahiye
 ok("POST /po/new (rate memory test)", client.post("/po/new", data={
     "customer_id": str(cust_id), "po_number": "PO-4474", "size_unit": "inch",
@@ -614,7 +621,6 @@ for path in ("/", "/invoices", "/customers", "/items", "/accounts"):
 # adhoora bracket sirf live pe pakda jaata tha — page chup-chaap aadha kaam
 # karta. Ab har page ka JS yahin parse karke dekh lete hain. Node na ho toh
 # ye jaanch chhod di jaati hai; baaki test phir bhi chalte hain.
-import re as _re2                                          # noqa: E402
 import shutil as _sh                                       # noqa: E402
 import subprocess as _sp                                   # noqa: E402
 import tempfile as _tf                                     # noqa: E402

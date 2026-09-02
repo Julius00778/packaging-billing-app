@@ -81,11 +81,26 @@ def _can_edit_invoice(settings):
     return current_user.is_owner or bool(settings.staff_can_edit_invoice)
 
 
+def _asset_v(name):
+    """Style file ka apna nishan — file badli toh nishan badla.
+
+    Iske bina browser purani style.css pakde rehta hai aur naya page tootа hua
+    dikhta hai, jab tak aadmi khud hard-refresh na kare. Wo aadmi ka kaam nahi
+    hona chahiye.
+    """
+    try:
+        path = os.path.join(app.static_folder, name)
+        return str(int(os.path.getmtime(path)))
+    except OSError:
+        return "0"
+
+
 @app.context_processor
 def inject_globals():
     settings = Settings.get()
     return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
-                t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS)
+                t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS,
+                asset_v=_asset_v)
 
 
 @app.route("/lang/<code>")
