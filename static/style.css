@@ -310,6 +310,7 @@ body.bill-overlay-open{overflow:hidden;}
 .lines-table .c-prod{min-width:190px;}
 .lines-table .c-size{width:150px;}
 .lines-table .c-qty{width:104px;}
+.lines-table .c-qty input{text-align:right;font-family:'IBM Plex Mono',monospace;}
 .lines-table .c-unit{width:112px;}
 .lines-table .c-amt{width:120px;padding-top:16px;white-space:nowrap;}
 .lines-table .c-x{width:32px;padding-top:12px;}
