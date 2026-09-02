@@ -22,13 +22,16 @@
 <p class="section-sub">{{ t('khata_sub') }}</p>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('customer') }}</th><th>{{ t('phone') }}</th><th>{{ t('current_balance') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('customer') }}</th><th>{{ t('phone') }}</th><th class="num">{{ t('current_balance') }}</th><th></th></tr></thead>
 <tbody>
 {% for row in rows %}
 <tr>
 <td>{{ row.customer.name }}</td>
 <td>{{ row.customer.phone }}</td>
-<td class="num {% if row.balance > 0 %}badge unpaid{% elif row.balance < 0 %}badge paid{% endif %}">₹{{ "%.2f"|format(row.balance) }}</td>
+<td class="num">
+{%- if row.balance > 0 %}<span class="badge unpaid mono">₹{{ "%.2f"|format(row.balance) }}</span>
+{%- elif row.balance < 0 %}<span class="badge paid mono">₹{{ "%.2f"|format(row.balance) }}</span>
+{%- else %}₹{{ "%.2f"|format(row.balance) }}{% endif %}</td>
 <td><a class="btn btn-ghost btn-sm" href="{{ url_for('customer_khata', cid=row.customer.id) }}">{{ t('ledger') }}</a></td>
 </tr>
 {% endfor %}

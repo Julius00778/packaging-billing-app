@@ -22,7 +22,7 @@
 <div class="card panel-pad">
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('invoice_no') }}</th><th>{{ t('date') }}</th><th>{{ t('customer') }}</th><th>{{ t('amount') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('invoice_no') }}</th><th>{{ t('date') }}</th><th>{{ t('customer') }}</th><th class="num">{{ t('amount') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
 <tbody>
 {% for inv in invoices %}
 <tr>

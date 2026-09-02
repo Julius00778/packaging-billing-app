@@ -71,7 +71,7 @@
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('name') }}</th><th>{{ t('category') }}</th><th>{{ t('unit') }}</th><th>{{ t('price') }}</th><th>{{ t('stock') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('name') }}</th><th>{{ t('category') }}</th><th>{{ t('unit') }}</th><th class="num">{{ t('price') }}</th><th class="num">{{ t('stock') }}</th><th></th></tr></thead>
 <tbody>
 {% for it in items %}
 <tr>
@@ -79,8 +79,14 @@
 <td>{{ it.category.name if it.category else "—" }}</td>
 <td>{{ it.unit }}</td>
 <td class="num">₹{{ "%.2f"|format(it.sale_price) }}</td>
-<td class="num {% if it.track_stock and it.current_stock <= it.reorder_level %}badge unpaid{% endif %}">
-{% if it.track_stock %}{{ "%.2f"|format(it.current_stock) }}{% else %}—{% endif %}
+{# Badge cell pe nahi, cell ke andar — warna khaana khud badge ban ke sikud
+   jaata hai aur column ki katar toot jaati hai. #}
+<td class="num">
+{% if it.track_stock %}
+  {% if it.current_stock <= it.reorder_level %}
+    <span class="badge unpaid mono">{{ "%.2f"|format(it.current_stock) }}</span>
+  {% else %}{{ "%.2f"|format(it.current_stock) }}{% endif %}
+{% else %}—{% endif %}
 </td>
 <td>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_item', iid=it.id) }}">{{ t('edit') }}</a>

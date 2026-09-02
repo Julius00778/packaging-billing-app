@@ -18,7 +18,7 @@
 <h2 class="section-title">{{ t('recent_expenses') }} <span style="font-weight:400;color:var(--ink-soft);font-size:13px;">({{ t('total_expenses') }}: ₹{{ "%.2f"|format(total) }})</span></h2>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('date') }}</th><th>{{ t('category') }}</th><th>{{ t('vendor') }}</th><th>{{ t('description') }}</th><th>{{ t('amount') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('category') }}</th><th>{{ t('vendor') }}</th><th>{{ t('description') }}</th><th class="num">{{ t('amount') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
 <tbody>
 {% for e in expenses %}
 <tr>

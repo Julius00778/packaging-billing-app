@@ -11,7 +11,10 @@
 --accent: {{ firm_settings.theme_color or '#A8722E' }};
 --accent-deep: {{ firm_settings.theme_color or '#A8722E' }};
 }
-body{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }
+/* Ye chunav bill ka hai, poore software ka nahi. Pehle ye body pe lagta tha,
+   isliye "Times" chunte hi har screen serif ho jaati thi — jabki setting ka
+   naam hi "invoice font" hai. Ab wahi chalta hai jahan uska matlab hai. */
+.pinv{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }
 </style>
 </head>
 <body>

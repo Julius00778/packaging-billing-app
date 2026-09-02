@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Invoice {{ inv.invoice_no }}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v('style.css') }}">
+{# Bill ka font setting se aata hai — sirf bill pe, screen pe nahi #}
+<style>.pinv{ font-family: {{ invoice_fonts.get(settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }</style>
 </head>
 <body>
 

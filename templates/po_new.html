@@ -22,7 +22,7 @@
   </div>
 
   <div class="card sheet-card">
-    <div class="step-head"><span class="step-no">1</span>{{ t('po_step_whose') }}</div>
+    <div class="sheet-lead">{{ t('po_fill_details') }}</div>
 
     <div class="form-grid three">
       <div class="field">
@@ -70,13 +70,7 @@
         </div>
       </div>
     </details>
-  </div>
-
-  <div class="card sheet-card">
-    <div class="step-head">
-      <span class="step-no">2</span>{{ t('po_step_what') }}
-      <span class="step-aside">{{ t('po_step_what_hint') }}</span>
-    </div>
+    <div class="rule"></div>
 
     <div class="table-wrap">
       <table class="lines-table">
@@ -103,13 +97,8 @@
       </div>
     </div>
     <div class="field-help" id="totalNote" hidden>{{ t('po_est_total_hint') }}</div>
-  </div>
 
-  <div class="card sheet-card">
-    <div class="step-head">
-      <span class="step-no">3</span>{{ t('po_step_paper') }}
-      <span class="step-aside">{{ t('po_step_paper_hint') }}</span>
-    </div>
+    <div class="rule"></div>
 
     <input type="file" name="scan" id="scanInput" accept="image/*,application/pdf" hidden>
     <div class="btn-row" style="margin:0 0 10px;flex-wrap:wrap;">

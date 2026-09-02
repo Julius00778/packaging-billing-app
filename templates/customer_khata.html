@@ -25,7 +25,7 @@
 <h2 class="section-title">{{ t('ledger') }}</h2>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('date') }}</th><th>{{ t('description') }}</th><th>{{ t('amount') }}</th><th>{{ t('current_balance') }}</th></tr></thead>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('description') }}</th><th class="num">{{ t('amount') }}</th><th class="num">{{ t('current_balance') }}</th></tr></thead>
 <tbody>
 {% if customer.opening_balance %}
 <tr>
@@ -45,7 +45,7 @@
 {% if e.kind == 'challan' %}
 <td class="num">—</td>
 {% else %}
-<td class="num {% if e.debit %}badge unpaid{% else %}badge paid{% endif %}">
+<td class="num {% if e.debit %}khata-debit{% else %}khata-credit{% endif %}">
 {% if e.debit %}+₹{{ "%.2f"|format(e.debit) }}{% else %}-₹{{ "%.2f"|format(e.credit) }}{% endif %}
 </td>
 {% endif %}
