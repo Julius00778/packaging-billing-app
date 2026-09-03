@@ -549,6 +549,56 @@ check("office wali copy aayi",
 r = ok("ulta-seedha copies value", client.get(f"/invoices/{old_inv_id}/preview?copies=xyz"))
 check("anjaan value pe dono copy", r.data.decode("utf8", "ignore").count('class="pinv-half"'), 2)
 
+# ------------------------------------------- challan: maal ke saath, bina bhav
+# Jo kaagaz maal ke saath jaata hai usme rate nahi dikhna chahiye — driver ya
+# party ka aadmi sirf ginti milata hai. Par bill ka record wahi rehna chahiye.
+with app.app_context():
+    inv_now = db.session.get(Invoice, old_inv_id)
+    rates = sorted({li.rate for li in inv_now.items})
+    total_txt = "%.2f" % inv_now.grand_total
+    was_hidden = inv_now.hide_pricing
+    # Maal ka naam aur ginti challan pe dikhni chahiye — isliye naam asli
+    # line se hi uthate hain, apne banaye hue se nahi.
+    first_line = inv_now.items[0]
+    line_desc = (first_line.description or "").strip()
+    line_qty = "%g" % (first_line.qty or 0)
+
+r = ok("challan wala preview", client.get(f"/invoices/{old_inv_id}/preview?mode=challan"))
+chal = r.data.decode("utf8", "ignore")
+check("challan me koi rate nahi dikhta",
+      any("%.2f" % rt in chal for rt in rates if rt), False)
+check("aur na hi kul jama", total_txt in chal, False)
+check("par maal ka naam wahin hai", line_desc and line_desc in chal)
+check("aur ginti bhi wahin hai", line_qty in chal)
+
+r = ok("poora bill abhi bhi rate ke saath", client.get(f"/invoices/{old_inv_id}/preview"))
+full = r.data.decode("utf8", "ignore")
+check("poore bill me kul jama hai", total_txt in full)
+
+# Sabse zaroori: chhapne ke tareeke se bill ka record nahi badalna chahiye
+with app.app_context():
+    inv_after = db.session.get(Invoice, old_inv_id)
+    check("bill ka apna hide_pricing waisa hi hai", inv_after.hide_pricing, was_hidden)
+    check("bill ka total bhi nahi hila", "%.2f" % inv_after.grand_total, total_txt)
+    check("lines ke rate bhi jyon ke tyon",
+          sorted({li.rate for li in inv_after.items}), rates)
+
+r = ok("challan ka PDF", client.get(f"/invoices/{old_inv_id}/pdf?mode=challan"))
+check("wo bhi asli PDF hai", r.data[:5], b"%PDF-")
+check("uske naam me challan likha hai",
+      "challan" in r.headers.get("Content-Disposition", ""))
+
+r = ok("challan wala print page", client.get(f"/invoices/{old_inv_id}/print?mode=challan"))
+pp = r.data.decode("utf8", "ignore")
+check("print page pe bhi rate nahi", total_txt in pp, False)
+
+r = ok("bina mode ke print page", client.get(f"/invoices/{old_inv_id}/print"))
+check("aam print page pe rate hai", total_txt in r.data.decode("utf8", "ignore"))
+
+r = ok("overlay me challan ka chunav hai", client.get("/invoices"))
+ov = r.data.decode("utf8", "ignore")
+check("overlay me 'kya chhapna hai' wala khaana", 'id="billMode"' in ov)
+
 # PDF asli file bane — browser ke "Save as PDF" pe nahi chhodna
 r = ok("PDF banta hai", client.get(f"/invoices/{old_inv_id}/pdf"))
 check("PDF hi hai", r.data[:5], b"%PDF-")

@@ -700,7 +700,9 @@ def delete_invoice(invid):
 def print_invoice(invid):
     inv = Invoice.query.get_or_404(invid)
     settings = Settings.get()
-    return render_template("invoice_print.html", inv=inv, settings=settings)
+    return render_template("invoice_print.html",
+                           inv=_for_print(inv, request.args.get("mode")),
+                           settings=settings)
 
 
 def _copies_choice(raw):
@@ -708,12 +710,43 @@ def _copies_choice(raw):
     return raw if raw in ("both", "party", "office") else "both"
 
 
+class _AsChallan:
+    """Wahi bill, par bina bhav ke — sirf chhapne ke liye.
+
+    Kabhi maal ke saath jo kaagaz jaata hai usme rate nahi dikhna chahiye:
+    driver, labour, ya party ka aadmi jo sirf ginti milata hai. Par bill ka
+    record wahi ka wahi rehna chahiye — paisa, hisaab, khaata sab pehle jaisa.
+
+    Isliye yahan DB me kuch nahi badalta. Ye ek parda hai jo sirf itna kehta
+    hai ki "iska hide_pricing sach maano"; baaki har cheez asli bill se hi
+    aati hai. Template aur PDF dono pehle se hide_pricing samajhte hain, isliye
+    unme ek line badalne ki bhi zaroorat nahi padi.
+    """
+
+    def __init__(self, inv):
+        object.__setattr__(self, "_inv", inv)
+
+    @property
+    def hide_pricing(self):
+        return True
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "_inv"), name)
+
+
+def _for_print(inv, raw_mode):
+    """Bill jaisa ka waisa, ya challan ki tarah (bina rate ke)."""
+    return _AsChallan(inv) if raw_mode == "challan" else inv
+
+
 @app.route("/invoices/<int:invid>/preview")
 @login_required
 def invoice_preview(invid):
     """Sirf bill ka hissa, bina page ke — overlay isi ko andar la ke dikhata hai."""
     inv = Invoice.query.get_or_404(invid)
-    return render_template("invoice_preview.html", inv=inv, settings=Settings.get(),
+    return render_template("invoice_preview.html",
+                           inv=_for_print(inv, request.args.get("mode")),
+                           settings=Settings.get(),
                            copies=_copies_choice(request.args.get("copies")))
 
 
@@ -723,9 +756,12 @@ def invoice_pdf(invid):
     inv = Invoice.query.get_or_404(invid)
     settings = Settings.get()
     from invoice_pdf import build_invoice_pdf
-    buf = build_invoice_pdf(inv, settings, t, copies=_copies_choice(request.args.get("copies")))
+    mode = request.args.get("mode")
+    buf = build_invoice_pdf(_for_print(inv, mode), settings, t,
+                            copies=_copies_choice(request.args.get("copies")))
+    tag = "-challan" if mode == "challan" else ""
     return send_file(buf, mimetype="application/pdf", as_attachment=True,
-                      download_name=f"{inv.invoice_no}.pdf")
+                      download_name=f"{inv.invoice_no}{tag}.pdf")
 
 
 @app.route("/invoices/consolidate", methods=["GET", "POST"])
