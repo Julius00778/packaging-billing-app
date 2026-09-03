@@ -215,6 +215,24 @@ class InvoiceItem(db.Model):
     igst_amount = db.Column(db.Float, default=0.0)
     line_total = db.Column(db.Float, default=0.0)
 
+    item = db.relationship("Item")
+
+    @property
+    def category_name(self):
+        """Maal ki category — bill aur challan dono pe chhapti hai.
+
+        Chhapte waqt Item master se aati hai, line me likhi hui nahi hoti.
+        Isliye category baad me theek karo toh purane bill bhi sahi chhapte
+        hain, aur bill ka apna record kabhi nahi badalta.
+
+        Line kisi item se juddi na ho (haath se likhi gayi ho) ya us item ki
+        category na lagi ho toh khaali — us jagah kuch nahi chhapega.
+        """
+        it = self.item
+        if it and it.category_id and it.category:
+            return it.category.name or ""
+        return ""
+
 
 # ---------------- Accounts module ----------------
 

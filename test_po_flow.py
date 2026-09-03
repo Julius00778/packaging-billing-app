@@ -619,6 +619,21 @@ with app.app_context():
     line_desc = (first_line.description or "").strip()
     line_qty = "%g" % (first_line.qty or 0)
 
+    # Category bhi kaagaz pe chhapni chahiye — bill pe aur challan pe dono.
+    # Ek hi naap ka 2mm aur 4mm maal alag hota hai; ye farq kaagaz pe dikhna
+    # chahiye. Category line me likhi nahi hoti, Item master se aati hai —
+    # isliye category baad me theek karo toh purane bill bhi sudhar jaate
+    # hain, aur bill ka apna record kabhi nahi badalta.
+    from models import Category as _Cat
+    _c = _Cat(name="EPE Foam Sheet", units="pcs")
+    db.session.add(_c)
+    db.session.flush()
+    check("bill ki line kisi item se judi hai", bool(first_line.item_id), True)
+    first_line.item.category_id = _c.id
+    db.session.commit()
+    check("line ab apni category batati hai", first_line.category_name, "EPE Foam Sheet")
+    _c_id = _c.id
+
 r = ok("challan wala preview", client.get(f"/invoices/{old_inv_id}/preview?mode=challan"))
 chal = r.data.decode("utf8", "ignore")
 check("challan me koi rate nahi dikhta",
@@ -626,10 +641,28 @@ check("challan me koi rate nahi dikhta",
 check("aur na hi kul jama", total_txt in chal, False)
 check("par maal ka naam wahin hai", line_desc and line_desc in chal)
 check("aur ginti bhi wahin hai", line_qty in chal)
+check("challan pe category bhi chhapti hai", "EPE Foam Sheet" in chal)
 
 r = ok("poora bill abhi bhi rate ke saath", client.get(f"/invoices/{old_inv_id}/preview"))
 full = r.data.decode("utf8", "ignore")
 check("poore bill me kul jama hai", total_txt in full)
+check("bill pe bhi category chhapti hai", "EPE Foam Sheet" in full)
+
+# Category na lagi ho toh us jagah kuch nahi chhapna chahiye — khaali line
+# kaagaz pe sirf gandagi hai.
+with app.app_context():
+    inv_now = db.session.get(Invoice, old_inv_id)
+    for _li in inv_now.items:
+        if _li.item:
+            _li.item.category_id = None
+    db.session.commit()
+bare = ok("bina category wala bill",
+          client.get(f"/invoices/{old_inv_id}/preview")).data.decode("utf8", "ignore")
+check("category na ho toh khaali khaana nahi banta", 'class="pinv-cat"' in bare, False)
+with app.app_context():
+    inv_now = db.session.get(Invoice, old_inv_id)
+    inv_now.items[0].item.category_id = _c_id
+    db.session.commit()
 
 # Sabse zaroori: chhapne ke tareeke se bill ka record nahi badalna chahiye
 with app.app_context():
