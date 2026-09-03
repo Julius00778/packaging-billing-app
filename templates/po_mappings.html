@@ -49,7 +49,7 @@
           </td>
           <td>{{ m.customer.name }}</td>
           <td class="mono" style="font-weight:600;">{{ m.item_code or '—' }}</td>
-          <td class="mono">{{ m.raw_size_text }}</td>
+          <td class="mono">{{ m.raw_size_text or "—" }}</td>
           <td>{{ m.label }}</td>
           <td>
             <select name="cat_{{ m.id }}">
