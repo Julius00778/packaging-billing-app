@@ -892,6 +892,23 @@ def map_by_code(customer_id, item_code):
             .first())
 
 
+def product_label(code, raw_size="", extra=""):
+    """Product ka dikhne wala naam.
+
+    Naap ho toh "GME02 (23x14x4)". Na ho — tape, blister — toh file me code
+    ke baad jo likha tha wahi: "TP01 — 2 inch clear". Wo bhi na ho toh sirf
+    code. Khaali bracket "TP01 ()" kabhi nahi banta.
+    """
+    code = (code or "").strip()
+    raw_size = (raw_size or "").strip()
+    extra = (extra or "").strip()
+    if raw_size:
+        return f"{code} ({raw_size})" if code else raw_size
+    if extra:
+        return f"{code} — {extra}" if code else extra
+    return code
+
+
 def candidates_for(customer_id, canonical_key):
     if not canonical_key:
         return []
@@ -928,8 +945,12 @@ def party_is_mixed(customer_id):
 
     Manually set karne ki zaroorat nahi — data se khud pata chal jaata hai.
     """
+    # Bina naap wale maal (tape, blister) ka key khaali hota hai — un sabko
+    # "ek hi size ke kai variants" ginna galat hoga, wo alag-alag cheezein
+    # hain jo code se pehchani jaati hain.
     rows = (db.session.query(PartyProductMap.canonical_key, db.func.count(PartyProductMap.id))
-            .filter(PartyProductMap.customer_id == customer_id)
+            .filter(PartyProductMap.customer_id == customer_id,
+                    PartyProductMap.canonical_key != "")
             .group_by(PartyProductMap.canonical_key).all())
     return any(c > 1 for _, c in rows)
 
@@ -1046,10 +1067,7 @@ def sync_one_folder(service, folder):
         if not parsed:
             result["skipped"].append(f"{f['name']} — naam me item code nahi mila")
             continue
-        code, dims, raw_size = parsed
-        if not dims:
-            result["skipped"].append(f"{f['name']} — naam me size nahi mila")
-            continue
+        code, dims, raw_size, rest_text = parsed
 
         row = PartyProductMap.query.filter_by(
             customer_id=folder.customer_id, item_code=code).first()
@@ -1062,10 +1080,13 @@ def sync_one_folder(service, folder):
         else:
             result["updated"] += 1
 
-        row.canonical_key = canonical_size(dims, unit)
+        # Har maal naap se nahi jaata — tape aur blister code se chalte hain.
+        # Aise maal ki file me sirf code (aur chahe toh naam) hota hai; size
+        # ka khaana khaali reh jaata hai aur pehchan code se hoti hai.
+        row.canonical_key = canonical_size(dims, unit) if dims else ""
         row.raw_size_text = raw_size
         if not row.label:
-            row.label = f"{code} ({raw_size})"
+            row.label = product_label(code, raw_size, rest_text)
         # Item master me bhi ghar do — bina iske bill me item khaali jaata hai
         # aur unit ka koi niyam lag hi nahi sakta.
         ensure_item_for(row)
