@@ -195,6 +195,7 @@ with app.app_context():
     ok("rows wala order khulta hai", client.get(f"/po/{rp.id}"))
     client.post(f"/po/{rp.id}/reject", follow_redirects=True)
 
+
 r = ok("sab khaali rows", client.post("/po/new", data={
     "customer_id": str(cust_id), "po_number": "PO-ROW-2", "size_unit": "cm",
     "entry_mode": "rows", "line_code": ["", ""], "line_size": ["", ""],
@@ -604,6 +605,46 @@ check("office wali copy aayi",
 
 r = ok("ulta-seedha copies value", client.get(f"/invoices/{old_inv_id}/preview?copies=xyz"))
 check("anjaan value pe dono copy", r.data.decode("utf8", "ignore").count('class="pinv-half"'), 2)
+
+# ------------------------------------- bina naap wala maal (tape, blister)
+# Julius ne pakda: "blister aur tape size ke hisaab se nahi jaate". Aise maal
+# ki pehchan sirf code se hoti hai — naap ka khaana khaali rehta hai, aur us
+# wajah se na photo ruknI chahiye, na record.
+import po_module as _M2
+with app.app_context():
+    tape = _M2.PartyProductMap(customer_id=cust_id, item_code="TP01",
+                               canonical_key="", raw_size_text="",
+                               label=_M2.product_label("TP01", "", "2 inch clear"),
+                               image_data=b"\xff\xd8\xff-tape")
+    db.session.add(tape)
+    db.session.commit()
+    check("bina naap ka naam saaf banta hai", tape.label, "TP01 — 2 inch clear")
+
+r = ok("bina naap ke maal ki list", client.get(f"/po/party/{cust_id}/products"))
+rows = r.get_json()["products"]
+tape_row = [x for x in rows if x["code"] == "TP01"][0]
+check("list me uska size khaali jaata hai", tape_row["size"], "")
+check("par naam poora jaata hai", tape_row["label"], "TP01 — 2 inch clear")
+
+ok("bina naap wala order", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-TAPE-1", "size_unit": "cm",
+    "entry_mode": "rows",
+    "line_code": ["TP01"], "line_size": [""],
+    "line_qty": ["24"], "line_unit": ["pcs"],
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    tp = PurchaseOrder.query.filter_by(po_number="PO-TAPE-1").first()
+    check("order bana", bool(tp), True)
+    line = tp.lines[0]
+    check("line code se product se jud gayi", line.match_status, "code")
+    check("aur wo tape hi hai", line.mapping.item_code, "TP01")
+    check("naap na hone pe galat chetavni nahi aati", line.size_mismatch, False)
+    tp_id = tp.id
+page = ok("bina naap wala order khulta hai", client.get(f"/po/{tp_id}")).data.decode("utf8", "ignore")
+check("screen pe 'naya maal' ka jhanda nahi lagta",
+      "MATCHED BY ITEM CODE" in page.upper())
+with app.app_context():
+    client.post(f"/po/{tp_id}/reject", follow_redirects=True)
 
 # ------------------------------------------- challan: maal ke saath, bina bhav
 # Jo kaagaz maal ke saath jaata hai usme rate nahi dikhna chahiye — driver ya

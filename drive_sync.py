@@ -125,7 +125,12 @@ def parse_sample_filename(filename, canonical_size, size_re, size_dims, normaliz
     canonical_size/size_re/size_dims/normalize_code po_module se aate hain —
     ye module usko import nahi karta taaki circular import na bane.
 
-    Lautata hai (code, dims, raw_size_text) ya None agar code hi na mile.
+    Har maal size se nahi pehchana jaata — tape aur blister code se chalte
+    hain. Isliye size na mile toh file chhodni nahi chahiye: dims khaali
+    rehte hain aur code ke baad ka likha hua uska naam ban jaata hai.
+
+    Lautata hai (code, dims, raw_size_text, rest_text), ya None agar code hi
+    na mile.
     """
     stem = os.path.splitext(filename or "")[0]
     cm = CODE_AT_START_RE.match(stem)
@@ -136,7 +141,10 @@ def parse_sample_filename(filename, canonical_size, size_re, size_dims, normaliz
     m = size_re.search(rest)
     dims = size_dims(m) if m else []
     raw_size = m.group(0).strip() if m else ""
-    return code, dims, raw_size
+    # Size wala hissa nikaal ke jo bacha wo maal ka naam hai — "TP01 - 2 inch
+    # clear" me "2 inch clear".
+    leftover = (rest[:m.start()] + rest[m.end():]) if m else rest
+    return code, dims, raw_size, leftover.strip(" -_()[]·,")
 
 
 def download_file(service, file_id, max_bytes=12 * 1024 * 1024):

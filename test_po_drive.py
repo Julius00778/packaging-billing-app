@@ -64,6 +64,9 @@ TREE = {
         {"id": "g5", "name": "GME05(32x24x3.5).jpeg", "mimeType": "image/jpeg", "modifiedTime": "t1"},
         {"id": "g6", "name": "rate list.pdf", "mimeType": "application/pdf", "modifiedTime": "t1"},
         {"id": "g7", "name": "random photo.jpeg", "mimeType": "image/jpeg", "modifiedTime": "t1"},
+        # Har maal naap se nahi jaata — tape aur blister code se chalte hain
+        {"id": "g8", "name": "TP01 - 2 inch clear.jpeg", "mimeType": "image/jpeg", "modifiedTime": "t1"},
+        {"id": "g9", "name": "BL01.jpeg", "mimeType": "image/jpeg", "modifiedTime": "t1"},
     ],
     "f_sm": [
         {"id": "s1", "name": "SM01(32x24x3.5).jpeg", "mimeType": "image/jpeg", "modifiedTime": "t1"},
@@ -97,7 +100,7 @@ def parse(name):
         name, M.canonical_size, M.SIZE_RE, M.size_dims, M.normalize_code)
 
 
-code, dims, raw = parse("GME01(31x15x5).jpeg")
+code, dims, raw, extra = parse("GME01(31x15x5).jpeg")
 check("code nikla", code, "GME01")
 check("teen dimensions nikle", dims, [31.0, 15.0, 5.0])
 check("raw size text", raw, "31x15x5")
@@ -107,7 +110,16 @@ check("chhote akshar", parse("sm02(32x28x4).jpeg")[0], "SM02")
 check("hyphen wala", parse("SM-03 (12x8x3.5).jpeg")[0], "SM03")
 check("decimal size", parse("GME05(32x24x3.5).jpeg")[1], [32.0, 24.0, 3.5])
 check("bina code wali file chhodi jaati hai", parse("random photo.jpeg"), None)
+# Har maal naap se nahi jaata — tape aur blister code se chalte hain.
+# Aisi file chhodni nahi chahiye: code hai, size ka khaana khaali reh jaata
+# hai, aur code ke baad ka likha hua uska naam ban jaata hai.
 check("bina size ke code", parse("SM09.jpeg")[1], [])
+check("bina size wali file chhodi nahi jaati", parse("SM09.jpeg")[0], "SM09")
+check("bina size ka naam khaali", parse("SM09.jpeg")[3], "")
+check("code ke baad likha hua naam ban jaata hai",
+      parse("TP01 - 2 inch clear.jpeg")[3], "2 inch clear")
+check("naam wale me size phir bhi nikalta hai",
+      parse("GME01 (31x15x5) 2mm.jpeg")[3], "2mm")
 
 check("link se folder id", drive_sync.folder_id_from_link(
     "https://drive.google.com/drive/folders/1MRqefYB?usp=sharing"), "1MRqefYB")
@@ -132,15 +144,38 @@ with app.app_context():
     gm.size_unit = "cm"
     db.session.commit()
     r = M.sync_one_folder(None, gm)
-    check("saat file dekhi (PDF chhod ke)", r["seen"], 6)
-    check("paanch product bane", r["added"], 5)
-    check("paanch photo aayi", r["photos"], 5)
+    check("aath file dekhi (PDF chhod ke)", r["seen"], 8)
+    check("saat product bane", r["added"], 7)
+    check("saat photo aayi", r["photos"], 7)
     check("bina code wali file chhodi gayi", len(r["skipped"]), 1)
 
     maps = M.PartyProductMap.query.filter_by(customer_id=gm.customer_id).all()
-    check("DB me paanch product", len(maps), 5)
+    check("DB me saat product", len(maps), 7)
     codes = sorted(m.item_code for m in maps)
-    check("saare code", codes, ["GME01", "GME02", "GME03", "GME04", "GME05"])
+    check("saare code", codes,
+          ["BL01", "GME01", "GME02", "GME03", "GME04", "GME05", "TP01"])
+
+    # ---- bina naap wala maal: tape aur blister
+    # Ye wahi cheez hai jo Julius ne pakdi — "blister aur tape size ke hisaab
+    # se nahi jaate, isliye main photo hi nahi bhej pa raha".
+    tape = M.map_by_code(gm.customer_id, "TP01")
+    check("tape ka product ban gaya", bool(tape), True)
+    check("uska size ka khaana khaali hai", tape.canonical_key, "")
+    check("naam file se aaya", tape.label, "TP01 — 2 inch clear")
+    check("tape ki photo bhi aayi", bool(tape.image_data), True)
+
+    bare = M.map_by_code(gm.customer_id, "BL01")
+    check("sirf code wali file bhi chalti hai", bare.label, "BL01")
+    check("khaali bracket nahi banta", "()" in bare.label, False)
+
+    # Code se pehchan hoti hai, naap ki zaroorat nahi
+    status, chosen, mism = M.match_line(gm.customer_id, "TP01", None)
+    check("tape code se match hota hai", (status, chosen.item_code), ("code", "TP01"))
+    check("aur size mismatch ka jhanda nahi lagta", mism, False)
+
+    # Bina naap wale do product ek jaise nahi gine jaate
+    check("in dono ko 'ek hi size ke do variants' nahi samjha jaata",
+          M.candidates_for(gm.customer_id, ""), [])
 
     one = M.map_by_code(gm.customer_id, "GME01")
     check("31x15x5 cm ka key", one.canonical_key, "50.0x150.0x310.0")
@@ -166,7 +201,7 @@ with app.app_context():
     FAKE.downloads.clear()
     r2 = M.sync_one_folder(None, gm)
     check("dobara sync me koi naya product nahi", r2["added"], 0)
-    check("paanch update hue", r2["updated"], 5)
+    check("saat update hue", r2["updated"], 7)
     check("ek bhi photo dobara download nahi hui", len(FAKE.downloads), 0)
 
     # Drive pe file badli — sirf wahi dobara aani chahiye
