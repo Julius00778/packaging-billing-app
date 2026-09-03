@@ -343,6 +343,11 @@ class TelegramChat(db.Model):
     # aisa hi chalta hai: do co-owner, do operator group. Isliye yahan comma se
     # alag ki hui list rehti hai — "operator,manager".
     roles = db.Column(db.String(200), default="")
+    # Operator group kaunsa maal banata hai. Foam ka apna group, thermacol ka
+    # apna — isliye order us group me jaata hai jo wo cheez banata hai.
+    # Khaali ka matlab "sab kuch" — purane setup me yahi hota tha, aur ek hi
+    # group wale dafter ke liye yahi sahi bhi hai.
+    categories = db.Column(db.String(300), default="")
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
 
     def role_list(self):
@@ -350,6 +355,51 @@ class TelegramChat(db.Model):
 
     def has_role(self, role):
         return role in self.role_list()
+
+    def category_ids(self):
+        return [int(c) for c in (self.categories or "").split(",") if c.isdigit()]
+
+    def has_category(self, cat_id):
+        return cat_id in self.category_ids()
+
+    def category_names(self):
+        ids = self.category_ids()
+        if not ids:
+            return []
+        rows = Category.query.filter(Category.id.in_(ids)).order_by(Category.name).all()
+        return [c.name for c in rows]
+
+
+class POPart(db.Model):
+    """Ek order ka wo hissa jo ek operator group ke zimme hai.
+
+    Foam ka group sirf foam ki lines dekhta hai, thermacol ka sirf thermacol
+    ki. Har hissa apni chaal chalta hai — koi group doosre ka intezaar nahi
+    karta. Poora order tab "ban gaya" hota hai jab saare hisse ban jayen,
+    kyunki bill aur dispatch poore order ka hota hai.
+    """
+    __tablename__ = "po_part"
+    id = db.Column(db.Integer, primary_key=True)
+    po_id = db.Column(db.Integer, db.ForeignKey("purchase_order.id"), nullable=False)
+    chat_id = db.Column(db.String(40), nullable=False)
+    # Kis wajah se ye hissa is chat me gaya — screen pe dikhane ke liye
+    label = db.Column(db.String(200), default="")
+    status = db.Column(db.String(20), default="with_operator")
+    operator_name = db.Column(db.String(120), default="")
+    accepted_at = db.Column(db.DateTime, nullable=True)
+    made_at = db.Column(db.DateTime, nullable=True)
+    # Is hisse ki lines — comma se jude POLine id
+    line_ids = db.Column(db.String(400), default="")
+    # Is chat me bheje gaye msg — aakhri wala button waala card hota hai
+    msg_ids = db.Column(db.String(600), default="")
+
+    po = db.relationship("PurchaseOrder", backref=db.backref(
+        "parts", cascade="all, delete-orphan", order_by="POPart.id"))
+
+    def line_list(self):
+        want = [int(x) for x in (self.line_ids or "").split(",") if x.isdigit()]
+        by_id = {l.id: l for l in self.po.lines}
+        return [by_id[i] for i in want if i in by_id]
 
 
 class TelegramPerson(db.Model):
@@ -1143,38 +1193,66 @@ def remember_person(user):
     return row
 
 
-def order_card_text(po, line=None):
+def order_card_text(po, line=None, part=None):
     """Operator ke liye card ka text. Chhota rakho — phone pe padhna hai."""
     head = f"<b>{po.po_number}</b> — {po.customer.name}"
     if line is None:
         rows = []
-        for l in po.lines:
+        for l in (part.line_list() if part is not None else po.lines):
             name = l.mapping.label if l.mapping else (l.item_code or l.raw_size_text)
             rows.append(f"• <b>{l.item_code or '—'}</b>  {name}  ×  "
                         f"{l.qty:g} {l.qty_unit}")
         body = "\n".join(rows)
         note = f"\n\n<i>{po.note}</i>" if po.note else ""
-        return f"{head}\n\n{body}{note}"
+        # Order bat gaya ho toh group ko saaf pata chale ki ye poora order
+        # nahi, sirf uska hissa hai — warna wo baaki maal bhi dhoondhta rahega.
+        mine = ""
+        if part is not None and len(part.line_list()) != len(po.lines):
+            what = part.label or "aapke group ka maal"
+            mine = f"\n<i>Sirf aapka hissa — {what}</i>"
+        return f"{head}{mine}\n\n{body}{note}"
 
     name = line.mapping.label if line.mapping else (line.item_code or line.raw_size_text)
     return (f"{head}\n\n<b>{line.item_code or '—'}</b>\n{name}\n"
             f"<b>{line.qty:g} {line.qty_unit}</b>")
 
 
-def order_buttons(po):
-    """Status ke hisaab se button. Ho chuka kaam dobara nahi dikhta."""
-    if po.status == "with_operator":
+def order_buttons(po, part=None):
+    """Status ke hisaab se button. Ho chuka kaam dobara nahi dikhta.
+
+    Order bat gaya ho toh har group ka button uske *apne* hisse ki halat
+    dekhta hai — foam wala apna Done dabaye, thermacol wale ka intezaar kiye
+    bina. Callback me phir bhi order ka id jaata hai: button kis chat me daba,
+    usi se pata chal jaata hai ki kaunsa hissa hai. Isi wajah se pehle bheje
+    ja chuke card bhi waise ke waise chalte rehte hain.
+    """
+    state = part.status if part is not None else po.status
+    if state == "with_operator":
         return [[{"text": "✅ OK — bana raha hoon", "callback_data": f"ok:{po.id}"}]]
-    if po.status == "in_production":
+    if state == "in_production":
         return [[{"text": "🟢 Done — ban gaya", "callback_data": f"done:{po.id}"}]]
     return []
 
 
-def status_line(po):
-    marks = {"with_operator": "🕐", "in_production": "🟡", "made": "🟢",
-             "dispatched": "📦", "rejected": "❌"}
+MARKS = {"with_operator": "🕐", "in_production": "🟡", "made": "🟢",
+         "dispatched": "📦", "rejected": "❌"}
+
+
+def status_line(po, part=None):
+    if part is not None:
+        who = f" — {part.operator_name}" if part.operator_name else ""
+        line = (f"\n\n{MARKS.get(part.status, '')} "
+                f"<b>{STATUS_LABEL.get(part.status, part.status)}</b>{who}")
+        # Apna hissa ban chuka ho par poora order abhi baaki ho — ye batana
+        # zaroori hai, warna group samajhta hai ki maal dispatch ho gaya.
+        if part.status == "made" and po.status != "made":
+            left = sum(1 for p in po.parts if p.status != "made")
+            if left:
+                line += (f"\n<i>Baaki {left} group ka kaam abhi chal raha hai — "
+                         f"dispatch poora order banne ke baad hoga.</i>")
+        return line
     who = f" — {po.operator_name}" if po.operator_name else ""
-    return f"\n\n{marks.get(po.status, '')} <b>{STATUS_LABEL.get(po.status, po.status)}</b>{who}"
+    return f"\n\n{MARKS.get(po.status, '')} <b>{STATUS_LABEL.get(po.status, po.status)}</b>{who}"
 
 
 def fill_remembered_rates(po):
@@ -1202,6 +1280,67 @@ def line_kind(line):
     if m and m.item and m.item.category:
         return m.item.category.name or ""
     return ""
+
+
+def line_category_id(line):
+    """Line ki category ka id — kaam kis group me jayega, ye isi se tay hota hai."""
+    m = line.mapping
+    return m.item.category_id if (m and m.item and m.item.category_id) else None
+
+
+def split_order_for_operators(po):
+    """Order ko operator groups me baant do — har group ko uska apna maal.
+
+    Julius ke dafter me foam ka apna group hai, thermacol ka apna, blister aur
+    pouch ka apna. Ek hi order me do tarah ka maal ho sakta hai, isliye order
+    lines ke hisaab se batta hai — bill aur dispatch phir bhi poore order ka
+    ek hi rehta hai.
+
+    Do soorat jaan-boojh ke aise rakhi hain:
+
+    * Jis group ne koi category nahi chuni, use **poora** order jaata hai. Ek
+      hi operator group wale dafter me yahi sahi hai, aur purana setup bina
+      chhede chalta rehta hai.
+    * Jis line ki category kisi bhi group se nahi judi, wo **manager** ke paas
+      jaati hai — Julius ne yahi kaha, "wo manager se poocho". Manager bhi na
+      ho toh sabhi operator group ko bhej dete hain: kaam latakna sabse bura
+      natija hai.
+
+    Lautata hai: [(chat, label, [lines]), ...]
+    """
+    ops = chats_for_role("operator")
+    catch_all = [c for c in ops if not c.category_ids()]
+    by_cat = [c for c in ops if c.category_ids()]
+
+    buckets = []          # (chat, label, lines) — kram wahi jo chats ka hai
+    seen = {}
+
+    def put(chat, label, line):
+        key = chat.chat_id
+        if key not in seen:
+            seen[key] = [chat, label, []]
+            buckets.append(seen[key])
+        seen[key][2].append(line)
+
+    loose = []
+    for line in po.lines:
+        cat_id = line_category_id(line)
+        takers = [c for c in by_cat if cat_id and c.has_category(cat_id)]
+        for chat in catch_all:
+            put(chat, "", line)
+        for chat in takers:
+            put(chat, ", ".join(chat.category_names()), line)
+        if not takers and not catch_all:
+            loose.append(line)
+
+    if loose:
+        # Bina jode hue maal ka koi malik nahi — manager tay karega. Manager
+        # bhi na ho toh sabhi operator group ko, taaki kaam ruke nahi.
+        for chat in (chats_for_role("manager") or ops):
+            for line in loose:
+                put(chat, "category kisi group se judi nahi", line)
+
+    return [(c, lbl, lines) for c, lbl, lines in buckets if lines]
 
 
 def line_detail(line):
@@ -1454,12 +1593,15 @@ def make_invoice(po):
 def send_order_to_operator(po, token=None):
     """Har line ka apna card, photo ke saath. Aakhir me buttons wala card.
 
-    Operator ke ek se zyada group ho sakte hain — sab me poora order jaata hai,
-    aur har group ke apne button. Kisi ek group me dabao, order aage badh jaata
-    hai aur baaki group ke card bhi nayi halat dikhane lagte hain.
+    Order category ke hisaab se bat jaata hai: foam wale group ko sirf foam
+    ki lines, thermacol wale ko sirf thermacol ki. Har hisse ke apne button
+    hain aur apni chaal — koi group doosre ka intezaar nahi karta.
+
+    Jis group ne koi category nahi chuni use poora order jaata hai, isliye
+    ek hi operator group wala purana setup bilkul waise hi chalta rehta hai.
     """
-    chats = chats_for_role("operator")
-    if not chats:
+    buckets = split_order_for_operators(po)
+    if not buckets:
         raise telegram_bot.TelegramError(
             "Operator group chuna nahi gaya. Telegram page pe jaake batao ki "
             "kaunsa group operator ka hai."
@@ -1468,32 +1610,74 @@ def send_order_to_operator(po, token=None):
     # bante hain, aur wahi card me jaate hain.
     po.status = "with_operator"
     po.sent_at = datetime.utcnow()
+    po.operator_name = ""
+    for old in list(po.parts):
+        db.session.delete(old)
+    db.session.flush()
 
     pairs = []
-    for chat in chats:
-        for line in po.lines:
+    for chat, label, lines in buckets:
+        part = POPart(po_id=po.id, chat_id=chat.chat_id, label=label,
+                      status="with_operator",
+                      line_ids=",".join(str(l.id) for l in lines))
+        db.session.add(part)
+        db.session.flush()
+
+        mine = []
+        for line in lines:
             photo = line.mapping.image_data if line.mapping else None
             res = telegram_bot.send_photo(chat.chat_id, photo,
                                           order_card_text(po, line), token=token)
             if res and res.get("message_id"):
-                pairs.append((chat.chat_id, str(res["message_id"])))
+                mine.append((chat.chat_id, str(res["message_id"])))
 
         # Aakhir me ek summary card — buttons isi pe rehte hain, taaki har line
         # pe button na aaye aur operator galti se aadha order aage na badha de.
         res = telegram_bot.send_message(
-            chat.chat_id, order_card_text(po) + status_line(po),
-            buttons=order_buttons(po), token=token)
+            chat.chat_id, order_card_text(po, part=part) + status_line(po, part),
+            buttons=order_buttons(po, part), token=token)
         if res and res.get("message_id"):
-            pairs.append((chat.chat_id, str(res["message_id"])))
+            mine.append((chat.chat_id, str(res["message_id"])))
 
-    po.tg_chat_id = chats[0].chat_id
+        part.msg_ids = pack_msg_ids(mine)
+        pairs.extend(mine)
+
+    po.tg_chat_id = buckets[0][0].chat_id
     po.tg_message_ids = pack_msg_ids(pairs)
     db.session.commit()
     return len(pairs)
 
 
+def part_for_chat(po, chat_id):
+    """Is chat ka hissa. Purane order me hissa hota hi nahi — tab None."""
+    want = str(chat_id)
+    for part in po.parts:
+        if part.chat_id == want:
+            return part
+    return None
+
+
 def refresh_order_card(po, token=None):
-    """Har group ke button wale card ko nayi status ke saath update karo."""
+    """Har group ke button wale card ko nayi halat ke saath update karo.
+
+    Har group apna hissa dekhta hai — uske card pe uske apne hisse ki status
+    aur uske apne button rehte hain.
+    """
+    if po.parts:
+        for part in po.parts:
+            pairs = unpack_msg_ids(part.msg_ids, part.chat_id)
+            if not pairs:
+                continue
+            chat_id, msg_id = pairs[-1]      # aakhri msg hi button wala card hai
+            try:
+                telegram_bot.edit_message(
+                    chat_id, msg_id,
+                    order_card_text(po, part=part) + status_line(po, part),
+                    buttons=order_buttons(po, part), token=token)
+            except telegram_bot.TelegramError:
+                pass
+        return
+
     pairs = unpack_msg_ids(po.tg_message_ids, po.tg_chat_id)
     if not pairs:
         return
@@ -1589,6 +1773,25 @@ def move_status(po, new_status, who=""):
     elif new_status == "dispatched":
         po.dispatched_at = now
     po.status = new_status
+
+    # Office screen se badla gaya status hisson pe bhi lagna chahiye — warna
+    # Julius order ko peeche laate hain par groups ke card wahin atke rehte
+    # hain, aur unka button dobara nahi chalta.
+    if new_status in ("with_operator", "pending", "rejected"):
+        for p in po.parts:
+            p.status = "with_operator"
+            p.accepted_at = p.made_at = None
+            p.operator_name = ""
+    elif new_status == "in_production":
+        for p in po.parts:
+            if p.status == "made":
+                p.status = "in_production"
+                p.made_at = None
+    elif new_status == "made":
+        for p in po.parts:
+            if p.status != "made":
+                p.status = "made"
+                p.made_at = now
     db.session.commit()
 
     # Ban gaya matlab bill ban sakta hai. Bill na ban paye (rate nahi hai, ya kuch
@@ -1598,6 +1801,59 @@ def move_status(po, new_status, who=""):
             make_invoice(po)
         except Exception:
             db.session.rollback()
+    return True, STATUS_LABEL[new_status]
+
+
+def move_part(part, new_status, who=""):
+    """Ek group apne hisse ko aage badhata hai.
+
+    Poora order tab tak "ban gaya" nahi hota jab tak saare hisse na ban jayen —
+    bill aur dispatch poore order ke hote hain, aur adha maal chala jaana
+    sabse bada nuksaan hoga. Par koi group kisi ka intezaar nahi karta: apna
+    hissa jab bane, tabhi Done daba de.
+    """
+    if new_status == part.status:
+        return False, f"Ye hissa pehle se {STATUS_LABEL[new_status]} hai."
+    if new_status not in NEXT_STATUS.get(part.status, ()):
+        return False, (f"{STATUS_LABEL.get(part.status, part.status)} se seedha "
+                       f"{STATUS_LABEL.get(new_status, new_status)} nahi ho sakta.")
+
+    now = datetime.utcnow()
+    part.status = new_status
+    if new_status == "in_production":
+        part.accepted_at = now
+        part.operator_name = who or part.operator_name
+    elif new_status == "made":
+        part.made_at = now
+        part.operator_name = who or part.operator_name
+        for line in part.line_list():
+            if line.mapping:
+                line.mapping.times_used = (line.mapping.times_used or 0) + 1
+    db.session.commit()
+
+    po = part.po
+    # Order pe wo saare naam dikhte hain jinhone haath lagaya — ek order do
+    # aadmi mil ke bhi bana sakte hain.
+    po.operator_name = ", ".join(
+        dict.fromkeys(p.operator_name for p in po.parts if p.operator_name))
+
+    # Poore order ki halat hisson se banti hai: pehla group haath lagate hi
+    # order operation me, aur saare hisse ban jayen tabhi order ban gaya.
+    if all(p.status == "made" for p in po.parts):
+        po.made_at = now
+        po.status = "made"
+        db.session.commit()
+        if not po.invoice_id:
+            try:
+                make_invoice(po)
+            except Exception:
+                db.session.rollback()
+        return True, STATUS_LABEL["made"]
+
+    if po.status == "with_operator":
+        po.accepted_at = now
+        po.status = "in_production"
+    db.session.commit()
     return True, STATUS_LABEL[new_status]
 
 
@@ -1665,12 +1921,30 @@ def handle_update(update, token=None):
     # Kaam wale button ke do raaste: aadmi khud operator ki list me ho, ya
     # button operator group me daba ho. Pehle sirf pehla raasta tha — isliye
     # naya aadmi group me OK dabata tha aur kuch nahi hota tha.
-    if not (is_operator((cq.get("from") or {}).get("id")) or chat_has("operator")):
+    part = part_for_chat(po, here)
+    allowed = (is_operator((cq.get("from") or {}).get("id"))
+               or chat_has("operator")
+               or part is not None)      # bina jodi category manager ke paas jaati hai
+    if not allowed:
         return reply("Aap operator ki list me nahi ho — office se puchho.", alert=True)
 
     target = {"ok": "in_production", "done": "made"}.get(action)
     if not target:
         return reply("Ye button samajh nahi aaya.")
+
+    # Order bat gaya ho toh button apne hisse pe lagta hai — foam wala group
+    # thermacol ka kaam aage nahi badha sakta.
+    if part is not None:
+        moved, msg = move_part(part, target, who=who)
+        refresh_order_card(po, token=token)
+        if moved and po.status == "made":
+            notify_manager(po, token=token)
+            if po.invoice_id:
+                notify_bill_ready(po, db.session.get(Invoice, po.invoice_id), token=token)
+        return reply(msg, alert=not moved)
+
+    if po.parts:
+        return reply("Is order me aapke group ka koi hissa nahi hai.", alert=True)
 
     moved, msg = move_status(po, target, who=who)
     refresh_order_card(po, token=token)
@@ -2541,6 +2815,7 @@ def telegram_page():
         "po_telegram.html",
         key_set=key_set, bot_name=bot_name, error=error,
         bot_link=f"https://t.me/{bot_name}" if bot_name else "",
+        categories=Category.query.order_by(Category.name).all(),
         chats=TelegramChat.query.order_by(TelegramChat.last_seen.desc()).all(),
         people=TelegramPerson.query.order_by(TelegramPerson.last_seen.desc()).all(),
         hooked=bool(POSetting.get(TG_SECRET_KEY)),
@@ -2585,9 +2860,29 @@ def telegram_set_role(row_id):
     if len(picked) != len(set(picked)):
         abort(400)
     set_chat_roles(row, picked)
+
+    # Kaunsa maal is group ka hai. Ek category ka ek hi group hota hai — foam
+    # ka foam wala. Isliye yahan chuni gayi category baaki groups se hat jaati
+    # hai; do jagah rehti toh ek hi kaam do group me jaata aur order dono ka
+    # intezaar karta.
+    want = {int(c) for c in request.form.getlist("categories") if c.isdigit()}
+    valid = ({c.id for c in Category.query.filter(Category.id.in_(want)).all()}
+             if want else set())
+    moved = []
+    if "operator" in picked:
+        for other in TelegramChat.query.filter(TelegramChat.id != row.id).all():
+            keep = [c for c in other.category_ids() if c not in valid]
+            if len(keep) != len(other.category_ids()):
+                moved.append(other.title or other.chat_id)
+                other.categories = ",".join(str(c) for c in keep)
+        row.categories = ",".join(str(c) for c in sorted(valid))
+    else:
+        row.categories = ""       # operator hi nahi toh category ka matlab nahi
     db.session.commit()
     flash(t("po_f_role_set", name=row.title or row.chat_id,
             role=", ".join(picked) or t("po_f_role_none")), "success")
+    if moved:
+        flash(t("po_f_cat_moved", names=", ".join(sorted(set(moved)))), "success")
     return redirect(url_for("po.telegram_page"))
 
 

@@ -73,6 +73,7 @@ OWNER_CHAT = {"id": 777, "title": "", "type": "private", "first_name": "Julius"}
 OP_CHAT = {"id": -1001, "title": "Sambhav Operators", "type": "supergroup"}
 MGR_CHAT = {"id": -1002, "title": "Sambhav Managers", "type": "supergroup"}
 OP2_CHAT = {"id": -1003, "title": "Sambhav Operators 2", "type": "supergroup"}
+THERMO_CHAT = {"id": -1004, "title": "Sambhav Thermacol", "type": "supergroup"}
 STRAY_CHAT = {"id": -1009, "title": "Galti wala group", "type": "supergroup"}
 OWNER2_CHAT = {"id": 888, "title": "", "type": "private", "first_name": "Partner"}
 PARTNER = {"id": 222, "first_name": "Partner"}
@@ -654,6 +655,136 @@ with app.app_context():
     check("doosre co-owner ki mohar bhi chalti hai", bool(po10.rates_ok_at), True)
     check("aur order operator ko chala gaya", po10.status, "with_operator")
 
+    # ============================================ maal ke hisaab se order batna
+    # Julius ke dafter me foam ka apna group hai aur thermacol ka apna. Ek hi
+    # order me dono tarah ka maal aa sakta hai — tab order batt ke jaana
+    # chahiye, aur har group ko sirf apna kaam dikhna chahiye.
+    thermo = Category.query.filter_by(name="Thermacol").first()
+    if not thermo:
+        thermo = Category(name="Thermacol", units="pcs")
+        db.session.add(thermo)
+        db.session.flush()
+    t_item = Item(name="TH01 (10x10x2)", category_id=thermo.id, track_stock=False)
+    db.session.add(t_item)
+    db.session.flush()
+    t_prod = M.PartyProductMap(customer_id=cust.id, item_code="TH01",
+                               canonical_key="20.0x100.0x100.0",
+                               raw_size_text="10x10x2", label="TH01 (10x10x2)",
+                               item_id=t_item.id,
+                               image_data=b"\xff\xd8\xff-thermacol-photo")
+    db.session.add(t_prod)
+    db.session.commit()
+
+    # OP_CHAT ab sirf foam banata hai, THERMO_CHAT sirf thermacol
+    foam_cat = Category.query.filter_by(name="EPE Foam Sheet").first()
+    op = M.TelegramChat.query.filter_by(chat_id="-1001").first()
+    op.categories = str(foam_cat.id)
+    M.handle_update({"message": {"chat": THERMO_CHAT, "from": OPERATOR, "text": "hi"}})
+    th_chat = M.TelegramChat.query.filter_by(chat_id="-1004").first()
+    M.set_chat_roles(th_chat, ["operator"])
+    th_chat.categories = str(thermo.id)
+    # Doosra foam group hata do warna usko bhi foam ka kaam jayega
+    op2 = M.TelegramChat.query.filter_by(chat_id="-1003").first()
+    if op2:
+        M.set_chat_roles(op2, [])
+    db.session.commit()
+
+    mixed = M.PurchaseOrder(po_number="PO-90", customer_id=cust.id, status="pending",
+                            created_by=u.id)
+    db.session.add(mixed)
+    db.session.flush()
+    db.session.add_all([
+        M.POLine(po_id=mixed.id, line_no=1, item_code="GME02", qty=100, qty_unit="pcs",
+                 canonical_key="40.0x140.0x230.0", match_status="code",
+                 map_id=product.id, rate=25),
+        M.POLine(po_id=mixed.id, line_no=2, item_code="TH01", qty=50, qty_unit="pcs",
+                 canonical_key="20.0x100.0x100.0", match_status="code",
+                 map_id=t_prod.id, rate=40),
+    ])
+    db.session.commit()
+    mixed_id = mixed.id
+
+    TG.calls.clear()
+    M.send_order_to_operator(db.session.get(M.PurchaseOrder, mixed_id))
+    mixed = db.session.get(M.PurchaseOrder, mixed_id)
+    check("order do hisson me bat gaya", len(mixed.parts), 2)
+    by_chat = {p.chat_id: p for p in mixed.parts}
+    check("foam wale group ko ek line", len(by_chat["-1001"].line_list()), 1)
+    check("aur wo foam wali hai", by_chat["-1001"].line_list()[0].item_code, "GME02")
+    check("thermacol wale group ko ek line", len(by_chat["-1004"].line_list()), 1)
+    check("aur wo thermacol wali hai", by_chat["-1004"].line_list()[0].item_code, "TH01")
+
+    # Har group ko sirf apna photo card gaya — doosre ka maal dikhna hi nahi chahiye
+    photos = TG.of("sendPhoto")
+    foam_caps = [c[1]["caption"] for c in photos if str(c[1]["chat_id"]) == "-1001"]
+    th_caps = [c[1]["caption"] for c in photos if str(c[1]["chat_id"]) == "-1004"]
+    check("foam group ko ek hi photo card", len(foam_caps), 1)
+    check("usme thermacol ka naam nahi", any("TH01" in c for c in foam_caps), False)
+    check("thermacol group ko ek hi photo card", len(th_caps), 1)
+    check("usme foam ka naam nahi", any("GME02" in c for c in th_caps), False)
+    cards = {str(c[1]["chat_id"]): c[1]["text"] for c in TG.of("sendMessage")}
+    check("card batata hai ki ye poora order nahi", "Sirf aapka hissa" in cards["-1001"])
+
+    # Foam wala apna kaam kar deta hai — thermacol wale ka intezaar kiye bina
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{mixed_id}", OPERATOR))
+    M.handle_update(cb(f"done:{mixed_id}", OPERATOR))
+    mixed = db.session.get(M.PurchaseOrder, mixed_id)
+    by_chat = {p.chat_id: p for p in mixed.parts}
+    check("foam ka hissa ban gaya", by_chat["-1001"].status, "made")
+    check("thermacol ka hissa waise ka waisa", by_chat["-1004"].status, "with_operator")
+    check("par poora order abhi bana nahi", mixed.status, "in_production")
+    check("bill abhi nahi bana", mixed.invoice_id, None)
+    check("manager ko dispatch ka card abhi nahi gaya",
+          any("Dispatch" in (c[1].get("text") or "") for c in TG.of("sendMessage")), False)
+    # Foam wale ko saaf pata chale ki maal abhi jayega nahi
+    edits = [e[1]["text"] for e in TG.of("editMessageText") if str(e[1]["chat_id"]) == "-1001"]
+    check("foam group ko bataya ki baaki kaam chal raha hai",
+          any("Baaki 1 group" in e for e in edits), True)
+
+    # Foam wala dobara Done nahi daba sakta
+    TG.calls.clear()
+    M.handle_update(cb(f"done:{mixed_id}", OPERATOR))
+    check("dobara Done pe saaf jawab",
+          "pehle se" in TG.of("answerCallbackQuery")[-1][1]["text"], True)
+
+    # Ab thermacol wala apna kaam khatam karta hai
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{mixed_id}", OPERATOR, chat=THERMO_CHAT))
+    M.handle_update(cb(f"done:{mixed_id}", OPERATOR, chat=THERMO_CHAT))
+    mixed = db.session.get(M.PurchaseOrder, mixed_id)
+    check("dono hisse ban gaye toh order ban gaya", mixed.status, "made")
+    check("ab bill bana", bool(mixed.invoice_id), True)
+    check("aur manager ko dispatch ka card gaya",
+          any("Dispatch" in (c[1].get("text") or "") for c in TG.of("sendMessage")), True)
+
+    # Bina jodi hui category ka maal manager ke paas jaata hai
+    loose_item = Item(name="BW01 roll", track_stock=False)
+    db.session.add(loose_item)
+    db.session.flush()
+    loose_prod = M.PartyProductMap(customer_id=cust.id, item_code="BW01",
+                                   canonical_key="1.0x1.0", raw_size_text="1x1",
+                                   label="BW01 roll", item_id=loose_item.id)
+    db.session.add(loose_prod)
+    db.session.flush()
+    loose_po = M.PurchaseOrder(po_number="PO-91", customer_id=cust.id, status="pending",
+                               created_by=u.id)
+    db.session.add(loose_po)
+    db.session.flush()
+    db.session.add(M.POLine(po_id=loose_po.id, line_no=1, item_code="BW01", qty=5,
+                            qty_unit="pcs", canonical_key="1.0x1.0",
+                            match_status="code", map_id=loose_prod.id, rate=10))
+    db.session.commit()
+    loose_id = loose_po.id
+
+    TG.calls.clear()
+    M.send_order_to_operator(db.session.get(M.PurchaseOrder, loose_id))
+    loose_po = db.session.get(M.PurchaseOrder, loose_id)
+    check("bina jodi category ka ek hi hissa bana", len(loose_po.parts), 1)
+    check("aur wo manager ke paas gaya", loose_po.parts[0].chat_id, "-1002")
+    check("card me wajah likhi hai",
+          "judi nahi" in loose_po.parts[0].label, True)
+
     # ---- galti se bani chat list se hatt jaye
     M.handle_update({"message": {"chat": STRAY_CHAT, "from": OPERATOR, "text": "hi"}})
     stray = M.TelegramChat.query.filter_by(chat_id="-1009").first()
@@ -717,6 +848,51 @@ check("test msg batata hai ki kya milega",
       "New work to make" in test_msg["text"], True)
 check("aur wo cheez nahi jo nahi milegi",
       "Rate questions" in test_msg["text"], False)
+
+# ---- screen se category jodna, aur ek category ka ek hi group
+# Tick box form ke bahar hain (`form=` se jude hue), isliye ye jaanchna
+# zaroori hai ki wo sach me submit hote hain — screenshot se ye pata nahi
+# chalta.
+page = client.get("/po/telegram").data.decode("utf8", "ignore")
+check("operator group ke saath category ka sawaal aata hai",
+      "Which goods does this group make?" in page)
+check("tick box usi form me jaate hain", 'form="roles' in page)
+
+with app.app_context():
+    foam_id = Category.query.filter_by(name="EPE Foam Sheet").first().id
+    th_id = Category.query.filter_by(name="Thermacol").first().id
+    op_row = M.TelegramChat.query.filter_by(chat_id="-1001").first().id
+    th_row = M.TelegramChat.query.filter_by(chat_id="-1004").first().id
+
+r = client.post(f"/po/telegram/chat/{op_row}/role",
+                data={"roles": ["operator"], "categories": [str(foam_id)]},
+                follow_redirects=True)
+check("category save ho gayi -> HTTP", r.status_code, 200)
+with app.app_context():
+    check("foam ab operator group ka hai",
+          M.TelegramChat.query.filter_by(chat_id="-1001").first().category_ids(), [foam_id])
+
+# Wahi category doosre group ko de do — pehle wale se hat jani chahiye,
+# warna ek hi kaam do group me jaata aur order dono ka intezaar karta.
+r = client.post(f"/po/telegram/chat/{th_row}/role",
+                data={"roles": ["operator"], "categories": [str(foam_id), str(th_id)]},
+                follow_redirects=True)
+with app.app_context():
+    check("nayi jagah dono category lag gayin",
+          sorted(M.TelegramChat.query.filter_by(chat_id="-1004").first().category_ids()),
+          sorted([foam_id, th_id]))
+    check("purane group se foam hat gaya",
+          M.TelegramChat.query.filter_by(chat_id="-1001").first().category_ids(), [])
+check("screen pe bataya bhi gaya ki kahan se hata",
+      "taken off" in r.data.decode("utf8", "ignore"))
+
+# Operator ka tick hatte hi category ka koi matlab nahi rehta
+client.post(f"/po/telegram/chat/{th_row}/role",
+            data={"roles": ["manager"], "categories": [str(th_id)]},
+            follow_redirects=True)
+with app.app_context():
+    check("operator na ho toh category bhi nahi rehti",
+          M.TelegramChat.query.filter_by(chat_id="-1004").first().category_ids(), [])
 
 r = client.post("/po/telegram/hook", follow_redirects=True)
 check("webhook set ho gaya", r.status_code, 200)
