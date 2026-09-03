@@ -17,7 +17,19 @@
         <div id="billOverlayTitle" style="font-weight:600;margin-bottom:2px;">{{ t('bill_view_title') }}</div>
         <div class="mono" id="billOverlayNo" style="font-size:12px;color:var(--ink-faint);"></div>
 
+        {# Maal ke saath jaane wale kaagaz pe rate nahi dikhna chahiye — driver,
+           labour, ya party ka aadmi jo sirf ginti milata hai. Bill ka record
+           phir bhi wahi rehta hai; ye sirf chhapne ka tareeka hai. #}
         <div class="field" style="margin-top:16px;">
+          <label>{{ t('print_what') }}</label>
+          <select id="billMode">
+            <option value="bill">{{ t('print_full_bill') }}</option>
+            <option value="challan">{{ t('print_challan_only') }}</option>
+          </select>
+          <div class="field-help" id="billModeHelp"></div>
+        </div>
+
+        <div class="field">
           <label>{{ t('print_copies') }}</label>
           <select id="billCopies">
             <option value="both">{{ t('copies_both') }}</option>
@@ -43,15 +55,25 @@
   var overlay = document.getElementById('billOverlay');
   var sheet   = document.getElementById('billOverlaySheet');
   var copies  = document.getElementById('billCopies');
+  var mode    = document.getElementById('billMode');
+  var modeHelp = document.getElementById('billModeHelp');
   var pdfLink = document.getElementById('billPdfLink');
   var noEl    = document.getElementById('billOverlayNo');
   var current = null;
 
+  var MODE_HELP = {
+    bill:    {{ t('print_full_bill_hint')|tojson }},
+    challan: {{ t('print_challan_only_hint')|tojson }}
+  };
+
   function load() {
     if (current === null) return;
+    modeHelp.textContent = MODE_HELP[mode.value] || '';
+    var q = 'copies=' + encodeURIComponent(copies.value) +
+            '&mode=' + encodeURIComponent(mode.value);
     sheet.innerHTML = '<div class="bill-overlay-msg">{{ t('bill_loading') }}<\/div>';
-    pdfLink.href = '/invoices/' + current + '/pdf?copies=' + copies.value;
-    fetch('/invoices/' + current + '/preview?copies=' + encodeURIComponent(copies.value),
+    pdfLink.href = '/invoices/' + current + '/pdf?' + q;
+    fetch('/invoices/' + current + '/preview?' + q,
           { credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
       .then(function (html) { sheet.innerHTML = html; })
@@ -96,6 +118,7 @@
                     link.getAttribute('data-bill-no') || '');
   });
   copies.addEventListener('change', load);
+  mode.addEventListener('change', load);
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !overlay.hidden) close();
   });
