@@ -18,7 +18,7 @@ if os.path.exists(DB):
     os.remove(DB)
 
 from app import app                                     # noqa: E402
-from models import db, Customer, User, Settings         # noqa: E402
+from models import db, Customer, User, Settings, Category, Item  # noqa: E402
 import telegram_bot                                     # noqa: E402
 import po_module as M                                    # noqa: E402
 
@@ -78,9 +78,9 @@ OWNER2_CHAT = {"id": 888, "title": "", "type": "private", "first_name": "Partner
 PARTNER = {"id": 222, "first_name": "Partner"}
 
 
-def cb(data, user):
+def cb(data, user, chat=None):
     return {"callback_query": {"id": "c1", "from": user, "data": data,
-                               "message": {"chat": OP_CHAT, "message_id": 1}}}
+                               "message": {"chat": chat or OP_CHAT, "message_id": 1}}}
 
 
 # Screen ke raaste bhi isi test me jaanche jaate hain. Login user banne ke
@@ -112,9 +112,18 @@ with app.app_context():
     db.session.commit()
 
     # ------------------------------------------------------------- ek order banao
+    # Category isliye chahiye ki rate poochhte waqt wo saath jaani chahiye —
+    # "size se rate nahi nikal sakte, category bhi pata honi chahiye".
+    cat = Category(name="EPE Foam Sheet", units="pcs,box")
+    db.session.add(cat)
+    db.session.flush()
+    item = Item(name="GME02 (23x14x4)", category_id=cat.id, track_stock=False)
+    db.session.add(item)
+    db.session.flush()
     product = M.PartyProductMap(customer_id=cust.id, item_code="GME02",
                                 canonical_key="40.0x140.0x230.0",
                                 raw_size_text="23x14x4", label="GME02 (23x14x4)",
+                                item_id=item.id,
                                 image_data=b"\xff\xd8\xff-nakli-photo", times_used=0)
     db.session.add(product)
     db.session.commit()
@@ -144,13 +153,28 @@ with app.app_context():
     check("line card pe koi button nahi", "callback_data" in str(TG.of("sendPhoto")[0][1]), False)
     check("message id yaad rahe", len(po.tg_message_ids.split(",")), 2)
 
-    # ----------------------------------------------- sirf operator button daba sake
+    # ------------------------------------------- button kis chat me daba, wo maayne rakhta hai
+    # Operator group hi apne aap me izaazat hai — us group me Julius ne khud
+    # logon ko daala hai. Pehle har aadmi ko alag se "operator" banana padta
+    # tha, aur naya aadmi group me OK dabata tha toh chup-chaap kuch nahi hota.
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{po_id}", RANDOM_GUY, chat=STRAY_CHAT))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("bahar ki chat se status nahi badla", po.status, "with_operator")
+    check("usko saaf jawab mila",
+          "operator ki list me nahi" in TG.of("answerCallbackQuery")[-1][1]["text"], True)
+
     TG.calls.clear()
     M.handle_update(cb(f"ok:{po_id}", RANDOM_GUY))
     po = db.session.get(M.PurchaseOrder, po_id)
-    check("anjaan bande se status nahi badla", po.status, "with_operator")
-    check("usko saaf jawab mila",
-          "operator ki list me nahi" in TG.of("answerCallbackQuery")[-1][1]["text"], True)
+    check("operator group me daba toh chal gaya", po.status, "in_production")
+    check("dabane wale ka naam laga", po.operator_name, "Koi Aur")
+
+    # Wapas peeche laakar asli operator wala raasta bhi jaancha jaata hai
+    ok_back, _ = M.move_status(po, "with_operator")
+    po.operator_name = ""
+    db.session.commit()
+    check("test ke liye wapas peeche aaya", ok_back, True)
 
     # ------------------------------------------------------------- OK -> yellow
     TG.calls.clear()
@@ -184,6 +208,37 @@ with app.app_context():
     check("ban jaane ke baad koi button nahi",
           M.order_buttons(po), [])
 
+    # ------------------------------------------- dispatch ka button manager pe
+    # Julius ne kaha: "mark for dispatch bhi manager pe daal do". Pehle manager
+    # ko sirf padhne wala msg jaata tha — dispatch karne ke liye screen kholni
+    # padti thi.
+    check("manager wale card pe dispatch ka button hai",
+          "disp:" in str(mgr.get("reply_markup", "")), True)
+    check("card ka pata yaad rakha gaya", bool(po.tg_manager_msg_ids), True)
+
+    # Bahar ki chat se ye button nahi chalta
+    TG.calls.clear()
+    M.handle_update(cb(f"disp:{po_id}", RANDOM_GUY, chat=STRAY_CHAT))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("bahar se dispatch nahi hua", po.status, "made")
+
+    TG.calls.clear()
+    M.handle_update(cb(f"disp:{po_id}", OPERATOR, chat=MGR_CHAT))
+    po = db.session.get(M.PurchaseOrder, po_id)
+    check("manager group se dispatch ho gaya", po.status, "dispatched")
+    check("dispatched_at bhi laga", bool(po.dispatched_at), True)
+    edits = TG.of("editMessageText")
+    check("manager ka card update hua",
+          any(str(e[1]["chat_id"]) == "-1002" for e in edits), True)
+    mgr_edit = [e for e in edits if str(e[1]["chat_id"]) == "-1002"][-1][1]
+    check("dispatch ke baad button hat gaya",
+          "disp:" in str(mgr_edit.get("reply_markup", "")), False)
+    check("operator ka card bhi update hua",
+          any(str(e[1]["chat_id"]) == "-1001" for e in edits), True)
+
+    # Wapas 'made' pe laakar aage ka test purane jaisa chalta rahe
+    M.move_status(po, "made")
+
     # ============================================================ rate + bill
     # Aapka apna chat — rate yahin poochha jaata hai
     M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "/start"}})
@@ -211,6 +266,13 @@ with app.app_context():
     check("summary + do sawaal", len(sent), 3)
     check("summary aapke chat me gaya", str(sent[0][1]["chat_id"]), "777")
     check("summary me 'rate chahiye' likha hai", "rate chahiye" in sent[0][1]["text"], True)
+    # Rate sirf naap se tay nahi hota — 2mm aur 4mm foam ka bhav alag hota hai.
+    check("summary me category likhi hai", "EPE Foam Sheet" in sent[0][1]["text"], True)
+    check("summary me naap bhi likha hai", "23x14x4" in sent[0][1]["text"], True)
+    check("har sawaal me bhi category hai",
+          all("EPE Foam Sheet" in m[1]["text"] for m in sent[1:]), True)
+    check("har sawaal me naap bhi hai",
+          all("23x14x4" in m[1]["text"] for m in sent[1:]), True)
     check("jab tak rate baaki hai, bhejne ka button nahi",
           "rates:" in str(sent[0][1]), False)
 
@@ -610,6 +672,51 @@ with app.app_context():
 r = client.get("/po/telegram")
 check("telegram page khulta hai", r.status_code, 200)
 check("bot ka naam dikhta hai", b"sambhav_orders_bot" in r.data, True)
+
+# Naya aadmi jodne ka rasta screen pe hona chahiye. Bot kisi ko khud se msg
+# nahi kar sakta jab tak wo Start na dabaye — ye Telegram ka niyam hai, aur
+# screen pe likha hona chahiye warna aadmi group bana ke kaam chalata rahega.
+page = r.data.decode("utf8", "ignore")
+check("bot ka link diya hai", "https://t.me/sambhav_orders_bot" in page)
+check("Start dabane wali baat likhi hai", "Start" in page)
+# Role ke naam nahi, unka kaam likha ho — "manager" se ye pata nahi chalta
+# ki us chat ko kya msg jayega.
+check("tick pe kaam likha hai — rate", "Rate questions" in page)
+check("tick pe kaam likha hai — naya kaam", "New work to make" in page)
+check("tick pe kaam likha hai — dispatch", "Ready to dispatch" in page)
+check("private chat aur group alag dikhte hain",
+      "one person" in page and "the whole group" in page)
+
+check("bina group wale rate ke koi chetavni nahi",
+      "Everyone in this group can see the rates" in page, False)
+
+# Group pe rate ka tick lagana matlab poore group ko bhav dikhega — ye baat
+# tick ke waqt saamne honi chahiye, baad me nahi.
+with app.app_context():
+    grp = M.TelegramChat.query.filter_by(chat_id="-1002").first()
+    M.set_chat_roles(grp, ["manager", "owner"])
+    db.session.commit()
+page2 = client.get("/po/telegram").data.decode("utf8", "ignore")
+check("group pe rate ka tick ho toh chetavni dikhti hai",
+      "Everyone in this group can see the rates" in page2)
+with app.app_context():
+    grp = M.TelegramChat.query.filter_by(chat_id="-1002").first()
+    M.set_chat_roles(grp, ["manager"])
+    db.session.commit()
+
+with app.app_context():
+    op = M.TelegramChat.query.filter_by(chat_id="-1001").first()
+    op_id = op.id
+TG.calls.clear()
+r = client.post(f"/po/telegram/chat/{op_id}/test", follow_redirects=True)
+check("test msg bhejne ka rasta chalta hai", r.status_code, 200)
+check("test msg sach me gaya", len(TG.of("sendMessage")), 1)
+test_msg = TG.of("sendMessage")[-1][1]
+check("test msg usi chat me gaya", str(test_msg["chat_id"]), "-1001")
+check("test msg batata hai ki kya milega",
+      "New work to make" in test_msg["text"], True)
+check("aur wo cheez nahi jo nahi milegi",
+      "Rate questions" in test_msg["text"], False)
 
 r = client.post("/po/telegram/hook", follow_redirects=True)
 check("webhook set ho gaya", r.status_code, 200)

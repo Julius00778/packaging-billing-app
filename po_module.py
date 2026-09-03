@@ -385,6 +385,8 @@ class PurchaseOrder(db.Model):
     tg_chat_id = db.Column(db.String(40), default="")
     tg_message_ids = db.Column(db.String(300), default="")   # comma se jude
     tg_rate_summary_id = db.Column(db.String(40), default="")  # aapke chat wala card
+    # Manager group wala card — usi pe "dispatch ho gaya" ka button rehta hai
+    tg_manager_msg_ids = db.Column(db.String(1000), default="")
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True)
     # Accountant ka nishan — "ye bill nikal chuka". App printer se nahi poochhta.
     bill_printed_at = db.Column(db.DateTime, nullable=True)
@@ -1189,11 +1191,39 @@ def fill_remembered_rates(po):
     return filled
 
 
+def line_kind(line):
+    """Maal ki category — "EPE Foam Sheet", "Scrap" waisa.
+
+    Julius ne saaf kaha: "size se rate nahi nikal sakte, uski category bhi
+    pata honi chahiye". Ek hi naap ka 2mm foam aur 4mm foam alag bhav ka
+    hota hai — isliye rate poochhte waqt ye saath jaana chahiye.
+    """
+    m = line.mapping
+    if m and m.item and m.item.category:
+        return m.item.category.name or ""
+    return ""
+
+
+def line_detail(line):
+    """Rate poochhne wale msg ki ek line.
+
+    Jo cheez rate tay karti hai wahi dikhni chahiye: kaunsa maal, kis
+    category ka, kitna bada, aur kitne chahiye. Category ya size na juda ho
+    toh us hisse ke bina hi bhej do — khaali bracket se koi faayda nahi.
+    """
+    m = line.mapping
+    name = m.label if m else (line.item_code or line.raw_size_text)
+    size = (m.raw_size_text if m else "") or line.raw_size_text
+    bits = [b for b in (line_kind(line), size) if b]
+    tail = f"\n   <i>{' · '.join(bits)}</i>" if bits else ""
+    return (f"<b>{line.item_code or '—'}</b>  {name}  ×  "
+            f"{line.qty:g} {line.qty_unit}{tail}")
+
+
 def rate_summary_text(po):
     rows = []
     for line in po.lines:
-        name = line.mapping.label if line.mapping else (line.item_code or line.raw_size_text)
-        head = f"<b>{line.item_code or '—'}</b>  {name}  ×  {line.qty:g} {line.qty_unit}"
+        head = line_detail(line)
         if not line.rate:
             rows.append(f"{head}\n   ⬜ <b>rate chahiye</b>")
         elif line.rate_from_memory:
@@ -1251,10 +1281,9 @@ def ask_rates(po, token=None):
         for line in po.lines:
             if line.rate:
                 continue
-            name = line.mapping.label if line.mapping else line.item_code
             ask = telegram_bot.send_message(
                 chat.chat_id,
-                f"<b>{line.item_code or '—'}</b> — {name}\n{line.qty:g} {line.qty_unit}\n\n"
+                f"{line_detail(line)}\n\n"
                 f"Is msg ka reply karke rate bhejo (per {line.qty_unit}).",
                 token=token)
             if ask and ask.get("message_id"):
@@ -1317,6 +1346,57 @@ def set_line_unit(line, unit):
         line.rate = 0.0
         line.rate_from_memory = False
     return True
+
+
+# Mahine ke teen akshar. Python ke strftime pe nahi chhoda kyunki wo server ki
+# locale badalne pe badal sakta hai — order number kabhi nahi badalna chahiye.
+MONTH_CODES = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+               "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+
+
+def _po_seq_key(prefix, year):
+    return f"po_seq_{prefix}{year}"
+
+
+def _po_seq_seen(prefix, year):
+    raw = POSetting.get(_po_seq_key(prefix, year)) or ""
+    return int(raw) if raw.isdigit() else 0
+
+
+def next_po_number(today=None):
+    """Agla order number — mahine ka naam aur uske aage ginti.
+
+    Julius pehle se SEP04, SEP05 aise likh raha tha; ab wo haath se nahi
+    likhna padta. Har mahina 01 se shuru hota hai.
+
+    Ginti kabhi peeche nahi jaati. Sirf maujood order dekhte toh sabse upar
+    wala order hataane par wahi number dobara mil jaata — aur us number ka
+    parcha party ke paas ja chuka ho sakta hai. Ek number do parche pe hona
+    sabse buri galti hogi, isliye ab tak ka sabse bada number alag se yaad
+    rehta hai.
+
+    Ye sirf batata hai, uthata nahi — form kholne se number kharch nahi hota.
+    Number pakka tab hota hai jab order sach me ban jaye.
+    """
+    d = today or date.today()
+    prefix = MONTH_CODES[d.month - 1]
+    biggest = _po_seq_seen(prefix, d.year)
+    rows = (db.session.query(PurchaseOrder.po_number)
+            .filter(PurchaseOrder.po_number.like(prefix + "%")).all())
+    for (num,) in rows:
+        tail = (num or "")[len(prefix):]
+        if tail.isdigit():
+            biggest = max(biggest, int(tail))
+    return f"{prefix}{biggest + 1:02d}"
+
+
+def remember_po_number(po_number, today=None):
+    """Ye number kharch ho chuka — aage dobara kabhi mat dena."""
+    d = today or date.today()
+    prefix = MONTH_CODES[d.month - 1]
+    tail = (po_number or "")[len(prefix):] if (po_number or "").startswith(prefix) else ""
+    if tail.isdigit() and int(tail) > _po_seq_seen(prefix, d.year):
+        POSetting.put(_po_seq_key(prefix, d.year), tail)
 
 
 def make_invoice(po):
@@ -1430,25 +1510,59 @@ def refresh_order_card(po, token=None):
             pass   # card update na ho paye toh order to badal hi chuka hai
 
 
-def notify_manager(po, token=None):
-    chats = chats_for_role("manager")
-    if not chats:
-        return False
+def manager_card_text(po):
     lines = "\n".join(
         f"• {l.item_code or '—'}  {l.mapping.label if l.mapping else ''}  ×  "
         f"{l.qty:g} {l.qty_unit}" for l in po.lines)
-    text = (f"📦 <b>Dispatch ke liye taiyaar</b>\n\n"
-            f"<b>{po.po_number}</b> — {po.customer.name}\n{lines}")
+    head = ("📦 <b>Dispatch ke liye taiyaar</b>" if po.status == "made"
+            else "📦 <b>Dispatch</b>")
+    text = f"{head}\n\n<b>{po.po_number}</b> — {po.customer.name}\n{lines}"
     if po.operator_name:
         text += f"\n\nBanaya: {po.operator_name}"
-    sent = False
+    return text + status_line(po)
+
+
+def manager_buttons(po):
+    """Manager group me dispatch ka button — sirf jab tak bheja na gaya ho."""
+    if po.status != "made":
+        return []
+    return [[{"text": "🚚 Dispatch ho gaya", "callback_data": f"disp:{po.id}"}]]
+
+
+def notify_manager(po, token=None):
+    """Manager group ko khabar — aur wahin se dispatch ka button.
+
+    Pehle ye sirf padhne wala message tha; dispatch dabane ke liye screen
+    kholni padti thi. Julius ne kaha "mark for dispatch bhi manager pe daal
+    do" — ab wo kaam usi card se ho jaata hai.
+    """
+    chats = chats_for_role("manager")
+    if not chats:
+        return False
+    text = manager_card_text(po)
+    pairs = []
     for chat in chats:
         try:
-            telegram_bot.send_message(chat.chat_id, text, token=token)
-            sent = True
+            res = telegram_bot.send_message(chat.chat_id, text,
+                                            buttons=manager_buttons(po), token=token)
+        except telegram_bot.TelegramError:
+            continue
+        if res and res.get("message_id"):
+            pairs.append((chat.chat_id, str(res["message_id"])))
+    if pairs:
+        po.tg_manager_msg_ids = pack_msg_ids(pairs)
+        db.session.commit()
+    return bool(pairs)
+
+
+def refresh_manager_card(po, token=None):
+    """Dispatch ho jaane par manager wale card se button hata do."""
+    for chat_id, msg_id in unpack_msg_ids(po.tg_manager_msg_ids):
+        try:
+            telegram_bot.edit_message(chat_id, msg_id, manager_card_text(po),
+                                      buttons=manager_buttons(po), token=token)
         except telegram_bot.TelegramError:
             pass
-    return sent
 
 
 def move_status(po, new_status, who=""):
@@ -1517,11 +1631,15 @@ def handle_update(update, token=None):
     if not po:
         return reply("Ye order ab nahi hai.", alert=True)
 
+    here = str(((cq.get("message") or {}).get("chat") or {}).get("id"))
+
+    def chat_has(role):
+        return here in {c.chat_id for c in chats_for_role(role)}
+
     # Rate wala button aapke apne chat me hota hai, operator group me nahi.
     # Co-owner kai ho sakte hain — kisi bhi owner chat se mohar lag sakti hai.
     if action == "rates":
-        here = str(((cq.get("message") or {}).get("chat") or {}).get("id"))
-        if here not in {c.chat_id for c in chats_for_role("owner")}:
+        if not chat_has("owner"):
             return reply("Ye button sirf aapke chat me chalta hai.", alert=True)
         if po.no_rate_count:
             return reply("Abhi kuch lines ka rate baaki hai.", alert=True)
@@ -1534,7 +1652,20 @@ def handle_update(update, token=None):
         refresh_rate_summary(po, token=token)
         return reply("Operator ko bhej diya.")
 
-    if not is_operator((cq.get("from") or {}).get("id")):
+    # Dispatch ka button manager group me hota hai. Wahan ka hona hi kaafi
+    # hai — group me wahi log hain jinhe office ne daala hai.
+    if action == "disp":
+        if not (chat_has("manager") or chat_has("owner")):
+            return reply("Ye button manager group me chalta hai.", alert=True)
+        moved, msg = move_status(po, "dispatched", who=who)
+        refresh_manager_card(po, token=token)
+        refresh_order_card(po, token=token)
+        return reply(msg, alert=not moved)
+
+    # Kaam wale button ke do raaste: aadmi khud operator ki list me ho, ya
+    # button operator group me daba ho. Pehle sirf pehla raasta tha — isliye
+    # naya aadmi group me OK dabata tha aur kuch nahi hota tha.
+    if not (is_operator((cq.get("from") or {}).get("id")) or chat_has("operator")):
         return reply("Aap operator ki list me nahi ho — office se puchho.", alert=True)
 
     target = {"ok": "in_production", "done": "made"}.get(action)
@@ -1772,10 +1903,18 @@ def po_new():
     customers = Customer.query.order_by(Customer.name).all()
     if request.method == "POST":
         customer_id = request.form.get("customer_id") or ""
+        # Number khaali chhod do toh app khud laga deti hai. Do aadmi ek saath
+        # form khole hon toh dono ko ek hi suggestion dikhta hai — isliye jo
+        # number screen pe tha wo bhejne ke baad bhi dobara jaancha jaata hai.
         po_number = request.form.get("po_number", "").strip()
-        if not customer_id.isdigit() or not po_number:
+        if not po_number or PurchaseOrder.query.filter_by(po_number=po_number).first():
+            if not po_number or po_number == request.form.get("po_number_auto", ""):
+                po_number = next_po_number()
+        if not customer_id.isdigit():
             flash(t("po_f_party_and_number"), "error")
-            return render_template("po_new.html", customers=customers, today=date.today().isoformat())
+            return render_template("po_new.html", customers=customers,
+                                   today=date.today().isoformat(),
+                                   next_no=next_po_number())
         customer_id = int(customer_id)
 
         dupe = PurchaseOrder.query.filter_by(customer_id=customer_id, po_number=po_number).first()
@@ -1791,7 +1930,9 @@ def po_new():
                 request.files.get("scan"), SCAN_MAX_DIM, SCAN_TARGET_BYTES)
         except ValueError:
             flash(t("po_f_scan_too_big"), "error")
-            return render_template("po_new.html", customers=customers, today=date.today().isoformat())
+            return render_template("po_new.html", customers=customers,
+                                   today=date.today().isoformat(),
+                                   next_no=next_po_number())
 
         # Screen pe jo lines dikh rahi thi, wahi yahan aati hain — chahe wo
         # photo se bhari gayi hon, paste se, ya haath se. Padhna pehle ho
@@ -1804,7 +1945,9 @@ def po_new():
             parsed = parse_po_text(raw_text, unit, known_codes_for(customer_id))
         if not parsed:
             flash(t("po_f_no_lines"), "error")
-            return render_template("po_new.html", customers=customers, today=date.today().isoformat())
+            return render_template("po_new.html", customers=customers,
+                                   today=date.today().isoformat(),
+                                   next_no=next_po_number())
 
         po = PurchaseOrder(
             po_number=po_number, customer_id=customer_id,
@@ -1823,6 +1966,7 @@ def po_new():
             db.session.add(line)
 
         fill_remembered_rates(po)
+        remember_po_number(po_number)
         db.session.commit()
 
         msg = t("po_f_read_lines", no=po_number, n=len(parsed))
@@ -1837,7 +1981,9 @@ def po_new():
         flash(msg, "success")
         return redirect(url_for("po.po_review", po_id=po.id))
 
-    return render_template("po_new.html", customers=customers, today=date.today().isoformat())
+    return render_template("po_new.html", customers=customers,
+                                   today=date.today().isoformat(),
+                                   next_no=next_po_number())
 
 
 def _rows_for_form(text, customer_id, unit, fuzzy):
@@ -2155,6 +2301,8 @@ def po_set_status(po_id):
         refresh_order_card(po)
         if target == "made":
             notify_manager(po)
+        elif po.tg_manager_msg_ids:
+            refresh_manager_card(po)
         flash(t("po_f_status_now", no=po.po_number,
                 label=t("po_status_" + target)), "success")
     else:
@@ -2192,6 +2340,7 @@ def po_mark_dispatched(po_id):
     moved, msg = move_status(po, "dispatched")
     if moved:
         refresh_order_card(po)
+        refresh_manager_card(po)
         flash(t("po_f_dispatched", no=po.po_number), "success")
     else:
         flash(t("po_f_already_moved"), "error")
@@ -2391,10 +2540,35 @@ def telegram_page():
     return render_template(
         "po_telegram.html",
         key_set=key_set, bot_name=bot_name, error=error,
+        bot_link=f"https://t.me/{bot_name}" if bot_name else "",
         chats=TelegramChat.query.order_by(TelegramChat.last_seen.desc()).all(),
         people=TelegramPerson.query.order_by(TelegramPerson.last_seen.desc()).all(),
         hooked=bool(POSetting.get(TG_SECRET_KEY)),
     )
+
+
+@po_bp.route("/telegram/chat/<int:row_id>/test", methods=["POST"])
+@login_required
+def telegram_test_chat(row_id):
+    """Ek test msg bhej ke dekho ki ye chat sach me kya-kya payegi.
+
+    Role tick karne ke baad sabse aam sawaal yahi hota hai — "ab isko kya
+    jayega?". Asli order banaye bina uska jawab mil jaana chahiye.
+    """
+    row = db.session.get(TelegramChat, row_id) or abort(404)
+    roles = row.role_list()
+    if roles:
+        what = "\n".join("\u2022 " + t("po_tg_gets_" + r) for r in roles)
+    else:
+        what = t("po_tg_gets_nothing")
+    try:
+        telegram_bot.send_message(
+            row.chat_id, f"\U0001F514 <b>{t('po_tg_test_head')}</b>\n\n{what}")
+    except telegram_bot.TelegramError as exc:
+        flash(t("po_f_test_failed", name=row.title or row.chat_id, reason=exc), "error")
+        return redirect(url_for("po.telegram_page"))
+    flash(t("po_f_test_sent", name=row.title or row.chat_id), "success")
+    return redirect(url_for("po.telegram_page"))
 
 
 @po_bp.route("/telegram/chat/<int:row_id>/role", methods=["POST"])
