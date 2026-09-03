@@ -1271,12 +1271,70 @@ def _run_startup_migrations():
     _add_column_if_missing(inspector, "purchase_order", "bill_printed_at", "bill_printed_at TIMESTAMP")
     _add_column_if_missing(inspector, "category", "units", "units VARCHAR(200) DEFAULT ''")
     _add_column_if_missing(inspector, "purchase_order", "rates_ok_at", "rates_ok_at TIMESTAMP")
+    _add_column_if_missing(inspector, "telegram_chat", "roles", "roles VARCHAR(200) DEFAULT ''")
+    # Ek chat ke kai role ho sakte hain, aur ek order kai group me jaata hai.
+    # Isliye msg ki pehchan ab "chat:msg" jodon me rehti hai — purane khaane
+    # uske liye chhote pad gaye the.
+    _widen_column(inspector, "purchase_order", "tg_message_ids", 1000)
+    _widen_column(inspector, "purchase_order", "tg_rate_summary_id", 300)
+    _widen_column(inspector, "po_line", "tg_rate_msg_id", 300)
 
     # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
     # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.
     _rename_po_status(inspector, "confirmed", "made")
     _seed_category_units(inspector)
     _link_products_to_items(inspector)
+    _copy_single_role_to_roles(inspector)
+
+
+def _widen_column(inspector, table, column, size):
+    """Column ko lamba karo. Sirf wahan chalta hai jahan iski zaroorat hai.
+
+    SQLite VARCHAR ki lambai maanta hi nahi, isliye wahan kuch karne ki
+    zaroorat nahi. Postgres pe ALTER TYPE chalti hai aur dobara chalane par
+    bhi kuch nahi bigadta.
+    """
+    from sqlalchemy import text
+    if db.engine.dialect.name == "sqlite":
+        return
+    if table not in inspector.get_table_names():
+        return
+    for col in inspector.get_columns(table):
+        if col["name"] != column:
+            continue
+        length = getattr(col["type"], "length", None)
+        if length and length >= size:
+            return
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                f"ALTER TABLE {table} ALTER COLUMN {column} TYPE VARCHAR({size})"))
+            conn.commit()
+        return
+
+
+def _copy_single_role_to_roles(inspector):
+    """Purana ek-role wala khaana nayi list me le aao.
+
+    Pehle har chat ka ek hi role hota tha. Ab kai ho sakte hain, par jo pehle
+    se set hai wo waise ka waisa chalta rehna chahiye — kisi ko dobara set
+    karne ki zaroorat na pade. Ek baar ka kaam; dobara chalane par kuch nahi
+    milta kyunki tab roles bhara hua hota hai.
+    """
+    if "telegram_chat" not in inspector.get_table_names():
+        return
+    cols = [c["name"] for c in inspector.get_columns("telegram_chat")]
+    if "roles" not in cols or "role" not in cols:
+        return
+    from po_module import TelegramChat
+    touched = 0
+    for row in TelegramChat.query.all():
+        if (row.roles or "").strip():
+            continue
+        if (row.role or "").strip():
+            row.roles = row.role.strip()
+            touched += 1
+    if touched:
+        db.session.commit()
 
 
 def _seed_category_units(inspector):

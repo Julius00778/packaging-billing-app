@@ -338,8 +338,18 @@ class TelegramChat(db.Model):
     chat_id = db.Column(db.String(40), unique=True, nullable=False)
     title = db.Column(db.String(200), default="")
     chat_type = db.Column(db.String(20), default="")   # group/supergroup/private
-    role = db.Column(db.String(20), default="")        # operator/manager/owner
+    role = db.Column(db.String(20), default="")        # purana: ek hi role
+    # Ek chat ke kai role ho sakte hain, aur ek role ki kai chat. Asli dafter
+    # aisa hi chalta hai: do co-owner, do operator group. Isliye yahan comma se
+    # alag ki hui list rehti hai — "operator,manager".
+    roles = db.Column(db.String(200), default="")
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def role_list(self):
+        return [r for r in (self.roles or "").split(",") if r]
+
+    def has_role(self, role):
+        return role in self.role_list()
 
 
 class TelegramPerson(db.Model):
@@ -1045,8 +1055,58 @@ def sync_one_folder(service, folder):
 TG_SECRET_KEY = "telegram_webhook_secret"
 
 
+TG_ROLES = ("operator", "manager", "owner")
+
+
+def chats_for_role(role):
+    """Us role wali saari chats — ek se zyada ho sakti hain.
+
+    Do operator group, do co-owner — dono aam baat hain. Pehle yahan sirf ek
+    chat lauta karti thi aur nayi chat pe role lagate hi purani ka role chup-chaap
+    hat jaata tha. Ab dono saath rehte hain.
+    """
+    if not role:
+        return []
+    return [c for c in TelegramChat.query.order_by(TelegramChat.id).all()
+            if c.has_role(role)]
+
+
 def chat_for_role(role):
-    return TelegramChat.query.filter_by(role=role).first()
+    """Pehli chat — sirf ye jaanne ke liye ki role kisi ko diya gaya hai ya nahi."""
+    rows = chats_for_role(role)
+    return rows[0] if rows else None
+
+
+def set_chat_roles(row, roles):
+    """Chat ke role tay karo. Ek chat ke kai role ho sakte hain."""
+    clean = [r for r in TG_ROLES if r in set(roles or ())]
+    row.roles = ",".join(clean)
+    # Purana single-role column bhi chalta rahe, taaki koi purana data ya
+    # purana code beech me atke nahi.
+    row.role = clean[0] if clean else ""
+    return clean
+
+
+def pack_msg_ids(pairs):
+    """[(chat_id, msg_id), ...] -> "chat:msg,chat:msg" """
+    return ",".join(f"{c}:{m}" for c, m in pairs if c and m)
+
+
+def unpack_msg_ids(packed, fallback_chat=""):
+    """Ulta kaam. Purane rows me sirf msg id hoti thi — unhe fallback chat
+    ke saath jod dete hain, taaki purane order bhi chalte rahen."""
+    out = []
+    for token in (packed or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if ":" in token:
+            chat, _, msg = token.partition(":")
+            if chat and msg:
+                out.append((chat, msg))
+        elif fallback_chat:
+            out.append((str(fallback_chat), token))
+    return out
 
 
 def is_operator(tg_user_id):
@@ -1059,7 +1119,8 @@ def remember_chat(chat, role_hint=None):
         return None
     row = TelegramChat.query.filter_by(chat_id=str(chat["id"])).first()
     if not row:
-        row = TelegramChat(chat_id=str(chat["id"]), role=role_hint or "")
+        row = TelegramChat(chat_id=str(chat["id"]))
+        set_chat_roles(row, [role_hint] if role_hint else [])
         db.session.add(row)
     row.title = chat.get("title") or telegram_bot.person_name(chat) or row.title
     row.chat_type = chat.get("type") or row.chat_type
@@ -1168,8 +1229,8 @@ def ask_rates(po, token=None):
     Har us line ka apna msg jaata hai jiska rate nahi pata. Uske reply me sirf
     number bhejna hota hai — bot ko pata rehta hai ki wo reply kis line ka hai.
     """
-    chat = chat_for_role("owner")
-    if not chat:
+    chats = chats_for_role("owner")
+    if not chats:
         raise telegram_bot.TelegramError(
             "Aapka apna chat chuna nahi gaya. Bot ko private me /start bhejo, phir "
             "Telegram page pe use 'Aapka chat' bana do."
@@ -1177,34 +1238,46 @@ def ask_rates(po, token=None):
     fill_remembered_rates(po)
     db.session.commit()
 
-    res = telegram_bot.send_message(chat.chat_id, rate_summary_text(po),
-                                    buttons=rate_buttons(po), token=token)
-    po.tg_rate_summary_id = str(res.get("message_id")) if res else ""
+    # Co-owner ek se zyada ho sakte hain — card sabke paas jaata hai, aur mohar
+    # koi bhi laga sakta hai. Jo pehle laga de, order us waqt aage badh jaata hai.
+    summary = []
+    asks = {line.id: [] for line in po.lines}
+    for chat in chats:
+        res = telegram_bot.send_message(chat.chat_id, rate_summary_text(po),
+                                        buttons=rate_buttons(po), token=token)
+        if res and res.get("message_id"):
+            summary.append((chat.chat_id, str(res["message_id"])))
 
+        for line in po.lines:
+            if line.rate:
+                continue
+            name = line.mapping.label if line.mapping else line.item_code
+            ask = telegram_bot.send_message(
+                chat.chat_id,
+                f"<b>{line.item_code or '—'}</b> — {name}\n{line.qty:g} {line.qty_unit}\n\n"
+                f"Is msg ka reply karke rate bhejo (per {line.qty_unit}).",
+                token=token)
+            if ask and ask.get("message_id"):
+                asks[line.id].append((chat.chat_id, str(ask["message_id"])))
+
+    po.tg_rate_summary_id = pack_msg_ids(summary)
     for line in po.lines:
-        if line.rate:
-            continue
-        name = line.mapping.label if line.mapping else line.item_code
-        ask = telegram_bot.send_message(
-            chat.chat_id,
-            f"<b>{line.item_code or '—'}</b> — {name}\n{line.qty:g} {line.qty_unit}\n\n"
-            f"Is msg ka reply karke rate bhejo (per {line.qty_unit}).",
-            token=token)
-        line.tg_rate_msg_id = str(ask.get("message_id")) if ask else ""
+        line.tg_rate_msg_id = pack_msg_ids(asks.get(line.id, []))
     db.session.commit()
     return po.no_rate_count
 
 
 def refresh_rate_summary(po, token=None):
-    chat = chat_for_role("owner")
-    if not chat or not po.tg_rate_summary_id:
-        return
-    try:
-        telegram_bot.edit_message(chat.chat_id, po.tg_rate_summary_id,
-                                  rate_summary_text(po), buttons=rate_buttons(po),
-                                  token=token)
-    except telegram_bot.TelegramError:
-        pass
+    fallback = chat_for_role("owner")
+    pairs = unpack_msg_ids(po.tg_rate_summary_id,
+                           fallback.chat_id if fallback else "")
+    for chat_id, msg_id in pairs:
+        try:
+            telegram_bot.edit_message(chat_id, msg_id,
+                                      rate_summary_text(po), buttons=rate_buttons(po),
+                                      token=token)
+        except telegram_bot.TelegramError:
+            pass
 
 
 def set_line_rate(line, rate):
@@ -1299,52 +1372,67 @@ def make_invoice(po):
 
 
 def send_order_to_operator(po, token=None):
-    """Har line ka apna card, photo ke saath. Aakhir me buttons wala card."""
-    chat = chat_for_role("operator")
-    if not chat:
+    """Har line ka apna card, photo ke saath. Aakhir me buttons wala card.
+
+    Operator ke ek se zyada group ho sakte hain — sab me poora order jaata hai,
+    aur har group ke apne button. Kisi ek group me dabao, order aage badh jaata
+    hai aur baaki group ke card bhi nayi halat dikhane lagte hain.
+    """
+    chats = chats_for_role("operator")
+    if not chats:
         raise telegram_bot.TelegramError(
             "Operator group chuna nahi gaya. Telegram page pe jaake batao ki "
             "kaunsa group operator ka hai."
         )
-    msg_ids = []
-    for line in po.lines:
-        photo = line.mapping.image_data if line.mapping else None
-        res = telegram_bot.send_photo(chat.chat_id, photo, order_card_text(po, line),
-                                      token=token)
-        if res and res.get("message_id"):
-            msg_ids.append(str(res["message_id"]))
-
-    # Aakhir me ek summary card — buttons isi pe rehte hain, taaki har line pe
-    # button na aaye aur operator galti se aadha order aage na badha de.
+    # Status pehle badalna zaroori hai — button aur status ki lakeer isi se
+    # bante hain, aur wahi card me jaate hain.
     po.status = "with_operator"
     po.sent_at = datetime.utcnow()
-    po.tg_chat_id = chat.chat_id
-    res = telegram_bot.send_message(
-        chat.chat_id, order_card_text(po) + status_line(po),
-        buttons=order_buttons(po), token=token)
-    if res and res.get("message_id"):
-        msg_ids.append(str(res["message_id"]))
-    po.tg_message_ids = ",".join(msg_ids)
+
+    pairs = []
+    for chat in chats:
+        for line in po.lines:
+            photo = line.mapping.image_data if line.mapping else None
+            res = telegram_bot.send_photo(chat.chat_id, photo,
+                                          order_card_text(po, line), token=token)
+            if res and res.get("message_id"):
+                pairs.append((chat.chat_id, str(res["message_id"])))
+
+        # Aakhir me ek summary card — buttons isi pe rehte hain, taaki har line
+        # pe button na aaye aur operator galti se aadha order aage na badha de.
+        res = telegram_bot.send_message(
+            chat.chat_id, order_card_text(po) + status_line(po),
+            buttons=order_buttons(po), token=token)
+        if res and res.get("message_id"):
+            pairs.append((chat.chat_id, str(res["message_id"])))
+
+    po.tg_chat_id = chats[0].chat_id
+    po.tg_message_ids = pack_msg_ids(pairs)
     db.session.commit()
-    return len(msg_ids)
+    return len(pairs)
 
 
 def refresh_order_card(po, token=None):
-    """Aakhri (button wale) card ko nayi status ke saath update karo."""
-    if not po.tg_chat_id or not po.tg_message_ids:
+    """Har group ke button wale card ko nayi status ke saath update karo."""
+    pairs = unpack_msg_ids(po.tg_message_ids, po.tg_chat_id)
+    if not pairs:
         return
-    last = po.tg_message_ids.split(",")[-1]
-    try:
-        telegram_bot.edit_message(po.tg_chat_id, last,
-                                  order_card_text(po) + status_line(po),
-                                  buttons=order_buttons(po), token=token)
-    except telegram_bot.TelegramError:
-        pass   # card update na ho paye toh order to badal hi chuka hai
+    # Har chat ka aakhri msg hi button wala card hai
+    last_per_chat = {}
+    for chat_id, msg_id in pairs:
+        last_per_chat[chat_id] = msg_id
+    for chat_id, msg_id in last_per_chat.items():
+        try:
+            telegram_bot.edit_message(chat_id, msg_id,
+                                      order_card_text(po) + status_line(po),
+                                      buttons=order_buttons(po), token=token)
+        except telegram_bot.TelegramError:
+            pass   # card update na ho paye toh order to badal hi chuka hai
 
 
 def notify_manager(po, token=None):
-    chat = chat_for_role("manager")
-    if not chat:
+    chats = chats_for_role("manager")
+    if not chats:
         return False
     lines = "\n".join(
         f"• {l.item_code or '—'}  {l.mapping.label if l.mapping else ''}  ×  "
@@ -1353,11 +1441,14 @@ def notify_manager(po, token=None):
             f"<b>{po.po_number}</b> — {po.customer.name}\n{lines}")
     if po.operator_name:
         text += f"\n\nBanaya: {po.operator_name}"
-    try:
-        telegram_bot.send_message(chat.chat_id, text, token=token)
-        return True
-    except telegram_bot.TelegramError:
-        return False
+    sent = False
+    for chat in chats:
+        try:
+            telegram_bot.send_message(chat.chat_id, text, token=token)
+            sent = True
+        except telegram_bot.TelegramError:
+            pass
+    return sent
 
 
 def move_status(po, new_status, who=""):
@@ -1427,10 +1518,10 @@ def handle_update(update, token=None):
         return reply("Ye order ab nahi hai.", alert=True)
 
     # Rate wala button aapke apne chat me hota hai, operator group me nahi.
+    # Co-owner kai ho sakte hain — kisi bhi owner chat se mohar lag sakti hai.
     if action == "rates":
-        owner = chat_for_role("owner")
         here = str(((cq.get("message") or {}).get("chat") or {}).get("id"))
-        if not owner or here != owner.chat_id:
+        if here not in {c.chat_id for c in chats_for_role("owner")}:
             return reply("Ye button sirf aapke chat me chalta hai.", alert=True)
         if po.no_rate_count:
             return reply("Abhi kuch lines ka rate baaki hai.", alert=True)
@@ -1509,13 +1600,22 @@ def find_rate_line(parent_msg_id, code):
     galti seedhi bill me jaati hai. Tab poochh lete hain.
     """
     if parent_msg_id:
-        line = POLine.query.filter_by(tg_rate_msg_id=str(parent_msg_id)).first()
+        # Ek hi sawaal kai owner chats me gaya ho sakta hai, isliye msg id
+        # "chat:msg" jodon me rehti hai — un jodon me se koi bhi mile toh bas.
+        want = str(parent_msg_id)
+
+        def hits(packed):
+            return any(m == want for _, m in unpack_msg_ids(packed))
+
+        line = next((l for l in POLine.query
+                     .filter(POLine.tg_rate_msg_id != "").all() if hits(l.tg_rate_msg_id)), None)
         if line:
             return line, ""
 
         # Card ka reply — order to pakka ho gaya, ab bas line chunni hai.
-        po = PurchaseOrder.query.filter_by(
-            tg_rate_summary_id=str(parent_msg_id)).first()
+        po = next((p for p in PurchaseOrder.query
+                   .filter(PurchaseOrder.tg_rate_summary_id != "").all()
+                   if hits(p.tg_rate_summary_id)), None)
         if po:
             if code:
                 line, problem = _pick(po.lines, normalize_code(code), "is order me")
@@ -1563,8 +1663,9 @@ def handle_rate_reply(update, token=None):
     text = (msg.get("text") or "").strip().replace("\u20b9", "").replace(",", "")
     chat = msg.get("chat") or {}
 
-    owner = chat_for_role("owner")
-    if not (text and owner and str(chat.get("id")) == owner.chat_id):
+    owners = {c.chat_id for c in chats_for_role("owner")}
+    here = str(chat.get("id"))
+    if not (text and here in owners):
         return "noted"
     if text.startswith("/"):
         return "noted"
@@ -1574,20 +1675,20 @@ def handle_rate_reply(update, token=None):
     if not m:
         if parent:
             telegram_bot.send_message(
-                owner.chat_id, "Sirf number bhejo — jaise <code>25</code>.", token=token)
+                here, "Sirf number bhejo — jaise <code>25</code>.", token=token)
             return "bad number"
         return "noted"
 
     line, problem = find_rate_line(parent, m.group("code"))
     if problem:
-        telegram_bot.send_message(owner.chat_id, problem, token=token)
+        telegram_bot.send_message(here, problem, token=token)
         return "unclear"
     if not line:
         return "noted"
 
     rate = float(m.group("num"))
     if rate <= 0:
-        telegram_bot.send_message(owner.chat_id, "Rate zero se bada hona chahiye.",
+        telegram_bot.send_message(here, "Rate zero se bada hona chahiye.",
                                   token=token)
         return "bad number"
 
@@ -1603,7 +1704,7 @@ def handle_rate_reply(update, token=None):
     if was and was != rate:
         head += f" (pehle \u20b9{was:g} tha)"
     telegram_bot.send_message(
-        owner.chat_id,
+        here,
         head + " yaad rakh liya."
         + ("" if left else "\n\nSab rate aa gaye. Upar wale card se operator ko bhej do."),
         token=token)
@@ -1616,14 +1717,17 @@ def notify_bill_ready(po, inv, token=None):
             f"{po.po_number} · {po.customer.name}\n"
             f"<b>₹{inv.grand_total:,.0f}</b>\n\n"
             f"<i>Print accountant karega.</i>")
+    # Ek hi chat ke do role ho sakte hain — khabar do baar na jaye
+    seen = set()
     for role in ("owner", "manager"):
-        chat = chat_for_role(role)
-        if not chat:
-            continue
-        try:
-            telegram_bot.send_message(chat.chat_id, text, token=token)
-        except telegram_bot.TelegramError:
-            pass
+        for chat in chats_for_role(role):
+            if chat.chat_id in seen:
+                continue
+            seen.add(chat.chat_id)
+            try:
+                telegram_bot.send_message(chat.chat_id, text, token=token)
+            except telegram_bot.TelegramError:
+                pass
 
 
 def _same_size_text(a, b):
@@ -2296,18 +2400,37 @@ def telegram_page():
 @po_bp.route("/telegram/chat/<int:row_id>/role", methods=["POST"])
 @login_required
 def telegram_set_role(row_id):
+    """Ek chat ke jitne role chahiye utne.
+
+    Pehle yahan "ek role sirf ek chat ka" wala niyam tha — nayi chat ko operator
+    banate hi purane operator group ka role chup-chaap hat jaata tha. Asli dafter
+    aisa nahi chalta: do operator group ho sakte hain, aur do co-owner bhi.
+    """
     row = db.session.get(TelegramChat, row_id) or abort(404)
-    role = request.form.get("role", "")
-    if role not in ("", "operator", "manager", "owner"):
+    picked = [r for r in request.form.getlist("roles") if r in TG_ROLES]
+    if len(picked) != len(set(picked)):
         abort(400)
-    if role:      # ek role sirf ek chat ka
-        for other in TelegramChat.query.filter_by(role=role).all():
-            if other.id != row.id:
-                other.role = ""
-    row.role = role
+    set_chat_roles(row, picked)
     db.session.commit()
     flash(t("po_f_role_set", name=row.title or row.chat_id,
-            role=role or t("po_f_role_none")), "success")
+            role=", ".join(picked) or t("po_f_role_none")), "success")
+    return redirect(url_for("po.telegram_page"))
+
+
+@po_bp.route("/telegram/chat/<int:row_id>/delete", methods=["POST"])
+@login_required
+def telegram_delete_chat(row_id):
+    """Galti se bana hua group list se hata do.
+
+    Sirf list se hatta hai — Telegram pe group waisa ka waisa rehta hai. Bot
+    wahan dobara kuch dekhega toh chat phir se list me aa jayegi, isliye ye
+    kadam kabhi khatarnaak nahi hai.
+    """
+    row = db.session.get(TelegramChat, row_id) or abort(404)
+    name = row.title or row.chat_id
+    db.session.delete(row)
+    db.session.commit()
+    flash(t("po_f_chat_removed", name=name), "success")
     return redirect(url_for("po.telegram_page"))
 
 
