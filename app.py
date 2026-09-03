@@ -1312,6 +1312,10 @@ def _run_startup_migrations():
     # aur dispatch hote hi button hatana padta hai.
     _add_column_if_missing(inspector, "purchase_order", "tg_manager_msg_ids",
                            "tg_manager_msg_ids VARCHAR(1000) DEFAULT ''")
+    # Kaunsa operator group kaunsa maal banata hai. Khaali = sab kuch, isliye
+    # purana ek-group wala setup bina chhede chalta rehta hai.
+    _add_column_if_missing(inspector, "telegram_chat", "categories",
+                           "categories VARCHAR(300) DEFAULT ''")
     # Ek chat ke kai role ho sakte hain, aur ek order kai group me jaata hai.
     # Isliye msg ki pehchan ab "chat:msg" jodon me rehti hai — purane khaane
     # uske liye chhote pad gaye the.
