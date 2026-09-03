@@ -267,8 +267,11 @@ th.num{text-align:right;}
 .pinv-billto .lbl{color:#8C93A3;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;}
 .pinv table{width:100%;border-collapse:collapse;margin-bottom:6px;}
 .pinv thead th{background:#1C2541;color:#fff;font-size:10.5px;text-transform:uppercase;padding:7px 9px;text-align:left;}
-.pinv tbody td{padding:7px 9px;border-bottom:1px solid #D9DCD0;font-size:12.5px;}
+.pinv tbody td{padding:7px 9px;border-bottom:1px solid #D9DCD0;font-size:12.5px;vertical-align:top;}
 .pinv td.amt,.pinv th.amt{text-align:right;font-family:'IBM Plex Mono',monospace;}
+/* Maal ki category — naam ke neeche chhoti si line. Halka rakha hai taaki
+   maal ka naam hi pehle padha jaye, category sirf pushti kare. */
+.pinv .pinv-cat{font-size:10.5px;color:#5B6378;margin-top:2px;}
 .pinv-taxsummary{font-size:11.5px;color:#5B6378;margin-bottom:16px;}
 .pinv-totals{display:flex;justify-content:flex-end;margin-bottom:24px;}
 .pinv-totals .inner{width:280px;}
@@ -300,6 +303,7 @@ body{margin:0;}
 .pinv-half table{margin-bottom:4px;}
 .pinv-half .pinv thead th{font-size:8px;padding:4px 6px;}
 .pinv-half .pinv tbody td{font-size:9px;padding:4px 6px;}
+.pinv-half .pinv .pinv-cat{font-size:8px;margin-top:1px;}
 .pinv-half .pinv-totals{margin-bottom:8px;}
 .pinv-half .pinv-totals .inner{width:220px;}
 .pinv-half .pinv-totals .row{font-size:10px;padding:2px 0;}
