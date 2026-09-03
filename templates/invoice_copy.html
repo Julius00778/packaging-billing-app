@@ -48,14 +48,17 @@
 </thead>
 <tbody>
 {% for li in inv.items %}
+{# Category naam ke neeche chhoti si line me — ek hi naap ka 2mm aur 4mm
+   maal alag hota hai, aur wo farq kaagaz pe dikhna chahiye. Category na
+   lagi ho toh line hi nahi aati, khaali jagah nahi chhodti. #}
 {% if inv.hide_pricing %}
 <tr>
-<td>{{ li.description }}</td>
+<td>{{ li.description }}{% if li.category_name %}<div class="pinv-cat">{{ li.category_name }}</div>{% endif %}</td>
 <td class="amt">{{ li.qty }} {{ li.unit }}</td>
 </tr>
 {% else %}
 <tr>
-<td>{{ li.description }}</td>
+<td>{{ li.description }}{% if li.category_name %}<div class="pinv-cat">{{ li.category_name }}</div>{% endif %}</td>
 <td class="amt">{{ li.qty }} {{ li.unit }}</td>
 <td class="amt">₹{{ "%.2f"|format(li.rate) }}</td>
 <td class="amt">₹{{ "%.2f"|format(li.line_total) }}</td>
