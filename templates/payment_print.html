@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>{{ t('receipt_voucher_title') }} PMT-{{ p.id }}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v('style.css') }}">
 </head>
 <body>
 

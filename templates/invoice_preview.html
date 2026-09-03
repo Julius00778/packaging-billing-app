@@ -1,0 +1,14 @@
+{# Sirf bill ka hissa — poora page nahi. Overlay isi ko andar la ke dikhata hai,
+   isliye yahan na <html> hai na koi button. #}
+{% from "invoice_copy.html" import render_copy with context %}
+<div class="pinv-page">
+  {% if copies in ('both', 'party') %}
+    {{ render_copy(inv, settings, t('party_copy')) }}
+  {% endif %}
+  {% if copies == 'both' %}
+    <div class="cut-line no-print"><span>- - - - - - - - - - - - {{ t('cut_here') }} - - - - - - - - - - - -</span></div>
+  {% endif %}
+  {% if copies in ('both', 'office') %}
+    {{ render_copy(inv, settings, t('office_copy')) }}
+  {% endif %}
+</div>

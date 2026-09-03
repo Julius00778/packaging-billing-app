@@ -24,7 +24,7 @@
 <h3 style="font-size:14px;margin-bottom:10px;">{{ t('day_book_entries') }} — {{ sel_date }}</h3>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('entry_type') }}</th><th>{{ t('voucher_no') }}</th><th>{{ t('party') }}</th><th>{{ t('amount') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('entry_type') }}</th><th>{{ t('voucher_no') }}</th><th>{{ t('party') }}</th><th class="num">{{ t('amount') }}</th><th></th></tr></thead>
 <tbody>
 {% for entry in day_book_entries %}
 <tr>

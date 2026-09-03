@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}{{ t('po_orders') }}{% endblock %}
+{% block content %}
+
+{# Ek hi manzil: Orders. Setup wale link (Products, Drive, Telegram) Settings me
+   hain — wo roz ka kaam nahi hain. Yahan sirf wahi rehta hai jo roz chahiye. #}
+<div class="toolbar">
+  <div style="flex:1;font-weight:600;">{{ t('po_orders') }}</div>
+  <a class="btn btn-primary" href="{{ url_for('po.po_new') }}">+ {{ t('po_new_order') }}</a>
+</div>
+
+<div class="toolbar" style="margin-top:-8px;flex-wrap:wrap;">
+  {% for key in ['pending','with_operator','in_production','made','dispatched','rejected'] %}
+    <a class="btn btn-ghost btn-sm {% if status==key %}active{% endif %}"
+       href="{{ url_for('po.po_list', status=key) }}">{{ t('po_status_' + key) }} ({{ counts[key] }})</a>
+  {% endfor %}
+  <a class="btn btn-ghost btn-sm {% if status not in counts %}active{% endif %}"
+     href="{{ url_for('po.po_list', status='all') }}">{{ t('po_all') }}</a>
+</div>
+
+{# Ban gaye order ka agla padav dispatch aur bill hai — wo raasta wahin dikhna
+   chahiye jahan zaroorat hai, alag manzil banke nahi. #}
+{% if status in ('made', 'dispatched') %}
+  <div class="toolbar" style="margin-top:-4px;">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_dispatch') }}">{{ t('po_dispatch_list') }}</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('po.bills_page') }}">{{ t('po_bill_print') }}</a>
+  </div>
+{% endif %}
+
+<div class="card panel-pad">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>{{ t('po_order_no') }}</th><th>{{ t('date') }}</th><th>{{ t('po_party') }}</th>
+                 <th>{{ t('po_lines') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
+      <tbody>
+      {% for po in pos %}
+        <tr>
+          <td class="mono">{{ po.po_number }}
+            {% if po.has_scan %}<span class="badge">{{ t('po_src_upload') }}</span>{% endif %}
+          </td>
+          <td>{{ po.po_date }}</td>
+          <td>{{ po.customer.name }}</td>
+          <td class="num">{{ po.lines|length }}
+            {% if po.unresolved_count %}
+              <span class="badge challan">{{ t('po_to_map', n=po.unresolved_count) }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
+              {{ t('po_status_' + po.status) }}
+            </span>
+            {% if po.operator_name %}<div style="font-size:11px;color:var(--ink-faint);">{{ po.operator_name }}</div>{% endif %}
+          </td>
+          <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open') }}</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not pos %}
+    <div class="empty-state">
+      <div class="big">{{ t('po_list_empty') }}</div>
+      <div>{{ t('po_list_empty_hint') }}</div>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

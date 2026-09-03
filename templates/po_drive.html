@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}{{ t('po_drive_samples') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;">
+    <div style="font-weight:600;">{{ t('po_drive_title') }}</div>
+    <div style="font-size:12px;color:var(--ink-faint);">{{ t('po_drive_sub') }}</div>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('po.mappings_page') }}">{{ t('po_all_products') }}</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_all_orders') }}</a>
+</div>
+
+{% if not key_set %}
+  <div class="card panel-pad" style="margin-bottom:14px;">
+    <div style="font-weight:600;margin-bottom:6px;">{{ t('po_drive_no_key') }}</div>
+    <div style="font-size:13px;color:var(--ink-faint);">{{ t('po_drive_no_key_hint') }}</div>
+  </div>
+{% endif %}
+
+<div class="card panel-pad" style="margin-bottom:14px;">
+  <form method="POST" action="{{ url_for('po.drive_set_folder') }}">
+    <div class="field">
+      <label>{{ t('po_drive_link_label') }}</label>
+      <input type="text" name="root_link" value="{{ root_link }}"
+             placeholder="https://drive.google.com/drive/folders/...">
+      <div style="font-size:12px;color:var(--ink-faint);">
+        {{ t('po_drive_link_hint') }}
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">{{ t('po_drive_read_folder') }}</button>
+    </div>
+  </form>
+</div>
+
+{% if folders %}
+  <div class="card panel-pad">
+    <div class="toolbar" style="margin-bottom:12px;">
+      <div style="flex:1;font-weight:600;">{{ t('po_drive_party_folders') }}</div>
+      <form method="POST" action="{{ url_for('po.drive_sync_now') }}">
+        <button class="btn btn-primary" type="submit">{{ t('po_drive_sync_all') }}</button>
+      </form>
+    </div>
+
+    {% for f in folders %}
+      <div style="border-top:1px solid var(--border);padding:12px 0;">
+        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+          <span style="font-weight:600;">{{ f.folder_name }}</span>
+          {% if f.customer_id %}
+            <span class="badge paid">{{ t('po_drive_linked_to', name=f.customer.name) }}</span>
+            {% if counts.get(f.id) %}
+              <span style="font-size:12px;color:var(--ink-faint);">{{ t('po_drive_count', n=counts[f.id]) }}</span>
+            {% endif %}
+          {% else %}
+            <span class="badge unpaid">{{ t('po_drive_which_party') }}</span>
+          {% endif %}
+        </div>
+
+        {% if f.last_synced %}
+          <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;">
+            {{ t('po_drive_last_sync', when=f.last_synced.strftime('%d %b %H:%M')) }} · {{ f.last_result }}
+          </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('po.drive_link_folder', folder_id=f.id) }}"
+              style="margin-top:10px;">
+          <div class="form-grid three">
+            <div class="field">
+              <label>{{ t('po_drive_this_party') }}</label>
+              <select name="customer_id">
+                <option value="">{{ t('po_not_yet') }}</option>
+                {% for c in customers %}
+                  <option value="{{ c.id }}" {% if f.customer_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label>{{ t('po_drive_sizes_in') }}</label>
+              <select name="size_unit">
+                <option value="cm" {% if f.size_unit == 'cm' %}selected{% endif %}>{{ t('po_unit_cm') }}</option>
+                <option value="inch" {% if f.size_unit == 'inch' %}selected{% endif %}>{{ t('po_unit_inch') }}</option>
+                <option value="mm" {% if f.size_unit == 'mm' %}selected{% endif %}>{{ t('po_unit_mm') }}</option>
+              </select>
+            </div>
+            <div class="field" style="justify-content:flex-end;">
+              <label>&nbsp;</label>
+              <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save') }}</button>
+            </div>
+          </div>
+        </form>
+
+        {% if f.customer_id %}
+          <form method="POST" action="{{ url_for('po.drive_sync_now') }}" style="display:inline;">
+            <input type="hidden" name="folder_id" value="{{ f.id }}">
+            <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_drive_sync_one') }}</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card panel-pad">
+    <div class="empty-state">
+      <div class="big">{{ t('po_drive_empty') }}</div>
+      <div>{{ t('po_drive_empty_hint') }}</div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

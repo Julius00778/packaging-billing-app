@@ -1,0 +1,103 @@
+{# Bill usi screen pe khulta hai — naya tab nahi.
+
+   Baayen bill dikhta hai, daayen print ki settings. Jo baayen dikh raha hai
+   wahi print hota hai, isliye copy chunte hi preview dobara aata hai —
+   user ko andaza nahi lagana padta. #}
+
+<div id="billOverlay" class="bill-overlay no-print" hidden>
+  <div class="bill-overlay-back" data-close></div>
+  <div class="bill-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="billOverlayTitle">
+
+    <div class="bill-overlay-sheet" id="billOverlaySheet">
+      <div class="bill-overlay-msg">{{ t('bill_loading') }}</div>
+    </div>
+
+    <div class="bill-overlay-side no-print">
+      <div style="flex:1;">
+        <div id="billOverlayTitle" style="font-weight:600;margin-bottom:2px;">{{ t('bill_view_title') }}</div>
+        <div class="mono" id="billOverlayNo" style="font-size:12px;color:var(--ink-faint);"></div>
+
+        <div class="field" style="margin-top:16px;">
+          <label>{{ t('print_copies') }}</label>
+          <select id="billCopies">
+            <option value="both">{{ t('copies_both') }}</option>
+            <option value="party">{{ t('copies_party') }}</option>
+            <option value="office">{{ t('copies_office') }}</option>
+          </select>
+        </div>
+
+        <div style="font-size:12px;color:var(--ink-faint);margin-top:12px;">{{ t('print_hint') }}</div>
+      </div>
+
+      <div class="bill-overlay-actions">
+        <button class="btn btn-primary" type="button" onclick="window.print()">{{ t('print_now') }}</button>
+        <a class="btn btn-ghost" id="billPdfLink" href="#">{{ t('download_pdf_btn') }}</a>
+        <button class="btn btn-ghost" type="button" data-close>{{ t('close_view') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('billOverlay');
+  var sheet   = document.getElementById('billOverlaySheet');
+  var copies  = document.getElementById('billCopies');
+  var pdfLink = document.getElementById('billPdfLink');
+  var noEl    = document.getElementById('billOverlayNo');
+  var current = null;
+
+  function load() {
+    if (current === null) return;
+    sheet.innerHTML = '<div class="bill-overlay-msg">{{ t('bill_loading') }}<\/div>';
+    pdfLink.href = '/invoices/' + current + '/pdf?copies=' + copies.value;
+    fetch('/invoices/' + current + '/preview?copies=' + encodeURIComponent(copies.value),
+          { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (html) { sheet.innerHTML = html; })
+      .catch(function () {
+        // Kuch bhi ho jaye, user phansa nahi rehna chahiye — seedha raasta do.
+        sheet.innerHTML = '<div class="bill-overlay-msg">{{ t('bill_load_failed') }} ' +
+          '<a href="/invoices/' + current + '/print" target="_blank">' +
+          '{{ t('bill_open') }}<\/a><\/div>';
+      });
+  }
+
+  window.openBill = function (id, label) {
+    current = id;
+    noEl.textContent = label || '';
+    // Print ke waqt sirf overlay chhapna hai — iske liye uska body ka seedha
+    // bachcha hona zaroori hai, warna upar wale box bhi saath chhap jaate hain.
+    if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
+    overlay.hidden = false;
+    document.body.classList.add('bill-overlay-open');
+    load();
+  };
+
+  function close() {
+    overlay.hidden = true;
+    document.body.classList.remove('bill-overlay-open');
+    sheet.innerHTML = '';
+    current = null;
+  }
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target.hasAttribute && e.target.hasAttribute('data-close')) close();
+  });
+
+  // Har "Open" link khud bolta hai ki kaunsa bill hai. Inline onclick likhne
+  // se bill number attribute ke andar quote leke aa jaata tha aur handler
+  // beech me kat jaata tha — link chup-chaap naye page pe le jaata tha.
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest && e.target.closest('[data-bill]');
+    if (!link) return;
+    e.preventDefault();
+    window.openBill(parseInt(link.getAttribute('data-bill'), 10),
+                    link.getAttribute('data-bill-no') || '');
+  });
+  copies.addEventListener('change', load);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.hidden) close();
+  });
+})();
+</script>

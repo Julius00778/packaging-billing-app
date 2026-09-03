@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ t('po_bills_count', n=rows|length) }} — {{ sel_date }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v('style.css') }}">
+{# Bill ka font setting se aata hai — sirf bill pe, screen pe nahi #}
+<style>.pinv{ font-family: {{ invoice_fonts.get(settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }</style>
+<style>
+  /* Har bill apne alag kaagaz pe. Aakhri ke baad khaali page na nikle. */
+  .bill-sheet { page-break-after: always; break-after: page; }
+  .bill-sheet:last-of-type { page-break-after: auto; break-after: auto; }
+  @media print { .no-print { display: none !important; } }
+</style>
+</head>
+<body>
+
+{% from "invoice_copy.html" import render_copy with context %}
+
+<div class="print-trigger no-print">
+  <button class="btn btn-primary" onclick="window.print()">
+    {{ t('po_print_n_bills', n=rows|length) }}
+  </button>
+  <button class="btn btn-ghost" type="button" onclick="window.close()">{{ t('po_close') }}</button>
+  <span style="margin-left:10px;color:#5B6378;font-size:12px;">
+    {{ t('po_print_sheet_note') }}
+  </span>
+</div>
+
+{% for row in rows %}
+  {% set inv = row.inv %}
+  <div class="bill-sheet">
+    <div class="pinv-page">
+      {{ render_copy(inv, settings, t('party_copy')) }}
+      <div class="cut-line no-print"><span>- - - - - - - - - - - - {{ t('cut_here') }} - - - - - - - - - - - -</span></div>
+      {{ render_copy(inv, settings, t('office_copy')) }}
+    </div>
+  </div>
+{% endfor %}
+
+</body>
+</html>

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}{{ t('po_dispatch_list') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;font-weight:600;">{{ t('po_dispatch_list') }}</div>
+  <a class="btn btn-ghost" href="{{ url_for('po.bills_page') }}">{{ t('po_bill_print') }}</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_all_orders') }}</a>
+</div>
+
+{% for po in pos %}
+  <div class="card panel-pad" style="margin-bottom:12px;">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+      <span class="mono" style="font-weight:600;">{{ po.po_number }}</span>
+      <span>{{ po.customer.name }}</span>
+      <span style="font-size:12px;color:var(--ink-faint);">
+        {{ t('po_made_on') }} {{ po.made_at.strftime('%d %b %H:%M') if po.made_at else '—' }}{% if po.operator_name %} · {{ po.operator_name }}{% endif %}
+      </span>
+    </div>
+
+    <div class="table-wrap" style="margin-top:10px;">
+      <table>
+        <thead><tr><th></th><th>{{ t('po_product') }}</th><th>{{ t('po_size') }}</th><th>{{ t('po_qty') }}</th></tr></thead>
+        <tbody>
+        {% for line in po.lines %}
+          <tr>
+            <td style="width:60px;">
+              {% if line.mapping and line.mapping.has_image %}
+                <img src="{{ url_for('po.map_thumb', map_id=line.mapping.id) }}" alt="" loading="lazy"
+                     style="width:48px;height:48px;object-fit:cover;border-radius:4px;">
+              {% endif %}
+            </td>
+            <td>{{ line.mapping.label if line.mapping else '—' }}</td>
+            <td class="mono">
+              {# Order me sirf code likha ho toh size product se lo — dispatch wale
+                 ko size dikhna chahiye, chahe order me likha ho ya na ho. #}
+              {{ line.raw_size_text or (line.mapping.raw_size_text if line.mapping else '') or '—' }}
+            </td>
+            <td class="num">{{ line.qty|round(2) }} {{ line.qty_unit }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="toolbar" style="margin:10px 0 0;">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open_order') }}</a>
+      <form method="POST" action="{{ url_for('po.po_mark_dispatched', po_id=po.id) }}" style="display:inline;">
+        <button class="btn btn-primary btn-sm" type="submit">{{ t('po_move_dispatched') }}</button>
+      </form>
+    </div>
+  </div>
+{% endfor %}
+
+{% if not pos %}
+  <div class="card panel-pad">
+    <div class="empty-state">
+      <div class="big">{{ t('po_dispatch_empty') }}</div>
+      <div>{{ t('po_dispatch_empty_hint') }}</div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

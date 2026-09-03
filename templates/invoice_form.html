@@ -7,7 +7,8 @@
 <div class="toolbar" style="margin-top:0;padding:0;border:none;">
 <h2 class="section-title" style="margin-bottom:0;">{% if invoice %}{{ t('edit_invoice') }} — {{ invoice.invoice_no }}{% else %}{{ t('new_invoice') }}{% endif %}</h2>
 {% if invoice %}
-<a class="btn btn-ghost" href="{{ url_for('print_invoice', invid=invoice.id) }}" target="_blank">{{ t('print') }}</a>
+<a class="btn btn-ghost" href="{{ url_for('print_invoice', invid=invoice.id) }}"
+   data-bill="{{ invoice.id }}" data-bill-no="{{ invoice.invoice_no }}">{{ t('bill_open') }}</a>
 {% endif %}
 </div>
 
@@ -260,5 +261,7 @@ document.getElementById('invForm').addEventListener('submit', (e)=>{
 
 loadItemMaster();
 </script>
+
+{% if invoice %}{% include "bill_overlay.html" %}{% endif %}
 
 {% endblock %}

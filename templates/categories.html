@@ -12,25 +12,28 @@
 <p class="section-sub">{{ t('add_category_sub') }}</p>
 <form method="POST" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
 <div class="field" style="flex:1;min-width:220px;"><label>{{ t('category_name') }} *</label><input type="text" name="name" required></div>
+<div class="field" style="flex:1;min-width:220px;"><label>{{ t('category_units') }}</label><input type="text" name="units" placeholder="pcs, roll"></div>
 <div class="btn-row" style="margin:0;"><button class="btn btn-primary" type="submit">{{ t('add_category') }}</button></div>
 </form>
 </div>
 
+<form method="POST" action="{{ url_for('category_units') }}">
 <div class="card panel-pad">
 <h2 class="section-title">{{ t('categories') }}</h2>
+<p class="section-sub">{{ t('category_units_hint') }}</p>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('category_name') }}</th><th>{{ t('nav_items') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('category_name') }}</th><th>{{ t('category_units') }}</th><th>{{ t('nav_items') }}</th><th></th></tr></thead>
 <tbody>
 {% for c in categories %}
 <tr>
 <td>{{ c.name }}</td>
+<td><input type="text" name="units_{{ c.id }}" value="{{ c.units or '' }}" placeholder="pcs, roll"></td>
 <td class="num">{{ counts.get(c.id, 0) }}</td>
 <td>
 {% if current_user.is_owner %}
-<form method="POST" action="{{ url_for('delete_category', cid=c.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('confirm_delete') }}');">
-<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
-</form>
+<a class="btn btn-ghost btn-sm" href="#"
+   onclick="event.preventDefault(); if(confirm({{ t('confirm_delete')|tojson }})) document.getElementById('delcat{{ c.id }}').submit();">{{ t('delete') }}</a>
 {% endif %}
 </td>
 </tr>
@@ -38,9 +41,18 @@
 </tbody>
 </table>
 </div>
-{% if not categories %}
+{% if categories %}
+<div class="btn-row" style="margin-top:12px;"><button class="btn btn-primary" type="submit">{{ t('save') }}</button></div>
+{% else %}
 <div class="empty-state"><div class="big">{{ t('no_categories_yet') }}</div><div>{{ t('no_categories_hint') }}</div></div>
 {% endif %}
 </div>
+</form>
+
+{% for c in categories %}
+{% if current_user.is_owner %}
+<form id="delcat{{ c.id }}" method="POST" action="{{ url_for('delete_category', cid=c.id) }}" style="display:none;"></form>
+{% endif %}
+{% endfor %}
 
 {% endblock %}

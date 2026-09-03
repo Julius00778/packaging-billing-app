@@ -12,7 +12,7 @@
 <h2 class="section-title">{{ t('recent_payments') }}</h2>
 <div class="table-wrap">
 <table>
-<thead><tr><th>{{ t('date') }}</th><th>{{ t('customer') }}</th><th>{{ t('amount') }}</th><th>{{ t('method') }}</th><th>{{ t('note') }}</th><th></th></tr></thead>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('customer') }}</th><th class="num">{{ t('amount') }}</th><th>{{ t('method') }}</th><th>{{ t('note') }}</th><th></th></tr></thead>
 <tbody>
 {% for p in payments %}
 <tr>

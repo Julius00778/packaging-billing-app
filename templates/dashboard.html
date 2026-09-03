@@ -3,6 +3,56 @@
 {% block title %}{{ t('nav_dashboard') }}{% endblock %}
 {% block content %}
 
+{# Dashboard ka pehla sawaal "ab tak kitna" nahi hota — "aaj kya karna hai"
+   hota hai. Isliye aaj ka din upar, kul-jama neeche. #}
+<div class="card panel-pad" style="margin-bottom:20px;">
+  <div class="toolbar" style="margin:0 0 12px;">
+    <div style="flex:1;">
+      <h2 class="section-title" style="margin-bottom:2px;">{{ t('today_title') }}</h2>
+      <p class="section-sub" style="margin-bottom:0;">{{ t('today_sub') }}</p>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_list') }}">{{ t('po_orders') }}</a>
+  </div>
+
+  <div class="stat-grid" style="margin-bottom:0;">
+    {# Har stage apna link hai — number dekh ke seedha wahin jaana hota hai. #}
+    {% for s in today_view.stages %}
+      <a class="card stat-card" style="text-decoration:none;color:inherit;"
+         href="{{ url_for('po.po_list', status=s.key) }}">
+        <div class="stat-label">{{ t('po_status_' + s.key) }}</div>
+        <div class="stat-value mono">{{ s.count }}</div>
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="stat-grid" style="margin-top:12px;margin-bottom:0;">
+    <a class="card stat-card" style="text-decoration:none;color:inherit;"
+       href="{{ url_for('po.bills_page') }}">
+      <div class="stat-label">{{ t('today_bills') }}</div>
+      <div class="stat-value mono">₹{{ '%.0f'|format(today_view.bill_total) }}</div>
+      <div style="font-size:12px;color:var(--ink-faint);">
+        {{ today_view.bill_count }} ·
+        {% if today_view.to_print %}{{ t('today_to_print', n=today_view.to_print) }}
+        {% else %}{{ t('today_all_printed') }}{% endif %}
+      </div>
+    </a>
+    <a class="card stat-card received" style="text-decoration:none;color:inherit;"
+       href="{{ url_for('accounts_home') }}">
+      <div class="stat-label">{{ t('today_received') }}</div>
+      <div class="stat-value mono">₹{{ '%.0f'|format(today_view.received) }}</div>
+      <div style="font-size:12px;color:var(--ink-faint);">{{ t('today_receipts', n=today_view.receipt_count) }}</div>
+    </a>
+  </div>
+
+  {% if not today_view.bill_count and not today_view.received
+        and not today_view.stages | sum(attribute='count') %}
+    <div class="empty-state" style="padding-bottom:0;">
+      <div class="big">{{ t('today_nothing') }}</div>
+      <div>{{ t('today_nothing_sub') }}</div>
+    </div>
+  {% endif %}
+</div>
+
 <div class="stat-grid">
 <div class="card stat-card">
 <div class="stat-label">{{ t('total_invoices') }}</div>

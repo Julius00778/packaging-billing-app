@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>{% if e.category == 'raw_material' %}{{ t('purchase_voucher_title') }}{% else %}{{ t('payment_voucher_title') }}{% endif %} EXP-{{ e.id }}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v('style.css') }}">
 </head>
 <body>
 

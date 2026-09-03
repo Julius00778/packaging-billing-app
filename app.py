@@ -12,11 +12,28 @@ from models import (
     db, User, Settings, Customer, Item, StockEntry, Invoice, InvoiceItem,
     Payment, Vendor, Expense, Category, STATE_NAMES, INVOICE_FONTS
 )
-from translations import get_text
+from translations import t
+from po_module import po_bp
 
 # Common packaging-firm units. Item.unit stays a free-text column — this list just
 # drives the dropdown; "Other" in the form reveals a text box for anything not listed.
-COMMON_UNITS = ["pcs", "box", "bundle", "roll", "kg", "mtr", "ltr", "dozen", "set", "sheet"]
+COMMON_UNITS = ["pcs", "box", "bundle", "roll", "kg", "mtr", "ltr", "dozen",
+                "set", "sheet", "pouch", "carton"]
+
+# Har tarah ka maal apni hi unit me jaata hai — foam piece ya roll me, scrap
+# sirf tol ke. Ye list nayi installation pe ek baar ban jaati hai; baad me
+# Categories screen se badli ja sakti hai. Pehle se maujood category ko haath
+# nahi lagaya jaata.
+SEED_CATEGORY_UNITS = [
+    ("Foam",         "pcs, roll"),
+    ("Thermacol",    "pcs"),
+    ("HM",           "pouch, roll"),
+    ("Bubble",       "pouch, roll"),
+    ("Tape",         "carton"),
+    ("Scrap",        "kg"),
+    ("Stretch roll", "kg"),
+    ("Blister",      "pcs"),
+]
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-this-secret-key-in-production")
@@ -26,20 +43,20 @@ if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# PO scan / product photo phone se aati hai — 8 MB tak accept karo. po_module server
+# pe use resize kar deta hai, isliye DB me chhoti hi jaati hai.
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
 db.init_app(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+app.register_blueprint(po_bp)
 
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-
-def t(key):
-    return get_text(session.get("lang", "en"), key)
 
 
 def owner_required(f):
@@ -64,11 +81,26 @@ def _can_edit_invoice(settings):
     return current_user.is_owner or bool(settings.staff_can_edit_invoice)
 
 
+def _asset_v(name):
+    """Style file ka apna nishan — file badli toh nishan badla.
+
+    Iske bina browser purani style.css pakde rehta hai aur naya page tootа hua
+    dikhta hai, jab tak aadmi khud hard-refresh na kare. Wo aadmi ka kaam nahi
+    hona chahiye.
+    """
+    try:
+        path = os.path.join(app.static_folder, name)
+        return str(int(os.path.getmtime(path)))
+    except OSError:
+        return "0"
+
+
 @app.context_processor
 def inject_globals():
     settings = Settings.get()
     return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
-                t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS)
+                t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS,
+                asset_v=_asset_v)
 
 
 @app.route("/lang/<code>")
@@ -140,6 +172,39 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _today_snapshot(today):
+    """Aaj ka din ek nazar me — kya atka hai aur kya ho chuka hai.
+
+    Dashboard ka pehla sawaal "ab tak kitna" nahi hota, "aaj kya karna hai"
+    hota hai. Isliye upar wahi cheezein aati hain jo aaj haath me hain, aur
+    kul-jama neeche.
+    """
+    from po_module import PurchaseOrder
+
+    stages = []
+    for key in ("pending", "with_operator", "in_production", "made"):
+        stages.append({"key": key,
+                       "count": PurchaseOrder.query.filter_by(status=key).count()})
+
+    todays = [i for i in Invoice.query.filter_by(date=today).all()
+              if not i.hide_pricing]
+    printed = 0
+    for po in PurchaseOrder.query.filter(PurchaseOrder.invoice_id.isnot(None)).all():
+        inv = db.session.get(Invoice, po.invoice_id)
+        if inv and inv.date == today and po.bill_printed_at:
+            printed += 1
+
+    payments = Payment.query.filter_by(date=today).all()
+    return {
+        "stages": stages,
+        "bill_count": len(todays),
+        "bill_total": round(sum(i.grand_total or 0 for i in todays), 2),
+        "to_print": max(0, len(todays) - printed),
+        "received": round(sum(p.amount or 0 for p in payments), 2),
+        "receipt_count": len(payments),
+    }
+
+
 @app.route("/")
 @login_required
 def dashboard():
@@ -162,7 +227,10 @@ def dashboard():
     return render_template(
         "dashboard.html", count=count, billed=billed, received=received, pending=pending,
         cgst=cgst, sgst=sgst, igst=igst, recent=recent, low_stock=low_stock,
-        pending_challans=pending_challans
+        pending_challans=pending_challans,
+        # `today` naam global me pehle se ek tareekh hai — usi naam se yahan
+        # dictionary bhejna baad me kisi ko dhokha dega.
+        today_view=_today_snapshot(date.today().isoformat()),
     )
 
 
@@ -323,13 +391,26 @@ def categories_page():
         elif Category.query.filter(db.func.lower(Category.name) == name.lower()).first():
             flash(t("flash_category_exists"), "error")
         else:
-            db.session.add(Category(name=name))
+            db.session.add(Category(name=name, units=request.form.get("units", "").strip()))
             db.session.commit()
             flash(t("flash_category_added"), "success")
         return redirect(url_for("categories_page"))
     cats = Category.query.order_by(Category.name).all()
     counts = {c.id: Item.query.filter_by(category_id=c.id).count() for c in cats}
     return render_template("categories.html", categories=cats, counts=counts)
+
+
+@app.route("/items/categories/units", methods=["POST"])
+@login_required
+def category_units():
+    """Har category ki units ek saath save — poori table ek hi form hai."""
+    for c in Category.query.all():
+        field = f"units_{c.id}"
+        if field in request.form:
+            c.units = (request.form.get(field) or "").strip()
+    db.session.commit()
+    flash(t("flash_category_units_saved"), "success")
+    return redirect(url_for("categories_page"))
 
 
 @app.route("/items/categories/<int:cid>/delete", methods=["POST"])
@@ -622,13 +703,27 @@ def print_invoice(invid):
     return render_template("invoice_print.html", inv=inv, settings=settings)
 
 
+def _copies_choice(raw):
+    """Kaunsi copy chahiye. Kuch bhi anjaan aaye toh dono — wahi aam zaroorat hai."""
+    return raw if raw in ("both", "party", "office") else "both"
+
+
+@app.route("/invoices/<int:invid>/preview")
+@login_required
+def invoice_preview(invid):
+    """Sirf bill ka hissa, bina page ke — overlay isi ko andar la ke dikhata hai."""
+    inv = Invoice.query.get_or_404(invid)
+    return render_template("invoice_preview.html", inv=inv, settings=Settings.get(),
+                           copies=_copies_choice(request.args.get("copies")))
+
+
 @app.route("/invoices/<int:invid>/pdf")
 @login_required
 def invoice_pdf(invid):
     inv = Invoice.query.get_or_404(invid)
     settings = Settings.get()
     from invoice_pdf import build_invoice_pdf
-    buf = build_invoice_pdf(inv, settings, t)
+    buf = build_invoice_pdf(inv, settings, t, copies=_copies_choice(request.args.get("copies")))
     return send_file(buf, mimetype="application/pdf", as_attachment=True,
                       download_name=f"{inv.invoice_no}.pdf")
 
@@ -1153,6 +1248,90 @@ def _run_startup_migrations():
 
     _add_column_if_missing(inspector, "invoice", "hide_pricing", "hide_pricing BOOLEAN DEFAULT FALSE")
     _add_column_if_missing(inspector, "invoice", "consolidated_into_id", "consolidated_into_id INTEGER")
+
+    # PO module. Tables khud db.create_all() se banti hain, par jo environment
+    # pehle se chal raha hai wahan naye columns haath se jodne padte hain.
+    _add_column_if_missing(inspector, "party_product_map", "item_code", "item_code VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "po_line", "item_code", "item_code VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "po_line", "size_mismatch", "size_mismatch BOOLEAN DEFAULT FALSE")
+    _add_column_if_missing(inspector, "party_product_map", "drive_file_id", "drive_file_id VARCHAR(120) DEFAULT ''")
+    _add_column_if_missing(inspector, "party_product_map", "drive_modified", "drive_modified VARCHAR(40) DEFAULT ''")
+
+    _add_column_if_missing(inspector, "purchase_order", "tg_chat_id", "tg_chat_id VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "tg_message_ids", "tg_message_ids VARCHAR(300) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "sent_at", "sent_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "accepted_at", "accepted_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "made_at", "made_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "operator_name", "operator_name VARCHAR(120) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "tg_rate_summary_id", "tg_rate_summary_id VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "invoice_id", "invoice_id INTEGER")
+    _add_column_if_missing(inspector, "po_line", "rate", "rate FLOAT DEFAULT 0.0")
+    _add_column_if_missing(inspector, "po_line", "rate_from_memory", "rate_from_memory BOOLEAN DEFAULT FALSE")
+    _add_column_if_missing(inspector, "po_line", "tg_rate_msg_id", "tg_rate_msg_id VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "bill_printed_at", "bill_printed_at TIMESTAMP")
+    _add_column_if_missing(inspector, "category", "units", "units VARCHAR(200) DEFAULT ''")
+    _add_column_if_missing(inspector, "purchase_order", "rates_ok_at", "rates_ok_at TIMESTAMP")
+
+    # Purana "confirmed" ab "made" kehlata hai (operator ne bana diya). Ye ek
+    # baar ka sudhaar hai — dobara chalane par kuch nahi milta, isliye safe.
+    _rename_po_status(inspector, "confirmed", "made")
+    _seed_category_units(inspector)
+    _link_products_to_items(inspector)
+
+
+def _seed_category_units(inspector):
+    """Categories ki shuruaati list.
+
+    Do halat sambhalni hoti hain. Category hai hi nahi — bana do. Ya category
+    pehle se hai par uski units khaali hain (kyunki `units` column abhi juda
+    hai) — bhar do. Jis category me user ne khud units daal rakhi hain use
+    haath nahi lagate.
+    """
+    if "category" not in inspector.get_table_names():
+        return
+    touched = 0
+    for name, units in SEED_CATEGORY_UNITS:
+        row = Category.query.filter_by(name=name).first()
+        if row is None:
+            db.session.add(Category(name=name, units=units))
+            touched += 1
+        elif not (row.units or "").strip():
+            row.units = units
+            touched += 1
+    if touched:
+        db.session.commit()
+
+
+def _link_products_to_items(inspector):
+    """Purane PO products jo Item master me the hi nahi — unke Item bana do.
+
+    Iske bina bill me item ki jagah khaali jaati thi aur naam description me
+    thus jaata tha. Ek baar ka sudhaar; dobara chalane par kuch nahi milta.
+    """
+    tables = inspector.get_table_names()
+    if "party_product_map" not in tables or "item" not in tables:
+        return
+    try:
+        from po_module import PartyProductMap, ensure_item_for
+    except Exception:
+        return
+    rows = PartyProductMap.query.filter(PartyProductMap.item_id.is_(None)).all()
+    if not rows:
+        return
+    for row in rows:
+        ensure_item_for(row)
+    db.session.commit()
+
+
+def _rename_po_status(inspector, old, new):
+    from sqlalchemy import text
+    if "purchase_order" not in inspector.get_table_names():
+        return
+    with db.engine.connect() as conn:
+        conn.execute(text("UPDATE purchase_order SET status = :new, made_at = "
+                          "COALESCE(made_at, confirmed_at) WHERE status = :old"),
+                     {"new": new, "old": old})
+        conn.commit()
 
 
 with app.app_context():

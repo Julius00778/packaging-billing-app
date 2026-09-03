@@ -187,25 +187,37 @@ def _draw_copy(c, page_w, y_bottom, y_top, inv, settings, label):
         c.drawString(x0, y_bottom + 8, ("Note: " + inv.notes)[:95])
 
 
-def build_invoice_pdf(inv, settings, t=None):
-    """Returns a BytesIO containing a one-page A4 PDF with two copies of the invoice
-    (or delivery challan, if inv.hide_pricing is set)."""
+def build_invoice_pdf(inv, settings, t=None, copies="both"):
+    """Returns a BytesIO with an A4 PDF of the invoice (or delivery challan, if
+    inv.hide_pricing is set).
+
+    `copies` picks what goes on the page: "both" puts the party and office copies
+    on one sheet with a cut line between them, while "party" or "office" gives
+    that single copy the whole page — a lone half-page with white space under it
+    would only look like something went wrong.
+    """
     buf = io.BytesIO()
     page_w, page_h = A4
     c = canvas.Canvas(buf, pagesize=A4)
-    half = page_h / 2
 
-    _draw_copy(c, page_w, half, page_h, inv, settings, "PARTY COPY")
-    _draw_copy(c, page_w, 0, half, inv, settings, "OFFICE COPY")
+    if copies == "party":
+        _draw_copy(c, page_w, 0, page_h, inv, settings, "PARTY COPY")
+    elif copies == "office":
+        _draw_copy(c, page_w, 0, page_h, inv, settings, "OFFICE COPY")
+    else:
+        half = page_h / 2
+        _draw_copy(c, page_w, half, page_h, inv, settings, "PARTY COPY")
+        _draw_copy(c, page_w, 0, half, inv, settings, "OFFICE COPY")
 
-    c.setDash(4, 3)
-    c.setStrokeColor(FAINT)
-    c.setLineWidth(0.7)
-    c.line(20, half, page_w - 20, half)
-    c.setDash()
-    c.setFont("Helvetica", 6.5)
-    c.setFillColor(FAINT)
-    c.drawCentredString(page_w / 2, half + 3, "- - - - - - - - - -  CUT HERE  - - - - - - - - - -")
+        c.setDash(4, 3)
+        c.setStrokeColor(FAINT)
+        c.setLineWidth(0.7)
+        c.line(20, half, page_w - 20, half)
+        c.setDash()
+        c.setFont("Helvetica", 6.5)
+        c.setFillColor(FAINT)
+        c.drawCentredString(page_w / 2, half + 3,
+                            "- - - - - - - - - -  CUT HERE  - - - - - - - - - -")
 
     c.showPage()
     c.save()

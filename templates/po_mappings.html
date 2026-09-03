@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}{{ t('po_products') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <form method="GET" style="display:flex;gap:10px;flex:1;">
+    <select name="customer_id">
+      <option value="">{{ t('po_all_parties') }}</option>
+      {% for c in customers %}
+        <option value="{{ c.id }}" {% if cid == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-ghost" type="submit">{{ t('po_filter') }}</button>
+  </form>
+  <a class="btn btn-ghost" href="{{ url_for('po.drive_page') }}">{{ t('po_drive_samples') }}</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_all_orders') }}</a>
+</div>
+
+{% set uncat = maps | rejectattr('item.category_id') | list | length %}
+{% if maps and uncat %}
+  <div class="card panel-pad" style="margin-bottom:14px;">
+    <div style="font-size:13px;">
+      <strong>{{ t('po_uncategorised', n=uncat) }}</strong>
+      {{ t('po_uncategorised_hint') }}
+    </div>
+  </div>
+{% endif %}
+
+<form method="POST" action="{{ url_for('po.set_map_categories') }}">
+<input type="hidden" name="customer_id" value="{{ cid }}">
+<div class="card panel-pad">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>{{ t('po_party') }}</th><th>{{ t('po_code') }}</th>
+                 <th>{{ t('po_size_as_written') }}</th><th>{{ t('po_product') }}</th>
+                 <th>{{ t('po_category') }}</th><th>{{ t('po_units') }}</th>
+                 <th>{{ t('po_used') }}</th><th></th></tr></thead>
+      <tbody>
+      {% for m in maps %}
+        <tr>
+          <td style="width:56px;">
+            {% if m.has_image %}
+              <a href="{{ url_for('po.map_image', map_id=m.id) }}" target="_blank">
+                <img src="{{ url_for('po.map_thumb', map_id=m.id) }}" alt="" loading="lazy"
+                     style="width:44px;height:44px;object-fit:cover;border-radius:4px;">
+              </a>
+            {% endif %}
+          </td>
+          <td>{{ m.customer.name }}</td>
+          <td class="mono" style="font-weight:600;">{{ m.item_code or '—' }}</td>
+          <td class="mono">{{ m.raw_size_text }}</td>
+          <td>{{ m.label }}</td>
+          <td>
+            <select name="cat_{{ m.id }}">
+              <option value="">{{ t('po_not_set') }}</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}"
+                  {% if m.item and m.item.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="mono" style="font-size:11px;color:var(--ink-faint);">
+            {% if m.unit_choices() %}{{ m.unit_choices()|join(', ') }}{% else %}{{ t('po_units_any') }}{% endif %}
+          </td>
+          <td class="num">{{ m.times_used }}</td>
+          <td>
+            {% if current_user.is_owner %}
+              <a class="btn btn-ghost btn-sm" href="#"
+                 onclick="event.preventDefault();
+                          if(confirm({{ t('confirm_delete')|tojson }})) document.getElementById('del{{ m.id }}').submit();">{{ t('delete') }}</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if maps %}
+    <div class="toolbar" style="margin:12px 0 0;">
+      <div style="flex:1;font-size:12px;color:var(--ink-faint);">
+        {{ t('po_category_save_hint') }}
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('po_save') }}</button>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="big">{{ t('po_products_empty') }}</div>
+      <div>{{ t('po_products_empty_hint') }}</div>
+    </div>
+  {% endif %}
+</div>
+</form>
+
+{% for m in maps %}
+  {% if current_user.is_owner %}
+    <form id="del{{ m.id }}" method="POST"
+          action="{{ url_for('po.delete_mapping', map_id=m.id) }}" style="display:none;"></form>
+  {% endif %}
+{% endfor %}
+
+{% endblock %}

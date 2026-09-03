@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% set active = "po" %}
+{% block title %}{{ t('po_bill_print') }}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div style="flex:1;">
+    <div style="font-weight:600;">{{ t('po_bill_print') }}</div>
+    <div style="font-size:12px;color:var(--ink-faint);">{{ t('po_bills_sub') }}</div>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_dispatch') }}">{{ t('po_dispatch_list') }}</a>
+  <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_all_orders') }}</a>
+</div>
+
+<div class="card panel-pad" style="margin-bottom:14px;">
+  <form method="GET" class="form-grid three" style="align-items:end;">
+    <div class="field">
+      <label>{{ t('po_which_day') }}</label>
+      <input type="date" name="date" value="{{ sel_date }}">
+    </div>
+    <div class="field">
+      <label>{{ t('po_what_to_show') }}</label>
+      <select name="show">
+        <option value="unprinted" {% if show == 'unprinted' %}selected{% endif %}>{{ t('po_show_unprinted') }}</option>
+        <option value="all" {% if show == 'all' %}selected{% endif %}>{{ t('po_show_all') }}</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <button class="btn btn-ghost" type="submit">{{ t('po_show') }}</button>
+    </div>
+  </form>
+</div>
+
+{% if rows %}
+  <div class="card panel-pad">
+    <div class="toolbar" style="margin-bottom:12px;">
+      <div style="flex:1;">
+        <span style="font-weight:600;">{{ t('po_bills_count', n=rows|length) }}</span>
+        <span style="color:var(--ink-faint);"> · {{ t('po_bills_total') }} ₹{{ '%.0f'|format(total) }}</span>
+      </div>
+      <a class="btn btn-primary" target="_blank"
+         href="{{ url_for('po.bills_print', date=sel_date, show=show) }}">
+        {{ t('po_print_all') }}
+      </a>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>{{ t('po_bill_no') }}</th><th>{{ t('po_party') }}</th><th>{{ t('po_orders') }}</th>
+              <th>{{ t('po_made_by') }}</th><th class="num">{{ t('po_amount') }}</th>
+              <th>{{ t('po_print_col') }}</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="mono" style="font-weight:600;">{{ row.inv.invoice_no }}</td>
+            <td>{{ row.inv.customer.name }}</td>
+            <td class="mono">{{ row.po.po_number }}</td>
+            <td style="font-size:12px;color:var(--ink-faint);">
+              {{ row.po.operator_name or '—' }}
+            </td>
+            <td class="num mono">₹{{ '%.0f'|format(row.inv.grand_total) }}</td>
+            <td>
+              {% if row.po.bill_printed_at %}
+                <span class="badge paid">{{ t('po_printed') }}</span>
+                <div style="font-size:11px;color:var(--ink-faint);">
+                  {{ row.po.bill_printed_at.strftime('%d %b %H:%M') }}
+                </div>
+              {% else %}
+                <span class="badge challan">{{ t('po_print_left') }}</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap;">
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=row.inv.id) }}"
+                 data-bill="{{ row.inv.id }}" data-bill-no="{{ row.inv.invoice_no }}">{{ t('bill_open') }}</a>
+              <form method="POST" style="display:inline;"
+                    action="{{ url_for('po.bill_mark_printed', po_id=row.po.id) }}">
+                <input type="hidden" name="printed" value="{{ '0' if row.po.bill_printed_at else '1' }}">
+                <button class="btn btn-ghost btn-sm" type="submit">
+                  {{ t('po_mark_unprinted') if row.po.bill_printed_at else t('po_mark_printed') }}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="font-size:12px;color:var(--ink-faint);margin-top:10px;">{{ t('po_printed_note') }}</div>
+  </div>
+{% else %}
+  <div class="card panel-pad">
+    <div class="empty-state">
+      <div class="big">
+        {% if show == 'unprinted' %}{{ t('po_no_bills_left') }}{% else %}{{ t('po_no_bills') }}{% endif %}
+      </div>
+      <div>{{ t('po_bills_empty_hint') }}</div>
+    </div>
+  </div>
+{% endif %}
+
+{% include "bill_overlay.html" %}
+
+{% endblock %}

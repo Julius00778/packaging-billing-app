@@ -4,13 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ firm_settings.firm_name or "Firm Billing" }} — {% block title %}{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{# ?v= file ke apne waqt se banta hai — style badli toh browser nayi hi laayega #}
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v('style.css') }}">
 <style>
 :root{
 --accent: {{ firm_settings.theme_color or '#A8722E' }};
 --accent-deep: {{ firm_settings.theme_color or '#A8722E' }};
 }
-body{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }
+/* Ye chunav bill ka hai, poore software ka nahi. Pehle ye body pe lagta tha,
+   isliye "Times" chunte hi har screen serif ho jaati thi — jabki setting ka
+   naam hi "invoice font" hai. Ab wahi chalta hai jahan uska matlab hai. */
+.pinv{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_fonts['helvetica'])['css'] }}, sans-serif; }
 </style>
 </head>
 <body>
@@ -25,6 +29,7 @@ body{ font-family: {{ invoice_fonts.get(firm_settings.invoice_font, invoice_font
 <a class="tab-btn {% if active=='invoices' %}active{% endif %}" href="{{ url_for('invoices') }}">{{ t('nav_invoices') }}</a>
 <a class="tab-btn {% if active=='customers' %}active{% endif %}" href="{{ url_for('customers') }}">{{ t('nav_customers') }}</a>
 <a class="tab-btn {% if active=='items' %}active{% endif %}" href="{{ url_for('items') }}">{{ t('nav_items') }}</a>
+<a class="tab-btn {% if active=='po' %}active{% endif %}" href="{{ url_for('po.po_list') }}">{{ t('nav_orders') }}</a>
 <a class="tab-btn {% if active=='accounts' %}active{% endif %}" href="{{ url_for('accounts_home') }}">{{ t('nav_accounts') }}</a>
 {% if current_user.is_authenticated and current_user.is_owner %}
 <a class="tab-btn {% if active=='settings' %}active{% endif %}" href="{{ url_for('settings_page') }}">{{ t('nav_settings') }}</a>

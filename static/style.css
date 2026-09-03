@@ -1,74 +1,154 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+
+/* ============================================================================
+   Odoo jaise dafter ka rang-dhang.
+
+   Soch ek hi hai: kagaz saamne, baaki sab peeche hat jaye. Isliye page ka
+   background halka slate hai aur uspe safed "sheet" tairti hai — jaisa Odoo
+   ke accounting me hota hai. Rang sirf teen jagah bolta hai: jo dabana hai,
+   jo halat batata hai, aur jahan galti hai. Baaki sab chup rehta hai.
+
+   Har class ka naam wahi purana hai, isliye koi screen tooti nahi — sirf
+   dikhne ka tareeka badla hai.
+   ========================================================================= */
 
 :root{
---bg:#EAEDE6; --paper:#FFFFFF; --ink:#1C2541; --ink-soft:#5B6378; --ink-faint:#8C93A3;
---accent:#A8722E; --accent-deep:#7C5220; --accent-soft:#F3E6CF;
---success:#2F6F4E; --success-soft:#E2EFE7;
---danger:#A8392C; --danger-soft:#F6E3DF;
---border:#D9DCD0; --radius:10px;
---shadow:0 1px 2px rgba(28,37,65,0.06), 0 4px 14px rgba(28,37,65,0.05);
+--bg:#F1F2F3; --paper:#FFFFFF; --sunk:#FAFAFB;
+--ink:#26262E; --ink-soft:#61616E; --ink-faint:#8E8E9B;
+--accent:#A8722E; --accent-deep:#7C5220; --accent-soft:#F6EBDA;
+--success:#1F7A4D; --success-soft:#E4F2EA;
+--danger:#B3352A; --danger-soft:#FAE7E4;
+--border:#DEDEE3; --line:#EBEBEF;
+--radius:6px;
+--shadow:0 1px 2px rgba(38,38,46,.05);
+--shadow-lift:0 1px 3px rgba(38,38,46,.08), 0 6px 18px rgba(38,38,46,.06);
 }
 *{box-sizing:border-box;}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter','Noto Sans Devanagari',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
-h1,h2,h3{font-family:'Fraunces','Noto Sans Devanagari',serif;font-weight:600;margin:0;letter-spacing:-0.01em;}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Inter','Noto Sans Devanagari',system-ui,sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+h1,h2,h3{font-family:inherit;font-weight:600;margin:0;letter-spacing:-0.011em;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 a{color:var(--accent-deep);text-decoration:none;}
+a:hover{text-decoration:underline;}
 button{font-family:inherit;cursor:pointer;}
-input,select,textarea{font-family:'Inter','Noto Sans Devanagari',system-ui,sans-serif;}
+input,select,textarea{font-family:inherit;}
 
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;background:var(--ink);color:#fff;flex-wrap:wrap;gap:14px;}
-.brand{display:flex;align-items:baseline;gap:10px;}
-.brand h1{font-size:20px;color:#fff;}
-.brand .tagline{font-size:11px;color:#A9B0C4;letter-spacing:0.06em;text-transform:uppercase;}
-.tabs{display:flex;gap:4px;background:rgba(255,255,255,0.08);padding:4px;border-radius:999px;flex-wrap:wrap;}
-.tab-btn{background:transparent;border:none;color:#C7CCDA;padding:7px 14px;border-radius:999px;font-size:13px;font-weight:500;text-decoration:none;display:inline-block;}
-.tab-btn.active{background:var(--accent);color:#fff;}
-.user-pill{font-size:12.5px;color:#C7CCDA;display:flex;align-items:center;gap:10px;}
-.user-pill a{color:#C7CCDA;border:1px solid rgba(255,255,255,0.25);padding:5px 12px;border-radius:7px;}
+/* `hidden` ka matlab chhupa hua hi hona chahiye. Iske bina .btn aur .field
+   jaise class apne display rule se use dabaa dete hain, aur JS se chhupayi
+   hui cheez screen pe padi rehti hai. */
+[hidden]{display:none !important;}
 
-.lang-switch{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#A9B0C4;}
-.lang-switch a{color:#A9B0C4;padding:4px 8px;border-radius:6px;font-weight:600;}
-.lang-switch a.active{background:var(--accent);color:#fff;}
+/* ---------------------------------------------------------------- top bar */
+.topbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:0 20px;height:46px;background:var(--ink);color:#fff;}
+.brand{display:flex;align-items:baseline;gap:8px;}
+.brand h1{font-size:15px;font-weight:600;color:#fff;letter-spacing:-0.01em;}
+.brand .tagline{font-size:10px;color:rgba(255,255,255,.5);
+  letter-spacing:0.08em;text-transform:uppercase;}
+.tabs{display:flex;gap:2px;flex-wrap:wrap;flex:1;}
+.tab-btn{background:transparent;border:none;color:rgba(255,255,255,.72);
+  padding:6px 11px;border-radius:5px;font-size:13px;font-weight:500;
+  text-decoration:none;display:inline-block;}
+.tab-btn:hover{background:rgba(255,255,255,.10);color:#fff;text-decoration:none;}
+.tab-btn.active{background:rgba(255,255,255,.16);color:#fff;}
+.user-pill{font-size:12.5px;color:rgba(255,255,255,.72);
+  display:flex;align-items:center;gap:10px;}
+.user-pill a{color:rgba(255,255,255,.72);}
+.user-pill a:hover{color:#fff;text-decoration:none;}
+.lang-switch{display:flex;align-items:center;gap:4px;font-size:12px;
+  color:rgba(255,255,255,.5);}
+.lang-switch a{color:rgba(255,255,255,.66);padding:3px 7px;border-radius:4px;font-weight:600;}
+.lang-switch a:hover{text-decoration:none;color:#fff;}
+.lang-switch a.active{background:rgba(255,255,255,.16);color:#fff;}
+.topbar .btn-primary{background:rgba(255,255,255,.14);color:#fff;}
+.topbar .btn-primary:hover{background:rgba(255,255,255,.24);}
 
-.container{max-width:1080px;margin:0 auto;padding:24px 20px 70px;}
-.card{background:var(--paper);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
-.panel-pad{padding:22px;}
-.section-title{font-size:18px;margin-bottom:4px;}
-.section-sub{color:var(--ink-soft);font-size:13px;margin-bottom:18px;}
+/* ------------------------------------------------------------ page + sheet */
+.container{max-width:1160px;margin:0 auto;padding:18px 20px 64px;}
+.card{background:var(--paper);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:var(--shadow);}
+.panel-pad{padding:20px 22px;}
 
-.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
-.stat-card{padding:18px;}
-.stat-label{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;}
-.stat-value{font-size:22px;font-family:'IBM Plex Mono',monospace;font-weight:600;}
+/* Page ke sabse upar wali toolbar hi Odoo ka "control panel" hai: naam
+   baayen, kaam daayen. Card ke andar wali toolbar isse alag rehti hai —
+   isliye yahan sirf container ke seedhe bachche ko chuna gaya hai. */
+.container > .toolbar{background:var(--paper);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:12px 18px;margin-bottom:14px;gap:12px;}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.toolbar input[type=text]{flex:1;min-width:190px;padding:7px 11px;
+  border:1px solid var(--border);border-radius:5px;font-size:13.5px;background:var(--sunk);}
+.toolbar input[type=date],.toolbar select{padding:7px 10px;border:1px solid var(--border);
+  border-radius:5px;font-size:13px;background:var(--sunk);}
+
+.section-title{font-size:15px;font-weight:600;margin-bottom:3px;}
+.section-sub{color:var(--ink-soft);font-size:12.5px;margin-bottom:16px;}
+.divider{height:1px;background:var(--line);margin:18px 0;}
+
+/* ------------------------------------------------------------------- KPIs */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+.stat-card{padding:15px 16px;}
+/* Card ke andar tile — apni lakeer nahi kheenchti, warna do border ek saath */
+.card .stat-card{background:var(--sunk);border-color:var(--line);box-shadow:none;}
+.stat-label{font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;
+  letter-spacing:0.07em;font-weight:600;margin-bottom:6px;}
+.stat-value{font-size:21px;font-family:'IBM Plex Mono',monospace;font-weight:600;
+  letter-spacing:-0.02em;}
 .stat-card.pending .stat-value{color:var(--danger);}
 .stat-card.received .stat-value{color:var(--success);}
 
-.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
-.field label{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
-.field input,.field select,.field textarea{padding:10px 12px;border:1px solid var(--border);border-radius:7px;font-size:14px;color:var(--ink);background:#FCFCFA;width:100%;}
-.field textarea{resize:vertical;min-height:60px;}
+/* ------------------------------------------------------------------ fields */
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:13px;}
+.field label{font-size:11.5px;font-weight:600;color:var(--ink-soft);
+  letter-spacing:0.01em;}
+.field input,.field select,.field textarea{padding:8px 11px;border:1px solid var(--border);
+  border-radius:5px;font-size:13.5px;color:var(--ink);background:var(--paper);width:100%;}
+.field input:hover,.field select:hover,.field textarea:hover{border-color:#C4C4CC;}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;
+  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.field input[readonly]{background:var(--sunk);color:var(--ink-soft);}
+.field textarea{resize:vertical;min-height:58px;}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .form-grid.three{grid-template-columns:1fr 1fr 1fr;}
-.checkbox-row{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-soft);margin-bottom:14px;}
+.checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;
+  color:var(--ink-soft);margin-bottom:13px;}
 
-.divider{height:1px;background:var(--border);margin:20px 0;}
-
+/* ------------------------------------------------------------------ tables */
 table{width:100%;border-collapse:collapse;font-size:13.5px;}
-thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-faint);padding:8px;border-bottom:2px solid var(--border);}
-tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+thead th{text-align:left;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:0.06em;font-weight:600;color:var(--ink-faint);
+  padding:9px 10px;background:var(--sunk);border-bottom:1px solid var(--border);}
+tbody td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--sunk);}
 .table-wrap{overflow-x:auto;}
+th.num{text-align:right;}
 .num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 
-.btn{padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;display:inline-block;text-decoration:none;}
+/* ----------------------------------------------------------------- buttons */
+.btn{padding:8px 16px;border-radius:5px;border:1px solid transparent;
+  font-size:13.5px;font-weight:600;display:inline-block;text-decoration:none;
+  line-height:1.35;white-space:nowrap;}
+.btn:hover{text-decoration:none;}
 .btn-primary{background:var(--ink);color:#fff;}
-.btn-primary:hover{background:#2A3760;}
-.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--ink-soft);}
-.btn-ghost:hover{border-color:var(--ink-soft);color:var(--ink);}
+.btn-primary:hover{background:#3A3A46;}
+.btn-ghost{background:var(--paper);border-color:var(--border);color:var(--ink-soft);}
+.btn-ghost:hover{border-color:#C4C4CC;color:var(--ink);background:var(--sunk);}
 .btn-danger{background:var(--danger);color:#fff;}
-.btn-sm{padding:6px 12px;font-size:12.5px;border-radius:6px;}
-.btn-row{display:flex;gap:10px;margin-top:20px;}
+.btn-sm{padding:5px 11px;font-size:12.5px;}
+.btn-row{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap;align-items:center;}
+/* Band button band dikhna bhi chahiye — warna user dabata rehta hai aur
+   sochta hai app hi tuta hua hai. */
+.btn:disabled,.btn[disabled]{opacity:.45;cursor:not-allowed;}
+.btn-primary:disabled:hover,.btn-primary[disabled]:hover{background:var(--ink);}
+.btn-ghost:disabled:hover,.btn-ghost[disabled]:hover{border-color:var(--border);
+  color:var(--ink-soft);background:var(--paper);}
+.btn-ghost.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 
-.badge{padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;}
+/* ------------------------------------------------------------------ badges */
+.badge{padding:2px 9px;border-radius:4px;font-size:10.5px;font-weight:700;
+  letter-spacing:0.05em;text-transform:uppercase;display:inline-block;}
 .badge.paid{background:var(--success-soft);color:var(--success);}
 .badge.unpaid{background:var(--danger-soft);color:var(--danger);}
 .badge.partial{background:var(--accent-soft);color:var(--accent-deep);}
@@ -79,61 +159,88 @@ tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:mi
 .badge.receipt{background:var(--success-soft);color:var(--success);}
 .badge.purchase{background:var(--danger-soft);color:var(--danger);}
 .badge.payment_made{background:var(--danger-soft);color:var(--danger);}
+.badge.challan{background:var(--accent-soft);color:var(--accent-deep);margin-left:6px;}
 
-.entry-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-top:16px;}
-.entry-tile{display:block;padding:20px;border:1px solid var(--border);border-radius:12px;text-decoration:none;background:#FCFCFA;transition:border-color .15s, transform .15s;}
-.entry-tile:hover{border-color:var(--accent);transform:translateY(-2px);}
-.entry-tile h3{font-size:15px;color:var(--ink);margin-bottom:6px;}
+/* ------------------------------------------------------------------- tiles */
+.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:12px;margin-top:14px;}
+.entry-tile{display:block;padding:18px;border:1px solid var(--border);
+  border-radius:var(--radius);text-decoration:none;background:var(--paper);
+  transition:border-color .12s, box-shadow .12s;}
+.entry-tile:hover{border-color:var(--accent);box-shadow:var(--shadow-lift);
+  text-decoration:none;}
+.entry-tile h3{font-size:14.5px;color:var(--ink);margin-bottom:5px;}
 .entry-tile p{font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin:0;}
 
-.toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
-.toolbar input[type=text]{flex:1;min-width:200px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#FCFCFA;}
-.toolbar input[type=date]{padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;background:#FCFCFA;}
+/* ------------------------------------------------------- messages + blanks */
+.flash{padding:10px 14px;border-radius:5px;margin-bottom:14px;font-size:13px;
+  border:1px solid transparent;}
+.flash.success{background:var(--success-soft);color:var(--success);border-color:#C6E2D2;}
+.flash.error{background:var(--danger-soft);color:var(--danger);border-color:#EFC9C3;}
+.empty-state{text-align:center;padding:34px 20px;color:var(--ink-soft);}
+.empty-state .big{font-size:14.5px;margin-bottom:5px;color:var(--ink);font-weight:600;}
 
-.flash{padding:11px 16px;border-radius:8px;margin-bottom:16px;font-size:13.5px;}
-.flash.success{background:var(--success-soft);color:var(--success);}
-.flash.error{background:var(--danger-soft);color:var(--danger);}
+.auth-wrap{max-width:380px;margin:72px auto;padding:0 16px;}
+.auth-wrap .card{padding:26px;box-shadow:var(--shadow-lift);}
+.auth-wrap h1{font-size:20px;margin-bottom:5px;}
+.auth-wrap p.sub{color:var(--ink-soft);font-size:13px;margin-bottom:20px;}
 
-.empty-state{text-align:center;padding:36px 20px;color:var(--ink-soft);}
-.empty-state .big{font-size:15px;margin-bottom:6px;color:var(--ink);font-weight:600;}
-
-.auth-wrap{max-width:380px;margin:80px auto;padding:0 16px;}
-.auth-wrap .card{padding:28px;}
-.auth-wrap h1{font-size:22px;margin-bottom:6px;}
-.auth-wrap p.sub{color:var(--ink-soft);font-size:13px;margin-bottom:22px;}
-
-.items-table input,.items-table select{width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;}
-.add-row-btn{margin-top:10px;background:var(--accent-soft);color:var(--accent-deep);border:1px solid var(--accent);padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;}
-.add-row-btn:hover{background:var(--accent);color:#fff;}
-.icon-btn{background:none;border:none;color:var(--ink-faint);font-size:16px;padding:4px;border-radius:6px;}
+/* -------------------------------------------------------- invoice ka form */
+.items-table input,.items-table select{width:100%;padding:6px 8px;
+  border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--paper);}
+.items-table input:focus,.items-table select:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 2px var(--accent-soft);}
+.add-row-btn{margin-top:10px;background:var(--paper);color:var(--accent-deep);
+  border:1px solid var(--border);padding:6px 13px;border-radius:5px;
+  font-size:13px;font-weight:600;}
+.add-row-btn:hover{border-color:var(--accent);background:var(--accent-soft);}
+.icon-btn{background:none;border:none;color:var(--ink-faint);font-size:15px;
+  padding:4px;border-radius:5px;}
 .icon-btn:hover{color:var(--danger);background:var(--danger-soft);}
 
-.totals-box{margin-top:18px;display:flex;justify-content:flex-end;}
-.totals-inner{width:340px;}
-.totals-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;color:var(--ink-soft);align-items:center;}
-.totals-row.grand{font-size:17px;font-weight:700;color:var(--ink);border-top:2px solid var(--ink);padding-top:10px;margin-top:6px;font-family:'IBM Plex Mono',monospace;}
+.totals-box{margin-top:16px;display:flex;justify-content:flex-end;}
+.totals-inner{width:330px;}
+.totals-row{display:flex;justify-content:space-between;padding:5px 0;
+  font-size:13px;color:var(--ink-soft);align-items:center;}
+.totals-row.grand{font-size:16px;font-weight:700;color:var(--ink);
+  border-top:1px solid var(--ink);padding-top:9px;margin-top:5px;
+  font-family:'IBM Plex Mono',monospace;}
 .totals-row .val{font-family:'IBM Plex Mono',monospace;}
-.totals-row input,.totals-row select{width:90px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;text-align:right;font-size:12.5px;}
+.totals-row input,.totals-row select{width:88px;padding:4px 7px;
+  border:1px solid var(--border);border-radius:4px;text-align:right;font-size:12.5px;}
 
-.status-pills{display:flex;gap:8px;}
-.status-pill{flex:1;text-align:center;padding:9px;border-radius:7px;border:1px solid var(--border);font-size:13px;font-weight:600;color:var(--ink-soft);background:#FCFCFA;cursor:pointer;}
+.status-pills{display:flex;gap:6px;}
+.status-pill{flex:1;text-align:center;padding:8px;border-radius:5px;
+  border:1px solid var(--border);font-size:12.5px;font-weight:600;
+  color:var(--ink-soft);background:var(--paper);cursor:pointer;}
+.status-pill:hover{border-color:#C4C4CC;}
 .status-pill.active.unpaid{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);}
 .status-pill.active.paid{background:var(--success-soft);border-color:var(--success);color:var(--success);}
 .status-pill.active.partial{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-deep);}
 
-.stamp{width:96px;height:96px;border-radius:50%;border:3px double currentColor;display:flex;align-items:center;justify-content:center;text-align:center;transform:rotate(-9deg);font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px;letter-spacing:0.05em;text-transform:uppercase;flex-shrink:0;}
+.stamp{width:92px;height:92px;border-radius:50%;border:3px double currentColor;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  transform:rotate(-9deg);font-family:'IBM Plex Mono',monospace;font-weight:700;
+  font-size:12px;letter-spacing:0.05em;text-transform:uppercase;flex-shrink:0;}
 .stamp.paid{color:var(--success);}
 .stamp.unpaid{color:var(--danger);}
 .stamp.partial{color:var(--accent-deep);}
+.stamp.challan{color:var(--accent-deep);font-size:10px;}
 
-.low-stock-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.khata-debit{color:var(--danger);}
+.khata-credit{color:var(--success);}
+
+.low-stock-row{display:flex;justify-content:space-between;padding:7px 0;
+  border-bottom:1px solid var(--line);font-size:13px;}
 .low-stock-row:last-child{border-bottom:none;}
+
+.settings-sec-title{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:11px;}
 
 @media (max-width:760px){
 .stat-grid{grid-template-columns:1fr 1fr;}
 .form-grid,.form-grid.three{grid-template-columns:1fr;}
-.topbar{padding:12px 16px;}
-.container{padding:16px 12px 60px;}
+.topbar{padding:10px 14px;height:auto;}
+.container{padding:14px 12px 56px;}
 .totals-inner{width:100%;}
 }
 
@@ -141,9 +248,11 @@ tbody td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:mi
 @media print{
 .no-print{display:none !important;}
 }
+
 .pinv{max-width:780px;margin:0 auto;padding:30px;font-family:'Inter',sans-serif;color:#1C2541;background:#fff;}
 .pinv-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1C2541;padding-bottom:16px;margin-bottom:18px;}
-.pinv-firm h2{font-family:'Fraunces',serif;font-size:24px;}
+/* Bill ka font settings se aata hai — sheershak bhi wahi ho, alag nahi */
+.pinv-firm h2{font-family:inherit;font-size:23px;font-weight:700;}
 .pinv-firm p{font-size:12px;color:#5B6378;margin:2px 0;line-height:1.5;max-width:300px;}
 .pinv-meta{text-align:right;font-size:13px;}
 .pinv-meta .lbl{color:#8C93A3;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;}
@@ -193,10 +302,132 @@ body{margin:0;}
 .pinv-half .pinv-footer .terms{font-size:9px;}
 }
 
-/* --- settings page section headers --- */
-.settings-sec-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:12px;}
 
-/* --- challan (delivery, rate-hidden) badges/stamps --- */
-.badge.challan{background:var(--accent-soft);color:var(--accent-deep);margin-left:6px;}
-.stamp.challan{color:var(--accent-deep);font-size:10px;}
-.btn-ghost.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+/* ---------- Bill overlay ----------
+   Bill usi screen pe khulta hai. Print ke waqt sirf bill nikalta hai —
+   page ka baaki hissa aur side ki settings chhup jaati hain. */
+.bill-overlay{position:fixed;inset:0;z-index:60;display:flex;}
+.bill-overlay[hidden]{display:none;}
+.bill-overlay-back{position:absolute;inset:0;background:rgba(28,37,65,.45);}
+.bill-overlay-panel{position:relative;margin:auto;display:flex;gap:0;
+  width:min(1100px,96vw);height:min(92vh,1000px);background:var(--paper,#fff);
+  border-radius:10px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.25);}
+.bill-overlay-sheet{flex:1;overflow:auto;padding:18px;background:#EFEFE7;}
+.bill-overlay-side{width:270px;flex:0 0 270px;border-left:1px solid var(--border);
+  padding:18px;display:flex;flex-direction:column;background:var(--paper,#fff);}
+.bill-overlay-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
+.bill-overlay-actions .btn{text-align:center;}
+.bill-overlay-msg{padding:40px 10px;text-align:center;color:var(--ink-soft);}
+body.bill-overlay-open{overflow:hidden;}
+
+@media (max-width:820px){
+  .bill-overlay-panel{flex-direction:column;height:96vh;width:98vw;}
+  .bill-overlay-side{width:auto;flex:0 0 auto;border-left:none;
+    border-top:1px solid var(--border);flex-direction:row;align-items:flex-end;gap:12px;}
+  .bill-overlay-actions{flex-direction:row;margin-top:0;}
+}
+
+@media print{
+  /* Overlay khula ho toh sirf wahi chhape. */
+  body.bill-overlay-open > *{display:none !important;}
+  body.bill-overlay-open #billOverlay{display:block !important;position:static;}
+  body.bill-overlay-open .bill-overlay-back,
+  body.bill-overlay-open .bill-overlay-side{display:none !important;}
+  body.bill-overlay-open .bill-overlay-panel{display:block;width:auto;height:auto;
+    margin:0;box-shadow:none;border-radius:0;}
+  body.bill-overlay-open .bill-overlay-sheet{overflow:visible;padding:0;background:#fff;}
+}
+
+
+/* ---------- Naya order: photo baayen, likhna daayen ----------
+   Order saamne khula rehta hai jab tak use utaara ja raha hai. Chhoti screen
+   pe upar-neeche ho jaate hain — wahan do column me dono hi tang lagte. */
+.intake{display:grid;grid-template-columns:minmax(280px,1fr) minmax(360px,1.2fr);
+  gap:14px;align-items:start;}
+.intake-preview{border:1px solid var(--border);border-radius:8px;overflow:auto;
+  max-height:70vh;background:#EFEFE7;}
+.intake-img{display:block;width:100%;height:auto;}
+.intake-frame{display:block;width:100%;height:68vh;border:0;background:#fff;}
+.intake-entry .table-wrap{max-height:46vh;overflow:auto;}
+.ocr-note{font-size:12.5px;padding:9px 11px;border-radius:6px;margin-bottom:10px;
+  background:#EDF3EC;border:1px solid #CBDCC8;color:#2F4A2C;}
+.ocr-note.bad{background:#FBF0EC;border-color:#E6CCC2;color:#7A3B25;}
+.intake-entry table input,.intake-entry table select{width:100%;}
+
+@media (max-width:900px){
+  .intake{grid-template-columns:1fr;}
+  .intake-preview{max-height:44vh;}
+  .intake-frame{height:44vh;}
+}
+
+
+/* ---------- Naya order ka form ----------
+   Ek hi kagaz, ek hi sheershak. Beech me sirf patli lakeer — jitni jagah
+   khaano ko chahiye utni, uske upar koi naam nahi. Kaam ka kram khud khaano
+   se dikhta hai; use likh ke batane ki zaroorat nahi. */
+.sheet{max-width:940px;}
+.sheet-head{display:flex;align-items:flex-end;justify-content:space-between;
+  gap:14px;margin:0 0 14px;flex-wrap:wrap;}
+.sheet-kicker{font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:600;margin-bottom:2px;}
+.sheet-title{font-size:22px;letter-spacing:-0.02em;}
+.sheet-card{padding:20px 22px;margin-bottom:14px;}
+.sheet-lead{font-size:13px;font-weight:600;color:var(--ink-soft);
+  margin-bottom:16px;}
+.sheet-actions{display:flex;gap:9px;align-items:center;}
+.rule{height:1px;background:var(--line);margin:20px 0 18px;}
+
+.field-help{font-size:11px;color:var(--ink-faint);line-height:1.45;}
+.more{margin-top:2px;}
+.more summary{font-size:12.5px;color:var(--ink-soft);cursor:pointer;
+  padding:6px 0;user-select:none;}
+.more summary:hover{color:var(--accent-deep);}
+
+/* Lines ki table. Har khaana utna hi chauda jitni us cheez ko zaroorat hai —
+   quantity ke liye poori chaudai dena aankh ko bhatkata hai. */
+.lines-table{font-size:13.5px;}
+.lines-table thead th{background:transparent;border-bottom:1px solid var(--border);
+  padding:0 6px 7px;}
+.lines-table tbody td{padding:7px 6px;vertical-align:top;border-bottom:1px solid var(--line);}
+.lines-table tbody tr:hover{background:transparent;}
+.lines-table input,.lines-table select{width:100%;padding:7px 9px;
+  border:1px solid var(--border);border-radius:5px;font-size:13.5px;
+  color:var(--ink);background:var(--paper);}
+.lines-table input:hover,.lines-table select:hover{border-color:#C4C4CC;}
+.lines-table input:focus,.lines-table select:focus{outline:none;
+  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.lines-table input[readonly]{background:var(--sunk);color:var(--ink-soft);}
+.lines-table th.c-no{width:26px;}
+.lines-table td.c-no{width:26px;color:var(--ink-faint);font-size:12px;
+  padding-top:15px;text-align:right;}
+.lines-table .c-prod{min-width:190px;}
+.lines-table .c-size{width:150px;}
+.lines-table .c-qty{width:104px;}
+.lines-table .c-qty input{text-align:right;font-family:'IBM Plex Mono',monospace;}
+.lines-table .c-unit{width:112px;}
+.lines-table th.c-amt{width:120px;}
+.lines-table td.c-amt{width:120px;padding-top:15px;white-space:nowrap;}
+.lines-table th.c-x{width:32px;}
+.lines-table td.c-x{width:32px;padding-top:11px;}
+.line-name{font-size:11px;color:var(--ink-faint);margin-top:4px;
+  line-height:1.35;min-height:14px;}
+.line-name.warn{color:var(--accent-deep);}
+.row-x{background:transparent;border:none;color:var(--ink-faint);font-size:16px;
+  line-height:1;padding:4px 6px;border-radius:5px;}
+.row-x:hover{background:var(--danger-soft);color:var(--danger);}
+
+.lines-foot{display:flex;align-items:center;justify-content:space-between;
+  gap:14px;margin-top:11px;flex-wrap:wrap;}
+.link-add{background:transparent;border:none;color:var(--accent-deep);
+  font-size:13px;font-weight:600;padding:4px 0;}
+.link-add:hover{text-decoration:underline;}
+.lines-total{display:flex;align-items:baseline;gap:10px;font-size:12.5px;
+  color:var(--ink-soft);}
+.lines-total strong{font-family:'IBM Plex Mono',monospace;font-size:17px;
+  color:var(--ink);}
+
+@media (max-width:760px){
+  .sheet-card{padding:16px 14px;}
+  .lines-table .c-prod{min-width:150px;}
+  .lines-table .c-size{width:120px;}
+}
