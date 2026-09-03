@@ -35,38 +35,72 @@
   {% endif %}
 </div>
 
+{# Naya aadmi jodne ka rasta. Bot kisi ko khud se message nahi kar sakta jab
+   tak wo aadmi ek baar bot ko Start na kar de — ye Telegram ka niyam hai,
+   app iska koi rasta nahi nikaal sakti. Isliye link aur likha hua sandesh
+   dono yahin de diye, taaki bas forward karna pade. #}
+{% if bot_link %}
+<div class="card panel-pad" style="margin-bottom:14px;">
+  <div style="font-weight:600;margin-bottom:4px;">{{ t('po_tg_add_person') }}</div>
+  <div style="font-size:13px;color:var(--ink-faint);margin-bottom:10px;">
+    {{ t('po_tg_add_person_hint') }}
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <a class="btn btn-ghost btn-sm" href="{{ bot_link }}" target="_blank" rel="noopener">{{ bot_link }}</a>
+    <button class="btn btn-ghost btn-sm" type="button" id="copyInvite">{{ t('po_tg_copy_msg') }}</button>
+    <span id="copyDone" style="font-size:12px;color:var(--ink-faint);display:none;">{{ t('po_tg_copied') }}</span>
+  </div>
+  <div id="inviteText" style="display:none;">{{ t('po_tg_invite_msg', link=bot_link) }}</div>
+</div>
+{% endif %}
+
 <div class="card panel-pad" style="margin-bottom:14px;">
   <div style="font-weight:600;margin-bottom:4px;">{{ t('po_tg_groups') }}</div>
   <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">{{ t('po_tg_groups_sub') }}</div>
 
   {% if chats %}
     {% for c in chats %}
-      <div style="border-top:1px solid var(--border);padding:11px 0;display:flex;
-                  gap:12px;align-items:center;flex-wrap:wrap;">
-        <div style="flex:1;min-width:180px;">
-          <div style="font-weight:600;">{{ c.title or c.chat_id }}</div>
-          <div class="mono" style="font-size:11px;color:var(--ink-faint);">
-            {{ c.chat_type }} · {{ c.chat_id }}
+      <div style="border-top:1px solid var(--border);padding:13px 0;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;">
+            <div style="font-weight:600;">
+              {{ c.title or c.chat_id }}
+              <span style="font-weight:400;font-size:12px;color:var(--ink-faint);">
+                — {{ t('po_tg_one_person') if c.chat_type == 'private' else t('po_tg_whole_group') }}
+              </span>
+            </div>
+            <div class="mono" style="font-size:11px;color:var(--ink-faint);">{{ c.chat_id }}</div>
           </div>
+          {# Tick box, dropdown nahi — ek chat ke kai role ho sakte hain, aur
+             ek hi role kai chat ka. Label me role ka naam nahi, uska *kaam*
+             likha hai: "manager" se ye pata nahi chalta ki kya msg jayega. #}
+          <form method="POST" action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
+                style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+            <label class="tick"><input type="checkbox" name="roles" value="owner"
+                   {% if c.has_role('owner') %}checked{% endif %}> {{ t('po_tg_gets_owner') }}</label>
+            <label class="tick"><input type="checkbox" name="roles" value="operator"
+                   {% if c.has_role('operator') %}checked{% endif %}> {{ t('po_tg_gets_operator') }}</label>
+            <label class="tick"><input type="checkbox" name="roles" value="manager"
+                   {% if c.has_role('manager') %}checked{% endif %}> {{ t('po_tg_gets_manager') }}</label>
+            <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save') }}</button>
+          </form>
+          <form method="POST" action="{{ url_for('po.telegram_test_chat', row_id=c.id) }}">
+            <button class="btn btn-ghost btn-sm" type="submit"
+                    title="{{ t('po_tg_test_hint') }}">{{ t('po_tg_test') }}</button>
+          </form>
+          <form method="POST" action="{{ url_for('po.telegram_delete_chat', row_id=c.id) }}"
+                onsubmit="return confirm({{ t('po_tg_remove_confirm')|tojson }});">
+            <button class="btn btn-ghost btn-sm" type="submit"
+                    title="{{ t('po_tg_remove_hint') }}">{{ t('po_tg_remove') }}</button>
+          </form>
         </div>
-        {% for r in c.role_list() %}<span class="badge paid">{{ r }}</span>{% endfor %}
-        {# Tick box, dropdown nahi — ek chat ke kai role ho sakte hain, aur
-           ek hi role kai chat ka. #}
-        <form method="POST" action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
-              style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-          <label class="tick"><input type="checkbox" name="roles" value="operator"
-                 {% if c.has_role('operator') %}checked{% endif %}> {{ t('po_tg_operator_group') }}</label>
-          <label class="tick"><input type="checkbox" name="roles" value="manager"
-                 {% if c.has_role('manager') %}checked{% endif %}> {{ t('po_tg_manager_group') }}</label>
-          <label class="tick"><input type="checkbox" name="roles" value="owner"
-                 {% if c.has_role('owner') %}checked{% endif %}> {{ t('po_tg_your_chat') }}</label>
-          <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save') }}</button>
-        </form>
-        <form method="POST" action="{{ url_for('po.telegram_delete_chat', row_id=c.id) }}"
-              onsubmit="return confirm({{ t('po_tg_remove_confirm')|tojson }});">
-          <button class="btn btn-ghost btn-sm" type="submit"
-                  title="{{ t('po_tg_remove_hint') }}">{{ t('po_tg_remove') }}</button>
-        </form>
+        {# Group pe rate ka tick lagana matlab poore group ko bhav dikh jayega.
+           Ye baat tick ke waqt saamne honi chahiye, baad me nahi. #}
+        {% if c.has_role('owner') and c.chat_type != 'private' %}
+          <div style="font-size:12px;color:var(--warn, #9a6b00);margin-top:7px;">
+            {{ t('po_tg_rate_in_group') }}
+          </div>
+        {% endif %}
       </div>
     {% endfor %}
   {% else %}
@@ -119,5 +153,26 @@
     </div>
   {% endif %}
 </div>
+
+<script>
+// Bulane wala sandesh copy — taaki Julius ko har baar likhna na pade.
+(function () {
+  var btn = document.getElementById('copyInvite');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    var txt = document.getElementById('inviteText').textContent.trim();
+    var done = document.getElementById('copyDone');
+    function shown() { done.style.display = 'inline'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(shown, function () {});
+      return;
+    }
+    // Purane browser pe clipboard nahi hota — tab likha hua dikha dete hain
+    // taaki haath se copy ho jaye. Chup-chaap kuch na hona sabse bura hai.
+    document.getElementById('inviteText').style.display = 'block';
+    shown();
+  });
+})();
+</script>
 
 {% endblock %}

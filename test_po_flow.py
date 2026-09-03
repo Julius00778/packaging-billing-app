@@ -106,6 +106,62 @@ client.post("/po/new", data={"customer_id": str(cust_id), "po_number": "PO-4471"
 with app.app_context():
     check("duplicate PO nahi bana", PurchaseOrder.query.filter_by(po_number="PO-4471").count(), 1)
 
+# ------------------------------------------- order number khud bhar jaata hai
+# Julius pehle se SEP04, SEP05 aise likh raha tha. Ab haath se likhna nahi
+# padta — mahine ka naam aur uske aage ginti apne aap aati hai.
+from datetime import date as _date
+import po_module as _M
+
+with app.app_context():
+    mon = _M.MONTH_CODES[_date.today().month - 1]
+    first = _M.next_po_number()
+    check("naya mahina ho toh 01 se shuru", first, mon + "01")
+
+r = ok("form pe number pehle se bhara", client.get("/po/new"))
+form = r.data.decode("utf8", "ignore")
+check("form me suggestion dikhta hai", f'value="{first}"' in form)
+check("form apna suggestion yaad rakhta hai",
+      f'name="po_number_auto" value="{first}"' in form)
+
+# Number ka khaana khaali chhod do — app khud laga deti hai
+ok("bina number ke order", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "", "size_unit": "inch",
+    "raw_text": "12x18 - 5 pcs"},
+    content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    check("khaali number pe bhi order bana",
+          PurchaseOrder.query.filter_by(po_number=first).count(), 1)
+    second = _M.next_po_number()
+    check("agla number ek aage badha", second, mon + "02")
+
+# Do aadmi ek saath form khole hon toh dono ko ek hi suggestion dikhta hai.
+# Doosra bhejne wala usi number pe na chadh jaye — isliye bhejte waqt dobara
+# dekha jaata hai. Yahi galti do parche pe ek number chhaap deti.
+ok("wahi suggestion dobara bheja", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": first, "po_number_auto": first,
+    "size_unit": "inch", "raw_text": "12x18 - 6 pcs"},
+    content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    check("purane number pe dobara nahi chadha",
+          PurchaseOrder.query.filter_by(po_number=first).count(), 1)
+    check("naya order agle number pe gaya",
+          PurchaseOrder.query.filter_by(po_number=second).count(), 1)
+    # Beech ka khaali khaana nahi bharta — us number ka parcha bahar ja chuka
+    # ho sakta hai, aur ek number do parche pe hona sabse buri galti hogi.
+    gone = PurchaseOrder.query.filter_by(po_number=second).first()
+    db.session.delete(gone)
+    db.session.commit()
+    check("hataye hue number pe wapas nahi jaata", _M.next_po_number(), mon + "03")
+
+# Party ka apna number ho toh wo waise ka waisa chalta hai
+ok("apna number", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-9001", "po_number_auto": first,
+    "size_unit": "inch", "raw_text": "12x18 - 7 pcs"},
+    content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    check("haath ka likha number waisa hi raha",
+          PurchaseOrder.query.filter_by(po_number="PO-9001").count(), 1)
+
 # ------------------------------------------- ek-ek line wala raasta
 # Photo dhundhli ho toh text paste karna kaam nahi aata — aadmi dekh ke ek
 # line bharta hai. Yahan kuch andaza nahi lagta, sab khaano me aata hai.
@@ -710,7 +766,7 @@ import subprocess as _sp                                   # noqa: E402
 import tempfile as _tf                                     # noqa: E402
 
 if _sh.which("node"):
-    for path in ("/po/new", "/invoices", f"/po/{po_id}", "/po/bills"):
+    for path in ("/po/new", "/invoices", f"/po/{po_id}", "/po/bills", "/po/telegram"):
         html = client.get(path).data.decode("utf8", "ignore")
         js = "\n;\n".join(_re2.findall(r"<script>(.*?)</script>", html, _re2.S))
         if not js.strip():

@@ -34,8 +34,11 @@
         <div class="field-help" id="partyNote">{{ t('po_party_help') }}</div>
       </div>
       <div class="field">
-        <label>{{ t('po_order_number') }} *</label>
-        <input type="text" name="po_number" required placeholder="PO-4471">
+        <label>{{ t('po_order_number') }}</label>
+        {# Number khud bhara hua aata hai. Badalne layak isliye chhoda hai ki
+           kabhi party ka apna number chadhana ho — par likhna zaroori nahi. #}
+        <input type="text" name="po_number" value="{{ next_no }}" placeholder="{{ next_no }}">
+        <input type="hidden" name="po_number_auto" value="{{ next_no }}">
         <div class="field-help">{{ t('po_order_number_help') }}</div>
       </div>
       <div class="field">
