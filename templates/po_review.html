@@ -292,6 +292,33 @@
         <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
           {{ t('po_operator_next') }}
         </div>
+        {# Order maal ke hisaab se batt ke gaya ho toh yahan dikhe ki kaunsa
+           group kahan tak pahuncha — warna sirf "abhi bana nahi" dikhta hai
+           aur ye pata hi nahi chalta ki kis par atka hai. #}
+        {% if po.parts|length > 1 %}
+          <div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px;">
+            <div style="font-size:12px;color:var(--ink-faint);margin-bottom:7px;">
+              {{ t('po_parts_head') }}
+            </div>
+            {% for p in po.parts %}
+              <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:3px 0;">
+                <span style="flex:1;min-width:140px;font-size:13px;">
+                  {{ p.label or p.chat_id }}
+                  {% set n = p.line_list()|length %}
+                  <span style="color:var(--ink-faint);font-size:12px;">
+                    · {{ n }} {{ t('po_parts_line') if n == 1 else t('po_parts_lines') }}
+                  </span>
+                </span>
+                <span class="badge {{ 'paid' if p.status == 'made' else ('partial' if p.status == 'in_production' else 'challan') }}">
+                  {{ t('po_status_' + p.status) }}
+                </span>
+                {% if p.operator_name %}
+                  <span style="font-size:12px;color:var(--ink-faint);">{{ p.operator_name }}</span>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
         <div class="toolbar" style="margin:0;flex-wrap:wrap;">
           {% for target in status_moves %}
             {% set label = t('po_move_' + target) %}

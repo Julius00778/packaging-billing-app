@@ -74,11 +74,13 @@
           {# Tick box, dropdown nahi — ek chat ke kai role ho sakte hain, aur
              ek hi role kai chat ka. Label me role ka naam nahi, uska *kaam*
              likha hai: "manager" se ye pata nahi chalta ki kya msg jayega. #}
-          <form method="POST" action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
+          <form method="POST" id="roles{{ c.id }}"
+                action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
                 style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
             <label class="tick"><input type="checkbox" name="roles" value="owner"
                    {% if c.has_role('owner') %}checked{% endif %}> {{ t('po_tg_gets_owner') }}</label>
             <label class="tick"><input type="checkbox" name="roles" value="operator"
+                   class="op-tick" data-for="cats{{ c.id }}"
                    {% if c.has_role('operator') %}checked{% endif %}> {{ t('po_tg_gets_operator') }}</label>
             <label class="tick"><input type="checkbox" name="roles" value="manager"
                    {% if c.has_role('manager') %}checked{% endif %}> {{ t('po_tg_gets_manager') }}</label>
@@ -94,6 +96,30 @@
                     title="{{ t('po_tg_remove_hint') }}">{{ t('po_tg_remove') }}</button>
           </form>
         </div>
+        {# Kaunsa maal ye group banata hai. Foam ka apna group, thermacol ka
+           apna — order isi hisaab se batt ke jaata hai. Ek category ek hi
+           group ki hoti hai, isliye tick karte hi wo baaki group se hat jaati
+           hai. Tick box form ke bahar hai par `form=` se usi form me jaate
+           hain, taaki upar wali lakeer ek hi line me rahe. #}
+        <div id="cats{{ c.id }}" class="cat-row"
+             style="{% if not c.has_role('operator') %}display:none;{% endif %}">
+          <div style="font-size:12px;color:var(--ink-faint);margin:9px 0 5px;">
+            {{ t('po_tg_which_goods') }}
+          </div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;">
+            {% for cat in categories %}
+              <label class="tick"><input type="checkbox" name="categories" value="{{ cat.id }}"
+                     form="roles{{ c.id }}"
+                     {% if c.has_category(cat.id) %}checked{% endif %}> {{ cat.name }}</label>
+            {% endfor %}
+          </div>
+          {% if not c.category_ids() %}
+            <div style="font-size:12px;color:var(--ink-faint);margin-top:5px;">
+              {{ t('po_tg_all_goods_hint') }}
+            </div>
+          {% endif %}
+        </div>
+
         {# Group pe rate ka tick lagana matlab poore group ko bhav dikh jayega.
            Ye baat tick ke waqt saamne honi chahiye, baad me nahi. #}
         {% if c.has_role('owner') and c.chat_type != 'private' %}
@@ -172,6 +198,18 @@
     document.getElementById('inviteText').style.display = 'block';
     shown();
   });
+})();
+
+// "Banane ka naya kaam" ka tick hatte hi category wali line chhup jaye —
+// jo group kaam hi nahi karta uske liye category ka koi matlab nahi.
+(function () {
+  var ticks = document.querySelectorAll('.op-tick');
+  for (var i = 0; i < ticks.length; i++) {
+    ticks[i].addEventListener('change', function () {
+      var box = document.getElementById(this.getAttribute('data-for'));
+      if (box) { box.style.display = this.checked ? 'block' : 'none'; }
+    });
+  }
 })();
 </script>
 
