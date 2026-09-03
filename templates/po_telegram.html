@@ -49,16 +49,23 @@
             {{ c.chat_type }} · {{ c.chat_id }}
           </div>
         </div>
-        {% if c.role %}<span class="badge paid">{{ c.role }}</span>{% endif %}
+        {% for r in c.role_list() %}<span class="badge paid">{{ r }}</span>{% endfor %}
+        {# Tick box, dropdown nahi — ek chat ke kai role ho sakte hain, aur
+           ek hi role kai chat ka. #}
         <form method="POST" action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
-              style="display:flex;gap:8px;align-items:center;">
-          <select name="role" style="width:auto;">
-            <option value="" {% if not c.role %}selected{% endif %}>{{ t('po_tg_no_role') }}</option>
-            <option value="operator" {% if c.role == 'operator' %}selected{% endif %}>{{ t('po_tg_operator_group') }}</option>
-            <option value="manager" {% if c.role == 'manager' %}selected{% endif %}>{{ t('po_tg_manager_group') }}</option>
-            <option value="owner" {% if c.role == 'owner' %}selected{% endif %}>{{ t('po_tg_your_chat') }}</option>
-          </select>
+              style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <label class="tick"><input type="checkbox" name="roles" value="operator"
+                 {% if c.has_role('operator') %}checked{% endif %}> {{ t('po_tg_operator_group') }}</label>
+          <label class="tick"><input type="checkbox" name="roles" value="manager"
+                 {% if c.has_role('manager') %}checked{% endif %}> {{ t('po_tg_manager_group') }}</label>
+          <label class="tick"><input type="checkbox" name="roles" value="owner"
+                 {% if c.has_role('owner') %}checked{% endif %}> {{ t('po_tg_your_chat') }}</label>
           <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save') }}</button>
+        </form>
+        <form method="POST" action="{{ url_for('po.telegram_delete_chat', row_id=c.id) }}"
+              onsubmit="return confirm({{ t('po_tg_remove_confirm')|tojson }});">
+          <button class="btn btn-ghost btn-sm" type="submit"
+                  title="{{ t('po_tg_remove_hint') }}">{{ t('po_tg_remove') }}</button>
         </form>
       </div>
     {% endfor %}

@@ -30,6 +30,12 @@ def check(label, got, want=True):
         fails.append(f"{label}\n    got:  {got!r}\n    want: {want!r}")
 
 
+def msg_id(packed):
+    """Ab har msg "chat:msg" ke roop me yaad rehta hai (kai chat ho sakti hain).
+    Test ko sirf pehla msg id chahiye."""
+    return int(M.unpack_msg_ids(packed)[0][1])
+
+
 class FakeTelegram:
     """Har call yaad rakhti hai. message_id badhta jaata hai, jaise asli me."""
 
@@ -66,6 +72,10 @@ JULIUS = {"id": 111, "first_name": "Julius"}
 OWNER_CHAT = {"id": 777, "title": "", "type": "private", "first_name": "Julius"}
 OP_CHAT = {"id": -1001, "title": "Sambhav Operators", "type": "supergroup"}
 MGR_CHAT = {"id": -1002, "title": "Sambhav Managers", "type": "supergroup"}
+OP2_CHAT = {"id": -1003, "title": "Sambhav Operators 2", "type": "supergroup"}
+STRAY_CHAT = {"id": -1009, "title": "Galti wala group", "type": "supergroup"}
+OWNER2_CHAT = {"id": 888, "title": "", "type": "private", "first_name": "Partner"}
+PARTNER = {"id": 222, "first_name": "Partner"}
 
 
 def cb(data, user):
@@ -95,7 +105,8 @@ with app.app_context():
 
     op_chat = M.TelegramChat.query.filter_by(chat_id="-1001").first()
     mgr_chat = M.TelegramChat.query.filter_by(chat_id="-1002").first()
-    op_chat.role, mgr_chat.role = "operator", "manager"
+    M.set_chat_roles(op_chat, ["operator"])
+    M.set_chat_roles(mgr_chat, ["manager"])
     ramesh = M.TelegramPerson.query.filter_by(tg_user_id="555").first()
     ramesh.is_operator = True
     db.session.commit()
@@ -177,7 +188,7 @@ with app.app_context():
     # Aapka apna chat — rate yahin poochha jaata hai
     M.handle_update({"message": {"chat": OWNER_CHAT, "from": JULIUS, "text": "/start"}})
     own = M.TelegramChat.query.filter_by(chat_id="777").first()
-    own.role = "owner"
+    M.set_chat_roles(own, ["owner"])
     db.session.commit()
 
     po3 = M.PurchaseOrder(po_number="PO-79", customer_id=cust.id, status="pending",
@@ -210,7 +221,7 @@ with app.app_context():
     TG.calls.clear()
     M.handle_update({"message": {
         "chat": OWNER_CHAT, "from": JULIUS, "text": "25",
-        "reply_to_message": {"message_id": int(l_pcs.tg_rate_msg_id)}}})
+        "reply_to_message": {"message_id": msg_id(l_pcs.tg_rate_msg_id)}}})
     po3 = db.session.get(M.PurchaseOrder, po3_id)
     check("pcs ka rate lag gaya", po3.lines[0].rate, 25.0)
     check("ek line ka rate abhi baaki hai", po3.no_rate_count, 1)
@@ -221,7 +232,7 @@ with app.app_context():
     TG.calls.clear()
     M.handle_update({"message": {
         "chat": OWNER_CHAT, "from": JULIUS, "text": "₹900",
-        "reply_to_message": {"message_id": int(l_box.tg_rate_msg_id)}}})
+        "reply_to_message": {"message_id": msg_id(l_box.tg_rate_msg_id)}}})
     po3 = db.session.get(M.PurchaseOrder, po3_id)
     check("rupee ka nishan aur comma hat jaate hain", po3.lines[1].rate, 900.0)
     check("ab koi rate baaki nahi", po3.no_rate_count, 0)
@@ -238,7 +249,7 @@ with app.app_context():
     TG.calls.clear()
     M.handle_update({"message": {
         "chat": OWNER_CHAT, "from": JULIUS, "text": "pata nahi",
-        "reply_to_message": {"message_id": int(l_pcs.tg_rate_msg_id)}}})
+        "reply_to_message": {"message_id": msg_id(l_pcs.tg_rate_msg_id)}}})
     check("kachre pe saaf jawab",
           "Sirf number" in TG.of("sendMessage")[-1][1]["text"], True)
     check("rate waisa hi raha",
@@ -248,7 +259,7 @@ with app.app_context():
     TG.calls.clear()
     M.handle_update({"message": {
         "chat": OP_CHAT, "from": OPERATOR, "text": "1",
-        "reply_to_message": {"message_id": int(l_pcs.tg_rate_msg_id)}}})
+        "reply_to_message": {"message_id": msg_id(l_pcs.tg_rate_msg_id)}}})
     check("operator group se rate nahi badalta",
           db.session.get(M.PurchaseOrder, po3_id).lines[0].rate, 25.0)
 
@@ -354,7 +365,7 @@ with app.app_context():
     l5 = db.session.get(M.PurchaseOrder, po5_id).lines[0]
     M.handle_update({"message": {
         "chat": OWNER_CHAT, "from": JULIUS, "text": "60",
-        "reply_to_message": {"message_id": int(l5.tg_rate_msg_id)}}})
+        "reply_to_message": {"message_id": msg_id(l5.tg_rate_msg_id)}}})
     check("reply se saaf hai ki kis line ka hai",
           db.session.get(M.PurchaseOrder, po5_id).lines[0].rate, 60.0)
     check("doosra order waisa hi pada hai",
@@ -445,7 +456,7 @@ with app.app_context():
            db.session.get(M.PurchaseOrder, po8_id).lines[0].rate), (32.0, 32.0))
 
     TG.calls.clear()
-    card_id = int(db.session.get(M.PurchaseOrder, po8_id).tg_rate_summary_id)
+    card_id = msg_id(db.session.get(M.PurchaseOrder, po8_id).tg_rate_summary_id)
     M.handle_update({"message": {
         "chat": OWNER_CHAT, "from": JULIUS, "text": "GME02 44",
         "reply_to_message": {"message_id": card_id}}})
@@ -494,6 +505,105 @@ with app.app_context():
     # ---------------------------------------------------- cancel kahin se bhi ho
     ok, _ = M.move_status(po2, "rejected")
     check("pending order cancel ho gaya", (ok, po2.status), (True, "rejected"))
+
+    # ============================ ek role ki kai chat, ek chat ke kai role
+    # Asli dafter: do operator group, do co-owner. Pehle yahan "ek role sirf
+    # ek chat ka" wala niyam tha — naye group ko operator banate hi purane ka
+    # role chup-chaap hat jaata tha, aur order sirf ek jagah jaata tha.
+    M.handle_update({"message": {"chat": OP2_CHAT, "from": OPERATOR, "text": "hi"}})
+    M.handle_update({"message": {"chat": OWNER2_CHAT, "from": PARTNER, "text": "/start"}})
+    op2 = M.TelegramChat.query.filter_by(chat_id="-1003").first()
+    own2 = M.TelegramChat.query.filter_by(chat_id="888").first()
+    M.set_chat_roles(op2, ["operator"])
+    M.set_chat_roles(own2, ["owner"])
+    db.session.commit()
+
+    check("ab do operator group hain", len(M.chats_for_role("operator")), 2)
+    check("aur do owner chat", len(M.chats_for_role("owner")), 2)
+    check("purane group ka role nahi hata",
+          M.TelegramChat.query.filter_by(chat_id="-1001").first().has_role("operator"), True)
+
+    # ek chat ke do role — manager group ko owner bhi bana do
+    M.set_chat_roles(mgr_chat, ["manager", "owner"])
+    db.session.commit()
+    check("ek chat ke do role chalte hain",
+          sorted(M.TelegramChat.query.filter_by(chat_id="-1002").first().role_list()),
+          ["manager", "owner"])
+    M.set_chat_roles(mgr_chat, ["manager"])
+    db.session.commit()
+
+    # ---- order dono operator group me jaana chahiye
+    po9 = M.PurchaseOrder(po_number="PO-85", customer_id=cust.id, status="pending",
+                          created_by=u.id)
+    db.session.add(po9)
+    db.session.flush()
+    db.session.add(M.POLine(po_id=po9.id, line_no=1, item_code="GME02", qty=20,
+                            qty_unit="pcs", canonical_key="40.0x140.0x230.0",
+                            match_status="code", map_id=product.id, rate=25))
+    db.session.commit()
+    po9_id = po9.id
+
+    TG.calls.clear()
+    M.send_order_to_operator(db.session.get(M.PurchaseOrder, po9_id))
+    sent_to = {str(c[1]["chat_id"]) for c in TG.of("sendMessage") + TG.of("sendPhoto")}
+    check("order dono operator group me gaya", sent_to, {"-1001", "-1003"})
+    po9 = db.session.get(M.PurchaseOrder, po9_id)
+    check("dono group ke msg yaad rahe",
+          {c for c, _ in M.unpack_msg_ids(po9.tg_message_ids)}, {"-1001", "-1003"})
+
+    # ek group me OK dabao — dono group ke card badalne chahiye
+    TG.calls.clear()
+    M.handle_update(cb(f"ok:{po9_id}", OPERATOR))
+    check("ek jagah OK se order aage badha",
+          db.session.get(M.PurchaseOrder, po9_id).status, "in_production")
+    check("dono group ke card update hue",
+          {str(c[1]["chat_id"]) for c in TG.of("editMessageText")}, {"-1001", "-1003"})
+
+    # ---- rate ka card dono co-owner ko jaye, aur mohar koi bhi laga sake
+    po10 = M.PurchaseOrder(po_number="PO-86", customer_id=cust.id, status="pending",
+                           created_by=u.id)
+    db.session.add(po10)
+    db.session.flush()
+    db.session.add(M.POLine(po_id=po10.id, line_no=1, item_code="GME02", qty=7,
+                            qty_unit="pcs", canonical_key="40.0x140.0x230.0",
+                            match_status="code", map_id=product.id))
+    db.session.commit()
+    po10_id = po10.id
+
+    TG.calls.clear()
+    M.ask_rates(db.session.get(M.PurchaseOrder, po10_id))
+    check("rate ka card dono owner chat me gaya",
+          {str(c[1]["chat_id"]) for c in TG.of("sendMessage")}, {"777", "888"})
+
+    # doosre co-owner ke chat se rate bhejo
+    TG.calls.clear()
+    M.handle_update({"message": {"chat": OWNER2_CHAT, "from": PARTNER, "text": "GME02 40"}})
+    check("doosre co-owner ka rate bhi lagta hai",
+          db.session.get(M.PurchaseOrder, po10_id).lines[0].rate, 40.0)
+    check("jawab usi chat me gaya jahan se aaya",
+          str(TG.of("sendMessage")[-1][1]["chat_id"]), "888")
+
+    # aur mohar bhi wahi laga sake
+    TG.calls.clear()
+    M.handle_update({"callback_query": {"id": "c9", "from": PARTNER,
+                                        "data": f"rates:{po10_id}",
+                                        "message": {"chat": OWNER2_CHAT, "message_id": 1}}})
+    po10 = db.session.get(M.PurchaseOrder, po10_id)
+    check("doosre co-owner ki mohar bhi chalti hai", bool(po10.rates_ok_at), True)
+    check("aur order operator ko chala gaya", po10.status, "with_operator")
+
+    # ---- galti se bani chat list se hatt jaye
+    M.handle_update({"message": {"chat": STRAY_CHAT, "from": OPERATOR, "text": "hi"}})
+    stray = M.TelegramChat.query.filter_by(chat_id="-1009").first()
+    check("galti wala group list me aa gaya", bool(stray), True)
+    stray_id = stray.id
+    client.post("/login", data={"username": "owner", "password": "secret123"},
+                follow_redirects=True)
+    r = client.post(f"/po/telegram/chat/{stray_id}/delete", follow_redirects=True)
+    check("hatane ka rasta chalta hai -> HTTP", r.status_code, 200)
+    check("group list se hat gaya",
+          M.TelegramChat.query.filter_by(chat_id="-1009").first(), None)
+    check("baaki chats waisi hi hain", len(M.chats_for_role("operator")), 2)
 
 # ------------------------------------------------------------------ webhook
 
