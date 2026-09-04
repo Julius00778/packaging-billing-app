@@ -10,8 +10,9 @@
 <div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone" value="{{ customer.phone }}"></div>
 <div class="field"><label>{{ t('gstin_optional') }}</label><input type="text" name="gstin" value="{{ customer.gstin }}"></div>
 </div>
-<div class="form-grid">
+<div class="form-grid three">
 <div class="field"><label>{{ t('address') }}</label><input type="text" name="address" value="{{ customer.address }}"></div>
+<div class="field"><label>{{ t('city') }}</label><input type="text" name="city" value="{{ customer.city or '' }}"></div>
 <div class="field">
 <label>{{ t('state') }}</label>
 <select name="state">
@@ -20,6 +21,20 @@
 <option value="{{ st }}" {% if st==customer.state %}selected{% endif %}>{{ st }}</option>
 {% endfor %}
 </select>
+</div>
+</div>
+<div class="form-grid">
+<div class="field">
+<label>{{ t('map_location') }}</label>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+<input type="text" name="map_link" id="mapEdit" value="{{ customer.map_link or '' }}"
+       placeholder="{{ t('map_placeholder') }}" style="flex:1;min-width:220px;">
+<button class="btn btn-ghost btn-sm" type="button" data-here="mapEdit">{{ t('map_use_here') }}</button>
+{% if customer.map_url %}
+<a class="btn btn-ghost btn-sm" href="{{ customer.map_url }}" target="_blank" rel="noopener">{{ t('map_open') }}</a>
+{% endif %}
+</div>
+<div class="field-help">{{ t('map_hint') }}</div>
 </div>
 </div>
 <div class="form-grid">
@@ -32,4 +47,31 @@
 </div>
 </form>
 </div>
+
+<script>
+// Wahi "meri jagah lo" jo customers wali screen pe hai
+(function () {
+  var btns = document.querySelectorAll('[data-here]');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].addEventListener('click', function () {
+      var box = document.getElementById(this.getAttribute('data-here'));
+      var btn = this;
+      if (!box || !navigator.geolocation) {
+        if (box) { box.placeholder = MAPTXT.noGps; }
+        return;
+      }
+      var was = btn.textContent;
+      btn.textContent = MAPTXT.wait;
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        box.value = pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
+        btn.textContent = was;
+      }, function () {
+        btn.textContent = was;
+        box.placeholder = MAPTXT.noGps;
+      }, { enableHighAccuracy: true, timeout: 10000 });
+    });
+  }
+})();
+</script>
+
 {% endblock %}
