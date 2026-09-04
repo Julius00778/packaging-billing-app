@@ -391,7 +391,9 @@ def categories_page():
         elif Category.query.filter(db.func.lower(Category.name) == name.lower()).first():
             flash(t("flash_category_exists"), "error")
         else:
-            db.session.add(Category(name=name, units=request.form.get("units", "").strip()))
+            db.session.add(Category(name=name,
+                                    units=request.form.get("units", "").strip(),
+                                    colours=request.form.get("colours", "").strip()))
             db.session.commit()
             flash(t("flash_category_added"), "success")
         return redirect(url_for("categories_page"))
@@ -403,11 +405,14 @@ def categories_page():
 @app.route("/items/categories/units", methods=["POST"])
 @login_required
 def category_units():
-    """Har category ki units ek saath save — poori table ek hi form hai."""
+    """Har category ki units aur rang ek saath save — poori table ek hi form hai."""
     for c in Category.query.all():
         field = f"units_{c.id}"
         if field in request.form:
             c.units = (request.form.get(field) or "").strip()
+        field = f"colours_{c.id}"
+        if field in request.form:
+            c.colours = (request.form.get(field) or "").strip()
     db.session.commit()
     flash(t("flash_category_units_saved"), "success")
     return redirect(url_for("categories_page"))
@@ -1316,6 +1321,14 @@ def _run_startup_migrations():
     # purana ek-group wala setup bina chhede chalta rehta hai.
     _add_column_if_missing(inspector, "telegram_chat", "categories",
                            "categories VARCHAR(300) DEFAULT ''")
+    # Rang: category pe jaayaz rang, line pe aur bill ki line pe chuna hua rang.
+    # Foam black bhi jaata hai aur white bhi — ye line ka apna faisla hai.
+    _add_column_if_missing(inspector, "category", "colours",
+                           "colours VARCHAR(200) DEFAULT ''")
+    _add_column_if_missing(inspector, "po_line", "colour",
+                           "colour VARCHAR(40) DEFAULT ''")
+    _add_column_if_missing(inspector, "invoice_item", "colour",
+                           "colour VARCHAR(40) DEFAULT ''")
     # Ek chat ke kai role ho sakte hain, aur ek order kai group me jaata hai.
     # Isliye msg ki pehchan ab "chat:msg" jodon me rehti hai — purane khaane
     # uske liye chhote pad gaye the.
