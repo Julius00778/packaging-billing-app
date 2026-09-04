@@ -974,6 +974,81 @@ for st in po_module.PO_STATUSES:
     ok(f"GET /po/?status={st}", client.get(f"/po/?status={st}"))
 ok("GET /po/mappings?customer_id=", client.get(f"/po/mappings?customer_id={cust_id}"))
 
+# ------------------------------------------ ek naam se do party nahi banti
+# Ye Julius ne pakda: "ek naam se do party kaise ban sakti hai". Ban jaati thi —
+# aur uska natija sabse mehnga hota hai: udhaari, rate aur products do jagah
+# bat jaate hain, aur pata mahine baad chalta hai.
+r = ok("nayi party", client.post("/customers", data={
+    "name": "SARTHAK", "phone": "9000000001", "city": "Aligarh"},
+    follow_redirects=True))
+with app.app_context():
+    check("party ban gayi", Customer.query.filter_by(name="SARTHAK").count(), 1)
+    check("sheher bhi save hua",
+          Customer.query.filter_by(name="SARTHAK").first().city, "Aligarh")
+
+r = ok("wahi naam dobara", client.post("/customers", data={"name": "SARTHAK"},
+                                       follow_redirects=True))
+with app.app_context():
+    check("doosri party nahi bani", Customer.query.filter_by(name="SARTHAK").count(), 1)
+check("screen pe wajah likhi hai", "already on the list" in r.data.decode("utf8", "ignore"))
+
+# Chhote-bade akshar aur beech ka extra space koi farq nahi karte
+ok("chhote akshar aur extra space", client.post("/customers", data={
+    "name": "  sarthak  "}, follow_redirects=True))
+with app.app_context():
+    check("wo bhi nahi bani",
+          len([c for c in Customer.query.all()
+               if " ".join(c.name.split()).lower() == "sarthak"]), 1)
+
+# Sach me do alag party hon toh naam me farq karke ban jaati hai
+ok("naam me farq", client.post("/customers", data={
+    "name": "SARTHAK (Hathras)", "city": "Hathras"}, follow_redirects=True))
+with app.app_context():
+    check("alag naam wali ban gayi",
+          Customer.query.filter_by(name="SARTHAK (Hathras)").count(), 1)
+    sar_id = Customer.query.filter_by(name="SARTHAK").first().id
+    other_id = Customer.query.filter_by(name="SARTHAK (Hathras)").first().id
+
+# Edit karke bhi doosri party ka naam nahi le sakte
+r = ok("edit se naam takrana", client.post(f"/customers/{other_id}/edit", data={
+    "name": "sarthak", "credit_days": "30", "opening_balance": "0"},
+    follow_redirects=True))
+with app.app_context():
+    check("edit se bhi naam nahi badla",
+          db.session.get(Customer, other_id).name, "SARTHAK (Hathras)")
+
+# ---- jagah (GPS) — driver ke liye
+ok("jagah save", client.post(f"/customers/{sar_id}/edit", data={
+    "name": "SARTHAK", "city": "Aligarh", "credit_days": "30",
+    "opening_balance": "0", "map_link": "27.897,78.088"},
+    follow_redirects=True))
+with app.app_context():
+    sar = db.session.get(Customer, sar_id)
+    check("lat,long save hua", sar.map_link, "27.897,78.088")
+    check("usse map ka link banta hai",
+          sar.map_url, "https://www.google.com/maps/search/?api=1&query=27.897,78.088")
+
+    # Google Maps ka apna link waise ka waisa chalta hai
+    sar.map_link = "https://maps.app.goo.gl/abc123"
+    db.session.commit()
+    check("maps ka link waise ka waisa", sar.map_url, "https://maps.app.goo.gl/abc123")
+
+    # Aur jo link jaisa hai hi nahi, wo click karne layak nahi banta —
+    # kisi bhi likhe hue text ko link bana dena khatarnak hai.
+    for bad in ("javascript:alert(1)", "http://kahin-aur.com", "kuch bhi likha",
+                "999,999", ""):
+        sar.map_link = bad
+        db.session.commit()
+        check(f"anjaan text link nahi banta ({bad or 'khaali'})", sar.map_url, "")
+    sar.map_link = "27.897,78.088"
+    db.session.commit()
+
+page = ok("party ki list", client.get("/customers")).data.decode("utf8", "ignore")
+check("list me sheher ka khaana hai", ">Aligarh<" in page)
+check("list me map ka button hai", "maps/search/" in page and "27.897,78.088" in page)
+check("sheher se search bhi chalta hai",
+      b"SARTHAK" in ok("sheher se dhoondho", client.get("/customers?q=aligarh")).data)
+
 # ---------------------------------------------- purani screens abhi bhi chalti hain
 for path in ("/", "/invoices", "/customers", "/items", "/accounts"):
     ok(f"GET {path} (regression)", client.get(path))

@@ -242,6 +242,24 @@ def new_entry():
     return render_template("entry_new.html")
 
 
+def _same_party(name, skip_id=None):
+    """Isi naam ki party pehle se hai kya.
+
+    Naam ko dabaa ke dekha jaata hai — chhote-bade akshar aur beech ke extra
+    space koi farq nahi karte. "Sarthak" aur "SARTHAK  " ek hi party hain, aur
+    do baar bana lene ka matlab hai udhaari do jagah bat jaana.
+    """
+    want = " ".join((name or "").split()).lower()
+    if not want:
+        return None
+    for c in Customer.query.all():
+        if c.id == skip_id:
+            continue
+        if " ".join((c.name or "").split()).lower() == want:
+            return c
+    return None
+
+
 @app.route("/customers", methods=["GET", "POST"])
 @login_required
 def customers():
@@ -250,13 +268,20 @@ def customers():
         c = Customer(
             name=request.form.get("name", "").strip(),
             address=request.form.get("address", "").strip(),
+            city=request.form.get("city", "").strip(),
             phone=request.form.get("phone", "").strip(),
             gstin=request.form.get("gstin", "").strip(),
             state=request.form.get("state", "").strip() or settings.default_customer_state,
+            map_link=request.form.get("map_link", "").strip(),
             credit_days=settings.default_credit_days or 30,
         )
+        clash = _same_party(c.name)
         if not c.name:
             flash(t("flash_customer_name_required"), "error")
+        elif clash:
+            # Ek naam ki do party sabse mehngi galti hai — udhaari, rate aur
+            # products sab do jagah bat jaate hain, aur pata baad me chalta hai.
+            flash(t("flash_customer_exists", name=clash.name), "error")
         else:
             db.session.add(c)
             db.session.commit()
@@ -266,7 +291,9 @@ def customers():
     q = request.args.get("q", "").strip().lower()
     items = Customer.query.order_by(Customer.name).all()
     if q:
-        items = [c for c in items if q in c.name.lower() or q in (c.phone or "")]
+        items = [c for c in items
+                 if q in c.name.lower() or q in (c.phone or "")
+                 or q in (c.city or "").lower()]
     return render_template("customers.html", customers=items, q=q, settings=settings)
 
 
@@ -275,11 +302,21 @@ def customers():
 def edit_customer(cid):
     c = Customer.query.get_or_404(cid)
     if request.method == "POST":
-        c.name = request.form.get("name", "").strip()
+        new_name = request.form.get("name", "").strip()
+        clash = _same_party(new_name, skip_id=c.id)
+        if not new_name:
+            flash(t("flash_customer_name_required"), "error")
+            return render_template("customer_form.html", customer=c)
+        if clash:
+            flash(t("flash_customer_exists", name=clash.name), "error")
+            return render_template("customer_form.html", customer=c)
+        c.name = new_name
         c.address = request.form.get("address", "").strip()
+        c.city = request.form.get("city", "").strip()
         c.phone = request.form.get("phone", "").strip()
         c.gstin = request.form.get("gstin", "").strip()
         c.state = request.form.get("state", "").strip()
+        c.map_link = request.form.get("map_link", "").strip()
         c.opening_balance = float(request.form.get("opening_balance") or 0)
         c.credit_days = int(request.form.get("credit_days") or 30)
         db.session.commit()
@@ -1329,6 +1366,11 @@ def _run_startup_migrations():
                            "colour VARCHAR(40) DEFAULT ''")
     _add_column_if_missing(inspector, "invoice_item", "colour",
                            "colour VARCHAR(40) DEFAULT ''")
+    # Party ka sheher aur uski jagah — maal bhejte waqt dono kaam aate hain.
+    _add_column_if_missing(inspector, "customer", "city",
+                           "city VARCHAR(120) DEFAULT ''")
+    _add_column_if_missing(inspector, "customer", "map_link",
+                           "map_link VARCHAR(500) DEFAULT ''")
     # Ek chat ke kai role ho sakte hain, aur ek order kai group me jaata hai.
     # Isliye msg ki pehchan ab "chat:msg" jodon me rehti hai — purane khaane
     # uske liye chhote pad gaye the.

@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
@@ -106,12 +107,39 @@ class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     address = db.Column(db.String(300), default="")
+    city = db.Column(db.String(120), default="")
     phone = db.Column(db.String(40), default="")
     gstin = db.Column(db.String(20), default="")
     state = db.Column(db.String(80), default="")
+    # Party ki jagah — ya toh Google Maps ka link, ya "lat,long". Driver ko
+    # bhejne ke kaam aati hai. Kaagaz pe nahi chhapti, sirf app me rehti hai.
+    map_link = db.Column(db.String(500), default="")
     opening_balance = db.Column(db.Float, default=0.0)  # +ve = customer owes firm
     credit_days = db.Column(db.Integer, default=30)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def map_url(self):
+        """Map kholne ka safe link — ya khaali.
+
+        Do hi shaklein maani jaati hain: "lat,long" (phone se apne aap aati
+        hai) ya Google Maps ka apna https link. Baaki kuch bhi likha ho toh
+        link nahi banta — kisi bhi likhe hue text ko click karne layak bana
+        dena khatarnak hai.
+        """
+        raw = (self.map_link or "").strip()
+        if not raw:
+            return ""
+        m = re.match(r"^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$", raw)
+        if m:
+            lat, lng = float(m.group(1)), float(m.group(2))
+            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                return f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
+            return ""
+        low = raw.lower()
+        ok = ("https://www.google.com/maps", "https://maps.google.com",
+              "https://maps.app.goo.gl", "https://goo.gl/maps")
+        return raw if any(low.startswith(p) for p in ok) else ""
 
 
 class Category(db.Model):
