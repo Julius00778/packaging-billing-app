@@ -5,6 +5,7 @@ TRANSLATIONS = {
     "en": {
         # brand / nav
         "tagline": "Billing & Invoices",
+        "nav_menu": "Menu",
         "nav_dashboard": "Dashboard",
         "nav_invoices": "Invoices",
         "nav_customers": "Customers",
@@ -751,6 +752,7 @@ TRANSLATIONS = {
     },
     "hi": {
         "tagline": "बिलिंग और इनवॉइस",
+        "nav_menu": "मेन्यू",
         "nav_dashboard": "डैशबोर्ड",
         "nav_invoices": "इनवॉइस",
         "nav_customers": "ग्राहक",

@@ -1049,6 +1049,104 @@ check("list me map ka button hai", "maps/search/" in page and "27.897,78.088" in
 check("sheher se search bhi chalta hai",
       b"SARTHAK" in ok("sheher se dhoondho", client.get("/customers?q=aligarh")).data)
 
+# ============================================================ Hissa 1: dikhna aur hifazat
+
+# ------------------------------------------------- challan ka halat sach bole
+# Dashboard pe challan "₹0.00 · Unpaid" dikhta tha. Dono jhooth hain: rate
+# abhi tay hi nahi hua, isliye na koi raqam hai aur na kisi ne paisa maanga
+# hai. Ab wahan lakeer aur "rate baaki" dikhta hai.
+with app.app_context():
+    ch = Invoice.query.filter_by(hide_pricing=True, consolidated_into_id=None).first()
+    if ch is None:
+        _c0 = Customer.query.first()
+        ch = Invoice(invoice_no="CH-UI-1", date="2026-01-05", customer_id=_c0.id,
+                     subtotal=0, grand_total=0, payment_status="unpaid",
+                     hide_pricing=True)
+        db.session.add(ch)
+        db.session.commit()
+    ch_no = ch.invoice_no
+
+home = ok("dashboard", client.get("/")).data.decode("utf8", "ignore")
+check("dashboard pe challan ke saath ₹0.00 nahi likha",
+      ("₹0.00" in home and "amt-none" not in home), False)
+check("dashboard pe 'rate baaki' wala nishaan hai", "badge-info" in home)
+check("dashboard pe raqam ki jagah lakeer hai", "amt-none" in home)
+
+invl = ok("bill ki list", client.get("/invoices")).data.decode("utf8", "ignore")
+check("list pe bhi wahi nishaan", "badge-info" in invl)
+check("challan ka number list me hai", ch_no in invl)
+
+# Bill jispe rate hai, uska halat waisa hi rehna chahiye.
+with app.app_context():
+    paid_inv = Invoice.query.filter_by(hide_pricing=False).first()
+    if paid_inv is not None:
+        paid_inv.payment_status = "paid"
+        db.session.commit()
+invl2 = client.get("/invoices").data.decode("utf8", "ignore")
+check("bhugtan hua bill hara hi rehta hai", "badge-ok" in invl2)
+
+# Order ka nishaan bhi ek hi jagah se banta hai.
+po_pg = ok("order ki list", client.get("/po/")).data.decode("utf8", "ignore")
+check("order ki list pe naya nishaan", "badge-" in po_pg)
+
+# Rang ke bina bhi halat padha jaana chahiye — har nishaan me shabd hai.
+css = open(os.path.join(os.path.dirname(__file__), "static", "style.css")).read()
+for tone in ("badge-ok", "badge-warn", "badge-bad", "badge-info",
+             "badge-blue", "badge-teal", "badge-muted", "amt-none"):
+    check(f"{tone} ka rang CSS me hai", "." + tone in css)
+
+# ------------------------------------------------------- chhoti screen ka menu
+# Phone pe 8 tab ek line me nahi aate. Ab ek button hai; nav uske neeche
+# khulta hai. JS band ho toh nav khula hi rehna chahiye — warna phone pe
+# software se bahar nikalne ka raasta hi nahi bachta.
+check("menu ka button hai", 'id="navToggle"' in home)
+check("button batata hai wo kis cheez ko kholta hai", 'aria-controls="mainnav"' in home)
+check("shuru me band dikhta hai", 'aria-expanded="false"' in home)
+check("nav ko naam mila", 'id="mainnav"' in home)
+check("abhi ki screen par nishaan lagta hai", 'aria-current="page"' in home)
+check("CSS me menu ka button chhupa hai (bade screen pe)", ".nav-toggle{display:none" in css)
+check("JS chale tabhi nav band hota hai", ".topbar.nav-js .tabs{display:none;}" in css)
+check("chhoti screen pe button dikhta hai", ".nav-toggle{display:inline-flex;}" in css)
+check("keyboard wale ko focus dikhta hai", "focus-visible" in css)
+
+# ------------------------------------------------------------- hifazat ke sar
+r = client.get("/")
+check("file ka type browser khud nahi taadta",
+      r.headers.get("X-Content-Type-Options"), "nosniff")
+check("bahar ki site hamara page apne andar nahi khol sakti",
+      r.headers.get("X-Frame-Options"), "SAMEORIGIN")
+check("pata bahar nahi jaata", r.headers.get("Referrer-Policy"), "same-origin")
+csp = r.headers.get("Content-Security-Policy", "")
+check("bahar se script nahi aa sakti", "script-src 'self' 'unsafe-inline'" in csp)
+check("form kisi aur site pe nahi ja sakta", "form-action 'self'" in csp)
+check("apna bill preview phir bhi khulta hai", "frame-ancestors 'self'" in csp)
+check("font Google se aata hai isliye wo khula hai",
+      "https://fonts.gstatic.com" in csp)
+# Bill ka preview iframe me khulta hai — DENY laga diya toh wo khaali dikhega.
+check("X-Frame-Options DENY nahi hai", r.headers.get("X-Frame-Options") != "DENY")
+
+# Login ki parchi ke taale
+check("parchi JS se nahi padhi ja sakti", app.config["SESSION_COOKIE_HTTPONLY"], True)
+check("bahar ke form hamare naam pe kaam nahi karte",
+      app.config["SESSION_COOKIE_SAMESITE"], "Lax")
+# Laptop/test pe sqlite hai, jahan https hota hi nahi — wahan Secure band
+# rehna chahiye warna local pe login hi na ho.
+check("sqlite pe Secure band (warna local login toot jaata)",
+      app.config["SESSION_COOKIE_SECURE"], False)
+import app as _appmod2                                       # noqa: E402
+src = open(os.path.join(os.path.dirname(__file__), "app.py")).read()
+check("asli server (postgres) pe Secure chalu ho jaata hai",
+      'app.config["SESSION_COOKIE_SECURE"] = not db_url.startswith("sqlite")' in src)
+
+# --------------------------------------------------------- login ka form theek
+lg = ok("login ka page", client.get("/login")).data.decode("utf8", "ignore")
+check("password manager ko username samajh aata hai", 'autocomplete="username"' in lg)
+check("password manager ko password samajh aata hai",
+      'autocomplete="current-password"' in lg)
+check("label input se juda hua hai", 'for="username"' in lg and 'id="username"' in lg)
+check("naam ka pehla akshar apne aap bada nahi hota",
+      'autocapitalize="none"' in lg)
+
 # ---------------------------------------------- purani screens abhi bhi chalti hain
 for path in ("/", "/invoices", "/customers", "/items", "/accounts"):
     ok(f"GET {path} (regression)", client.get(path))

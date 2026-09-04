@@ -47,6 +47,18 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # pe use resize kar deta hai, isliye DB me chhoti hi jaati hai.
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
+# ---------------------------------------------------------------- session ki hifazat
+# Login ki parchi (cookie) sirf browser ke paas rehni chahiye:
+#  - HTTPONLY: page ka JavaScript use padh na sake, taaki kisi bhi tarah ka
+#    ghusa hua script use churaa na le.
+#  - SAMESITE Lax: kisi aur website se aaya hua form hamare naam pe kaam na
+#    kar sake, magar Telegram/WhatsApp se aaya seedha link chalta rahe.
+#  - SECURE: parchi sirf https pe jaaye. Laptop pe (sqlite) https hota hi
+#    nahi, isliye wahan band — warna local pe login hi na ho.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = not db_url.startswith("sqlite")
+
 db.init_app(app)
 
 login_manager = LoginManager(app)
@@ -101,6 +113,41 @@ def inject_globals():
     return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
                 t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS,
                 asset_v=_asset_v)
+
+
+@app.after_request
+def _security_headers(resp):
+    """Har jawab ke saath browser ko kuch bandishen bhi bhejo.
+
+    Ye kuch dikhta nahi, par bahar ki koi website hamare page ko apne andar
+    khol ke uske upar apna button nahi rakh sakti, aur browser file ka type
+    khud se andaza laga ke usko chala nahi sakta.
+    """
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    # SAMEORIGIN, DENY nahi — bill ka preview khud hamare hi page ke andar
+    # iframe me khulta hai.
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    resp.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
+    # 'unsafe-inline' abhi zaroori hai: screen ke andar likha hua style aur
+    # script poore software me phaila hua hai. Bahar se koi script nahi
+    # aa sakti — yahi asli fayda hai.
+    resp.headers.setdefault("Content-Security-Policy", (
+        "default-src 'self'; "
+        "img-src 'self' data: blob:; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "object-src 'none'"
+    ))
+    if request.is_secure:
+        resp.headers.setdefault("Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains")
+    return resp
 
 
 @app.route("/lang/<code>")
