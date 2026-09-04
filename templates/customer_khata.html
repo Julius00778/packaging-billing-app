@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "accounts" %}
 {% block title %}{{ t('customer_khata') }} — {{ customer.name }}{% endblock %}
+{% import "_badges.html" as B with context %}
 {% block content %}
 
 <div class="toolbar">
@@ -40,7 +41,7 @@
 <td>{{ e.date }}</td>
 <td>
 {% if e.link %}<a href="{{ e.link }}">{{ e.ref }}</a>{% else %}{{ e.ref }}{% endif %}
-{% if e.kind == 'challan' %}<span class="badge challan">{{ t('converted') if e.consolidated else t('pending_rate') }}</span>{% endif %}
+{% if e.kind == 'challan' %}{% if e.consolidated %}<span class="{{ B.tone('converted') }}">{{ t('converted') }}</span>{% else %}<span class="{{ B.tone('rate_pending') }}">{{ t('pending_rate') }}</span>{% endif %}{% endif %}
 </td>
 {% if e.kind == 'challan' %}
 <td class="num">—</td>

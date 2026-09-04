@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "po" %}
 {% block title %}{{ po.po_number }}{% endblock %}
+{% import "_badges.html" as B with context %}
 {% block content %}
 
 <div class="toolbar">
@@ -11,9 +12,7 @@
       {% if mixed %} · <strong>{{ t('po_mixed_warning') }}</strong>{% endif %}
     </div>
   </div>
-  <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
-    {{ t('po_status_' + po.status) }}
-  </span>
+  {{ B.po_badge(po.status) }}
   <a class="btn btn-ghost" href="{{ url_for('po.po_list') }}">{{ t('po_back') }}</a>
 </div>
 
@@ -303,9 +302,7 @@
       {% else %}
         <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px;">
           <span style="font-weight:600;">{{ t('po_now') }}</span>
-          <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
-            {{ t('po_status_' + po.status) }}
-          </span>
+          {{ B.po_badge(po.status) }}
           {% if po.operator_name %}
             <span style="font-size:12px;color:var(--ink-faint);">{{ po.operator_name }}</span>
           {% endif %}
@@ -330,9 +327,7 @@
                     · {{ n }} {{ t('po_parts_line') if n == 1 else t('po_parts_lines') }}
                   </span>
                 </span>
-                <span class="badge {{ 'paid' if p.status == 'made' else ('partial' if p.status == 'in_production' else 'challan') }}">
-                  {{ t('po_status_' + p.status) }}
-                </span>
+                {{ B.po_badge(p.status) }}
                 {% if p.operator_name %}
                   <span style="font-size:12px;color:var(--ink-faint);">{{ p.operator_name }}</span>
                 {% endif %}

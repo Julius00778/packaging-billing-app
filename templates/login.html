@@ -25,20 +25,28 @@
 <div class="field">
 <label>{{ t('login_as') }}</label>
 <input type="hidden" name="role" id="role_input" value="owner">
-<div class="btn-row" style="gap:8px;">
-<button type="button" class="btn btn-ghost active" id="role_owner_btn" style="flex:1;" onclick="setLoginRole('owner')">{{ t('role_admin') }}</button>
-<button type="button" class="btn btn-ghost" id="role_staff_btn" style="flex:1;" onclick="setLoginRole('staff')">{{ t('staff') }}</button>
+<div class="btn-row" style="gap:8px;" role="group" aria-label="{{ t('login_as') }}">
+<button type="button" class="btn btn-ghost active" id="role_owner_btn" style="flex:1;" aria-pressed="true" onclick="setLoginRole('owner')">{{ t('role_admin') }}</button>
+<button type="button" class="btn btn-ghost" id="role_staff_btn" style="flex:1;" aria-pressed="false" onclick="setLoginRole('staff')">{{ t('staff') }}</button>
 </div>
 </div>
-<div class="field"><label>{{ t('username') }}</label><input type="text" name="username" required autofocus></div>
-<div class="field"><label>{{ t('password') }}</label><input type="password" name="password" required></div>
+<div class="field"><label for="username">{{ t('username') }}</label>
+<input type="text" id="username" name="username" required autofocus
+       autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+<div class="field"><label for="password">{{ t('password') }}</label>
+<input type="password" id="password" name="password" required
+       autocomplete="current-password"></div>
 <div class="btn-row"><button class="btn btn-primary" type="submit" style="width:100%;">{{ t('login_btn') }}</button></div>
 </form>
 <script>
 function setLoginRole(role) {
     document.getElementById('role_input').value = role;
-    document.getElementById('role_owner_btn').classList.toggle('active', role === 'owner');
-    document.getElementById('role_staff_btn').classList.toggle('active', role === 'staff');
+    var o = document.getElementById('role_owner_btn');
+    var st = document.getElementById('role_staff_btn');
+    o.classList.toggle('active', role === 'owner');
+    st.classList.toggle('active', role === 'staff');
+    o.setAttribute('aria-pressed', role === 'owner' ? 'true' : 'false');
+    st.setAttribute('aria-pressed', role === 'staff' ? 'true' : 'false');
 }
 </script>
 </div>

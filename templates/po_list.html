@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "po" %}
 {% block title %}{{ t('po_orders') }}{% endblock %}
+{% import "_badges.html" as B with context %}
 {% block content %}
 
 {# Ek hi manzil: Orders. Setup wale link (Products, Drive, Telegram) Settings me
@@ -47,9 +48,7 @@
             {% endif %}
           </td>
           <td>
-            <span class="badge {{ 'paid' if po.status in ['made','dispatched'] else ('partial' if po.status == 'in_production' else ('unpaid' if po.status == 'rejected' else 'challan')) }}">
-              {{ t('po_status_' + po.status) }}
-            </span>
+            {{ B.po_badge(po.status) }}
             {% if po.operator_name %}<div style="font-size:11px;color:var(--ink-faint);">{{ po.operator_name }}</div>{% endif %}
           </td>
           <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open') }}</a></td>

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "dashboard" %}
 {% block title %}{{ t('nav_dashboard') }}{% endblock %}
+{% import "_badges.html" as B with context %}
 {% block content %}
 
 {# Dashboard ka pehla sawaal "ab tak kitna" nahi hota — "aaj kya karna hai"
@@ -103,7 +104,7 @@
 {% for inv in recent %}
 <div class="low-stock-row">
 <span>{{ inv.customer.name }} <span style="color:var(--ink-faint);">— {{ inv.invoice_no }} · {{ inv.date }}</span></span>
-<span><span class="mono" style="font-weight:600;">₹{{ "%.2f"|format(inv.grand_total) }}</span> <span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span></span>
+<span><span class="mono" style="font-weight:600;">{{ B.invoice_amount(inv) }}</span> {{ B.invoice_badge(inv) }}</span>
 </div>
 {% endfor %}
 {% else %}
