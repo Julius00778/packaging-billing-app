@@ -82,6 +82,7 @@
             <th class="c-no"></th>
             <th class="c-prod">{{ t('po_product') }}</th>
             <th class="c-size">{{ t('po_size') }}</th>
+            <th class="c-colour">{{ t('po_colour') }}</th>
             <th class="c-qty num">{{ t('po_qty') }}</th>
             <th class="c-unit">{{ t('po_unit') }}</th>
             <th class="c-amt num">{{ t('po_amount') }}</th>
@@ -161,7 +162,8 @@
     newItem:   {{ t('po_new_item_note')|tojson }},
     noRate:    {{ t('po_no_rate_yet')|tojson }},
     partyHelp: {{ t('po_party_help')|tojson }},
-    partyHas:  {{ t('po_party_has_n')|tojson }}
+    partyHas:  {{ t('po_party_has_n')|tojson }},
+    pickColour: {{ t('po_pick_colour')|tojson }}
   };
 
   // Party ka maal — code se dhoondhne ke liye ek naksha
@@ -215,6 +217,9 @@
         '<div class="line-name"><\/div>' +
       '<\/td>' +
       '<td class="c-size"><input type="text" name="line_size" placeholder="23x14x5"><\/td>' +
+      // Rang har maal me nahi hota. Jis maal me hota hai wahan chunav khulta
+      // hai; baaki jagah khaana dikhta hi nahi, warna form bhara-bhara lagta.
+      '<td class="c-colour"><select name="line_colour" class="line-colour" hidden><\/select><\/td>' +
       '<td class="c-qty"><input type="number" step="0.01" min="0" name="line_qty" ' +
              'inputmode="decimal"><\/td>' +
       '<td class="c-unit"><select name="line_unit"><\/select><\/td>' +
@@ -228,8 +233,29 @@
     get(tr, 'line_code').value = v.code || '';
     get(tr, 'line_size').value = v.size || '';
     get(tr, 'line_qty').value  = v.qty  || '';
+    tr.dataset.wantColour = v.colour || '';
     paint(tr);
     return tr;
+  }
+
+  // Rang ka chunav — sirf us maal pe jiske liye rang likhe hain. Khaali
+  // chunav jaan-boojh ke rakha hai taaki aadmi galti se pehla rang na bhej de;
+  // bina chune bhejne pe server saaf bata deta hai ki rang chahiye.
+  function setColours(tr, colours) {
+    var sel = tr.querySelector('.line-colour');
+    if (!sel) { return; }
+    if (!colours || !colours.length) {
+      sel.innerHTML = '';
+      sel.hidden = true;
+      return;
+    }
+    var want = sel.value || tr.dataset.wantColour || '';
+    sel.innerHTML = '<option value="">' + TXT.pickColour + '<\/option>' +
+      colours.map(function (c) {
+        return '<option value="' + c + '">' + c + '<\/option>';
+      }).join('');
+    if (colours.indexOf(want) !== -1) { sel.value = want; }
+    sel.hidden = false;
   }
 
   function setUnits(tr, units, want) {
@@ -258,6 +284,7 @@
       name.textContent = code ? TXT.newItem : '';
       name.className = 'line-name' + (code ? ' warn' : '');
       sizeIn.readOnly = false;
+      setColours(tr, []);
       amt.textContent = '—';
       amt.title = '';
       tr.dataset.amount = '';
@@ -269,6 +296,7 @@
     // Ek code = ek product = ek size. Size haath se badalne ka matlab nahi.
     if (p.size) { sizeIn.value = p.size; sizeIn.readOnly = true; }
     else { sizeIn.readOnly = false; }
+    setColours(tr, p.colours || []);
     setUnits(tr, (p.units && p.units.length) ? p.units : UNITS,
              get(tr, 'line_unit').value);
 

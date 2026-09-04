@@ -164,6 +164,7 @@
           <div class="table-wrap">
             <table>
               <thead><tr><th>{{ t('po_code') }}</th><th>{{ t('po_product') }}</th>
+                         <th>{{ t('po_colour') }}</th>
                          <th>{{ t('po_qty') }}</th><th>{{ t('po_unit') }}</th>
                          <th>{{ t('po_rate') }}</th><th>{{ t('po_amount') }}</th></tr></thead>
               <tbody>
@@ -172,6 +173,26 @@
                 <tr>
                   <td class="mono" style="font-weight:600;">{{ line.item_code or '—' }}</td>
                   <td>{{ line.mapping.label if line.mapping else line.raw_size_text }}</td>
+                  {# Rang: photo ya paste se aaye order me likha hi nahi hota,
+                     aur galat rang bhi yahin sudharta hai. Jis maal me rang ka
+                     sawaal hi nahi, wahan khaana khaali rehta hai. #}
+                  {% set shades = line.mapping.item.category.colour_list()
+                                  if (line.mapping and line.mapping.item and line.mapping.item.category) else [] %}
+                  <td style="width:120px;">
+                    {% if shades %}
+                      <select name="colour_{{ line.id }}">
+                        <option value="">{{ t('po_pick_colour') }}</option>
+                        {% for sh in shades %}
+                          <option value="{{ sh }}" {% if sh == line.colour %}selected{% endif %}>{{ sh }}</option>
+                        {% endfor %}
+                      </select>
+                      {% if not line.colour %}
+                        <div style="font-size:11px;color:var(--warn, #9a6b00);">{{ t('po_colour_missing') }}</div>
+                      {% endif %}
+                    {% else %}
+                      <span style="color:var(--ink-faint);">—</span>
+                    {% endif %}
+                  </td>
                   <td class="num">{{ line.qty|round(2) }}</td>
                   <td style="width:110px;">
                     {# Sirf usi maal ki units — foam piece ya roll me, scrap kilo me.
