@@ -144,7 +144,12 @@ def _security_headers(resp):
         "form-action 'self'; "
         "object-src 'none'"
     ))
-    if request.is_secure:
+    # "Ab se hamesha https se hi aana" — ye sirf tabhi bhejna hai jab connection
+    # sach me https ho. Railway pe taala uske apne darwaze pe khulta hai aur
+    # hamare tak sada http aata hai, isliye Flask ko lagta hai connection
+    # khula hua hai; asli baat X-Forwarded-Proto me likhi hoti hai.
+    fwd = (request.headers.get("X-Forwarded-Proto", "") or "").split(",")[0].strip().lower()
+    if request.is_secure or fwd == "https":
         resp.headers.setdefault("Strict-Transport-Security",
                                 "max-age=31536000; includeSubDomains")
     return resp

@@ -1125,6 +1125,22 @@ check("font Google se aata hai isliye wo khula hai",
 # Bill ka preview iframe me khulta hai — DENY laga diya toh wo khaali dikhega.
 check("X-Frame-Options DENY nahi hai", r.headers.get("X-Frame-Options") != "DENY")
 
+# "Ab se hamesha https" wala sar — Railway pe taala uske darwaze pe khulta hai
+# aur hamare tak sada http aata hai, isliye Flask ko https dikhta hi nahi.
+# Sach X-Forwarded-Proto me likha hota hai.
+check("sade http pe HSTS nahi jaata",
+      client.get("/").headers.get("Strict-Transport-Security"), None)
+r_https = client.get("/", headers={"X-Forwarded-Proto": "https"})
+check("asli server (https ke peeche) pe HSTS jaata hai",
+      "max-age=31536000" in (r_https.headers.get("Strict-Transport-Security") or ""))
+# Kayi proxy ho toh sar me list aati hai — pehla wala asli hota hai.
+r_list = client.get("/", headers={"X-Forwarded-Proto": "https, http"})
+check("proxy ki list me pehla wala padha jaata hai",
+      "max-age=31536000" in (r_list.headers.get("Strict-Transport-Security") or ""))
+check("jhoothe http pe HSTS nahi",
+      client.get("/", headers={"X-Forwarded-Proto": "http"})
+            .headers.get("Strict-Transport-Security"), None)
+
 # Login ki parchi ke taale
 check("parchi JS se nahi padhi ja sakti", app.config["SESSION_COOKIE_HTTPONLY"], True)
 check("bahar ke form hamare naam pe kaam nahi karte",
