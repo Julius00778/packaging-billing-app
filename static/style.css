@@ -412,6 +412,9 @@ body.bill-overlay-open{overflow:hidden;}
   padding-top:15px;text-align:right;}
 .lines-table .c-prod{min-width:190px;}
 .lines-table .c-size{width:150px;}
+/* Rang ka khaana sirf us maal pe khulta hai jisme rang hota hai — baaki
+   line pe khaali rehta hai, isliye chaudai chhoti rakhi hai. */
+.lines-table .c-colour{width:130px;}
 .lines-table .c-qty{width:104px;}
 .lines-table .c-qty input{text-align:right;font-family:'IBM Plex Mono',monospace;}
 .lines-table .c-unit{width:112px;}
@@ -440,4 +443,5 @@ body.bill-overlay-open{overflow:hidden;}
   .sheet-card{padding:16px 14px;}
   .lines-table .c-prod{min-width:150px;}
   .lines-table .c-size{width:120px;}
+  .lines-table .c-colour{width:110px;}
 }

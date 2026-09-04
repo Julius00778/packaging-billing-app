@@ -606,11 +606,140 @@ check("office wali copy aayi",
 r = ok("ulta-seedha copies value", client.get(f"/invoices/{old_inv_id}/preview?copies=xyz"))
 check("anjaan value pe dono copy", r.data.decode("utf8", "ignore").count('class="pinv-half"'), 2)
 
+# ------------------------------------------------- rang (black / white)
+# Foam black bhi jaata hai aur white bhi. Rang line ka apna faisla hai, product
+# ka nahi — isliye order bharte waqt chunna padta hai, aur wahi rang aage
+# operator, bill aur challan tak jaata hai.
+from models import Category as _Cat2
+import po_module as _M2
+with app.app_context():
+    foam = _Cat2.query.filter_by(name="Foam").first()
+    if not foam:
+        foam = _Cat2(name="Foam", units="pcs, roll")
+        db.session.add(foam)
+        db.session.flush()
+    foam.colours = "black, white"
+    fitem = Item(name="FM01 sheet", category_id=foam.id, track_stock=False)
+    db.session.add(fitem)
+    db.session.flush()
+    fprod = _M2.PartyProductMap(customer_id=cust_id, item_code="FM01",
+                                canonical_key="50.0x300.0x450.0",
+                                raw_size_text="30x45x5", label="FM01 (30x45x5)",
+                                item_id=fitem.id, image_data=b"\xff\xd8\xff-foam")
+    db.session.add(fprod)
+    db.session.commit()
+    check("category pe rang lag gaye", foam.colour_list(), ["black", "white"])
+
+r = ok("rang bhi list me jaata hai", client.get(f"/po/party/{cust_id}/products"))
+frow = [x for x in r.get_json()["products"] if x["code"] == "FM01"][0]
+check("product ke saath uske rang aate hain", frow["colours"], ["black", "white"])
+# Jis maal ki category me rang nahi likhe, uske liye khaali — tab form pe
+# rang ka khaana khulta hi nahi.
+with app.app_context():
+    noc = _Cat2.query.filter_by(name="Thermacol").first()
+    if not noc:
+        noc = _Cat2(name="Thermacol", units="pcs")
+        db.session.add(noc)
+        db.session.flush()
+    noc.colours = ""
+    nitem = Item(name="NC01 sheet", category_id=noc.id, track_stock=False)
+    db.session.add(nitem)
+    db.session.flush()
+    db.session.add(_M2.PartyProductMap(customer_id=cust_id, item_code="NC01",
+                                       canonical_key="10.0x10.0",
+                                       raw_size_text="1x1", label="NC01",
+                                       item_id=nitem.id))
+    db.session.commit()
+r = ok("bina rang wale maal ki list", client.get(f"/po/party/{cust_id}/products"))
+nrow = [x for x in r.get_json()["products"] if x["code"] == "NC01"][0]
+check("jis maal me rang nahi, uske liye khaali", nrow["colours"], [])
+
+# Bina rang bheja toh order banna hi nahi chahiye — warna operator ko phone
+# karna padega ki black banana hai ya white.
+before = None
+with app.app_context():
+    before = PurchaseOrder.query.count()
+r = ok("bina rang wala order", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-COL-1", "size_unit": "cm",
+    "entry_mode": "rows",
+    "line_code": ["FM01"], "line_size": [""], "line_colour": [""],
+    "line_qty": ["10"], "line_unit": ["pcs"],
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    check("rang bina order nahi bana", PurchaseOrder.query.count(), before)
+    check("us number pe kuch nahi bana",
+          PurchaseOrder.query.filter_by(po_number="PO-COL-1").count(), 0)
+check("screen pe saaf wajah likhi hai",
+      "FM01" in r.data.decode("utf8", "ignore")
+      and "colour" in r.data.decode("utf8", "ignore").lower())
+
+ok("rang ke saath order", client.post("/po/new", data={
+    "customer_id": str(cust_id), "po_number": "PO-COL-2", "size_unit": "cm",
+    "entry_mode": "rows",
+    "line_code": ["FM01"], "line_size": [""], "line_colour": ["black"],
+    "line_qty": ["10"], "line_unit": ["pcs"],
+}, content_type="multipart/form-data", follow_redirects=True))
+with app.app_context():
+    cpo = PurchaseOrder.query.filter_by(po_number="PO-COL-2").first()
+    check("rang ke saath order ban gaya", bool(cpo), True)
+    check("line pe rang laga", cpo.lines[0].colour, "black")
+    cpo_id = cpo.id
+    # Operator ke card pe rang dikhna chahiye — banane wale ko pehle hi pata ho
+    card = _M2.order_card_text(cpo, cpo.lines[0])
+    check("operator ke card pe rang hai", "black" in card)
+    check("rate ke sawaal me bhi rang hai", "black" in _M2.line_detail(cpo.lines[0]))
+
+# Galat ya chhoot gaya rang screen se sudharta hai — photo/paste se aaye
+# order me rang likha hi nahi hota, wo yahin se lagta hai.
+with app.app_context():
+    cpo = db.session.get(PurchaseOrder, cpo_id)
+    lid = cpo.lines[0].id
+ok("rang white kar do", client.post(f"/po/{cpo_id}/rates",
+                                   data={f"colour_{lid}": "white",
+                                         f"unit_{lid}": "pcs"},
+                                   follow_redirects=True))
+with app.app_context():
+    check("rang badal gaya", db.session.get(PurchaseOrder, cpo_id).lines[0].colour, "white")
+    # Jo rang list me hi nahi, wo nahi lagna chahiye
+    client.post(f"/po/{cpo_id}/rates", data={f"colour_{lid}": "pink",
+                                             f"unit_{lid}": "pcs"},
+                follow_redirects=True)
+    check("anjaan rang nahi lagta", db.session.get(PurchaseOrder, cpo_id).lines[0].colour, "white")
+
+page = ok("order screen pe rang ka chunav", client.get(f"/po/{cpo_id}")).data.decode("utf8", "ignore")
+check("screen pe rang ka khaana hai", f'name="colour_{lid}"' in page)
+
+# Aur wahi rang bill ki line tak pahunchna chahiye — bina iske kaagaz pe rang
+# aata hi nahi, chahe order me chuna gaya ho.
+ok("rate daal do", client.post(f"/po/{cpo_id}/rates",
+                               data={f"rate_{lid}": "40", f"unit_{lid}": "pcs",
+                                     f"colour_{lid}": "white"},
+                               follow_redirects=True))
+with app.app_context():
+    cpo = db.session.get(PurchaseOrder, cpo_id)
+    cinv, made = _M2.make_invoice(cpo)
+    check("rang order se bill ki line me utar aaya", cinv.items[0].colour, "white")
+    cinv_id = cinv.id
+cpage = ok("us bill ka kaagaz",
+           client.get(f"/invoices/{cinv_id}/preview")).data.decode("utf8", "ignore")
+check("kaagaz pe wahi rang chhapa", "white" in cpage)
+
+# Ye bill sirf jaanch ke liye tha — hata dete hain, warna aage ke ginti wale
+# test me ek extra bill ghus jaata hai.
+with app.app_context():
+    cpo = db.session.get(PurchaseOrder, cpo_id)
+    cpo.invoice_id = None
+    cinv = db.session.get(Invoice, cinv_id)
+    for it in list(cinv.items):
+        db.session.delete(it)
+    db.session.delete(cinv)
+    db.session.commit()
+client.post(f"/po/{cpo_id}/reject", follow_redirects=True)
+
 # ------------------------------------- bina naap wala maal (tape, blister)
 # Julius ne pakda: "blister aur tape size ke hisaab se nahi jaate". Aise maal
 # ki pehchan sirf code se hoti hai — naap ka khaana khaali rehta hai, aur us
-# wajah se na photo ruknI chahiye, na record.
-import po_module as _M2
+# wajah se na photo rukni chahiye, na record.
 with app.app_context():
     tape = _M2.PartyProductMap(customer_id=cust_id, item_code="TP01",
                                canonical_key="", raw_size_text="",
@@ -683,6 +812,25 @@ check("aur na hi kul jama", total_txt in chal, False)
 check("par maal ka naam wahin hai", line_desc and line_desc in chal)
 check("aur ginti bhi wahin hai", line_qty in chal)
 check("challan pe category bhi chhapti hai", "EPE Foam Sheet" in chal)
+
+# Rang bhi kaagaz pe jaana chahiye — party ke aadmi ko dikhna chahiye ki black
+# aaya hai ya white. Rang line ka apna hai, isliye bill ki line pe likha jaata
+# hai (category ki tarah item master se nahi aata).
+with app.app_context():
+    inv_now = db.session.get(Invoice, old_inv_id)
+    inv_now.items[0].colour = "black"
+    db.session.commit()
+chal2 = ok("rang wala challan",
+           client.get(f"/invoices/{old_inv_id}/preview?mode=challan")).data.decode("utf8", "ignore")
+check("challan pe rang chhapta hai", "black" in chal2)
+full2 = ok("rang wala bill",
+           client.get(f"/invoices/{old_inv_id}/preview")).data.decode("utf8", "ignore")
+check("bill pe bhi rang chhapta hai", "black" in full2)
+check("category aur rang ek hi lakeer me", "EPE Foam Sheet · black" in full2)
+with app.app_context():
+    inv_now = db.session.get(Invoice, old_inv_id)
+    inv_now.items[0].colour = ""
+    db.session.commit()
 
 r = ok("poora bill abhi bhi rate ke saath", client.get(f"/invoices/{old_inv_id}/preview"))
 full = r.data.decode("utf8", "ignore")

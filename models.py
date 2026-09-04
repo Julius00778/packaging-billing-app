@@ -125,11 +125,19 @@ class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
     units = db.Column(db.String(200), default="")
+    # Kuch maal rang me aata hai — foam black aur white dono me. Rang order
+    # bharte waqt chunna padta hai, isliye jaayaz rang yahin likhe rehte hain.
+    # Khaali ka matlab "is maal me rang ka sawaal hi nahi".
+    colours = db.Column(db.String(200), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def unit_list(self):
         """Allowed units, in the order they were entered. Empty means 'no rule'."""
         return [u.strip() for u in (self.units or "").split(",") if u.strip()]
+
+    def colour_list(self):
+        """Is maal ke jaayaz rang. Khaali list = rang poochha hi nahi jaata."""
+        return [c.strip() for c in (self.colours or "").split(",") if c.strip()]
 
 
 class Item(db.Model):
@@ -214,6 +222,9 @@ class InvoiceItem(db.Model):
     sgst_amount = db.Column(db.Float, default=0.0)
     igst_amount = db.Column(db.Float, default=0.0)
     line_total = db.Column(db.Float, default=0.0)
+    # Rang line ke saath chalta hai, item ke saath nahi — ek hi foam black bhi
+    # jaata hai aur white bhi. Isliye bill ki line pe hi likha jaata hai.
+    colour = db.Column(db.String(40), default="")
 
     item = db.relationship("Item")
 

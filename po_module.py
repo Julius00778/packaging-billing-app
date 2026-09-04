@@ -494,6 +494,10 @@ class POLine(db.Model):
     unit_source = db.Column(db.String(12), default="")   # explicit/party/magnitude
     qty = db.Column(db.Float, default=0.0)
     qty_unit = db.Column(db.String(20), default="pcs")
+    # Rang line ka apna hai, product ka nahi — ek hi foam black bhi jaata hai
+    # aur white bhi. Jis maal ki category me rang likhe hain, us line pe rang
+    # chunna zaroori hai; baaki maal pe ye khaali rehta hai.
+    colour = db.Column(db.String(40), default="")
     # code    — item code se mila (sabse pakka)
     # size    — code nahi tha, size se ek hi product mila
     # multiple— kai product fit hue, operator chunega
@@ -830,6 +834,7 @@ def lines_from_rows(form, party_unit="inch", customer_id=None):
     sizes = form.getlist("line_size")
     qtys = form.getlist("line_qty")
     units = form.getlist("line_unit")
+    colours = form.getlist("line_colour")
 
     out = []
     for i in range(max(len(codes), len(sizes), len(qtys))):
@@ -846,8 +851,9 @@ def lines_from_rows(form, party_unit="inch", customer_id=None):
         except ValueError:
             qty = 0.0
 
+        colour = (colours[i] if i < len(colours) else "").strip()
         row = {
-            "raw_text": " ".join(x for x in (code, size_text,
+            "raw_text": " ".join(x for x in (code, size_text, colour,
                                              f"{qty:g} {unit}" if qty else "") if x),
             "item_code": code,
             "raw_size_text": size_text,
@@ -855,6 +861,7 @@ def lines_from_rows(form, party_unit="inch", customer_id=None):
             "unit_source": "",
             "qty": qty,
             "qty_unit": unit,
+            "colour": colour,
         }
         known = map_by_code(customer_id, code) if (customer_id and code) else None
         if known and known.canonical_key:
@@ -1221,7 +1228,8 @@ def order_card_text(po, line=None, part=None):
         rows = []
         for l in (part.line_list() if part is not None else po.lines):
             name = l.mapping.label if l.mapping else (l.item_code or l.raw_size_text)
-            rows.append(f"• <b>{l.item_code or '—'}</b>  {name}  ×  "
+            colour = f"  [{l.colour}]" if l.colour else ""
+            rows.append(f"• <b>{l.item_code or '—'}</b>  {name}{colour}  ×  "
                         f"{l.qty:g} {l.qty_unit}")
         body = "\n".join(rows)
         note = f"\n\n<i>{po.note}</i>" if po.note else ""
@@ -1234,7 +1242,9 @@ def order_card_text(po, line=None, part=None):
         return f"{head}{mine}\n\n{body}{note}"
 
     name = line.mapping.label if line.mapping else (line.item_code or line.raw_size_text)
-    return (f"{head}\n\n<b>{line.item_code or '—'}</b>\n{name}\n"
+    # Rang banane wale ko pehle hi dikhna chahiye — black banana hai ya white
+    colour = f"\n<b>{line.colour}</b>" if line.colour else ""
+    return (f"{head}\n\n<b>{line.item_code or '—'}</b>\n{name}{colour}\n"
             f"<b>{line.qty:g} {line.qty_unit}</b>")
 
 
@@ -1301,6 +1311,34 @@ def line_kind(line):
     if m and m.item and m.item.category:
         return m.item.category.name or ""
     return ""
+
+
+def colours_for_map(mapping):
+    """Is product pe kaunse rang chalte hain.
+
+    Rang category pe likhe hote hain — Foam ke saamne "black, white". Khaali
+    list ka matlab hai is maal me rang ka sawaal hi nahi uthta.
+    """
+    if mapping and mapping.item and mapping.item.category:
+        return mapping.item.category.colour_list()
+    return []
+
+
+def mapping_of(line):
+    """Line ka product.
+
+    Line abhi DB me flush na hui ho toh `line.mapping` khaali aata hai — aur
+    tabhi sabse zaroori jaanch honi hoti hai (order banate waqt). Isliye id se
+    khud utha lete hain.
+    """
+    if line.mapping is not None:
+        return line.mapping
+    return db.session.get(PartyProductMap, line.map_id) if line.map_id else None
+
+
+def line_needs_colour(line):
+    """True jab is line pe rang chunna zaroori hai par abhi chuna nahi gaya."""
+    return bool(colours_for_map(mapping_of(line))) and not (line.colour or "").strip()
 
 
 def line_category_id(line):
@@ -1374,7 +1412,7 @@ def line_detail(line):
     m = line.mapping
     name = m.label if m else (line.item_code or line.raw_size_text)
     size = (m.raw_size_text if m else "") or line.raw_size_text
-    bits = [b for b in (line_kind(line), size) if b]
+    bits = [b for b in (line_kind(line), size, line.colour) if b]
     tail = f"\n   <i>{' · '.join(bits)}</i>" if bits else ""
     return (f"<b>{line.item_code or '—'}</b>  {name}  ×  "
             f"{line.qty:g} {line.qty_unit}{tail}")
@@ -1595,6 +1633,7 @@ def make_invoice(po):
         db.session.add(InvoiceItem(
             invoice_id=inv.id,
             item_id=line.mapping.item_id if line.mapping else None,
+            colour=line.colour or "",
             description=desc[:200], qty=line.qty, unit=line.qty_unit,
             rate=line.rate, gst_rate=0.0,
             taxable_amount=line.amount, line_total=line.amount,
@@ -1717,7 +1756,8 @@ def refresh_order_card(po, token=None):
 
 def manager_card_text(po):
     lines = "\n".join(
-        f"• {l.item_code or '—'}  {l.mapping.label if l.mapping else ''}  ×  "
+        f"• {l.item_code or '—'}  {l.mapping.label if l.mapping else ''}"
+        f"{('  [' + l.colour + ']') if l.colour else ''}  ×  "
         f"{l.qty:g} {l.qty_unit}" for l in po.lines)
     head = ("📦 <b>Dispatch ke liye taiyaar</b>" if po.status == "made"
             else "📦 <b>Dispatch</b>")
@@ -2255,10 +2295,22 @@ def po_new():
         db.session.add(po)
         db.session.flush()
 
+        need_colour = []
         for i, p in enumerate(parsed, start=1):
             line = POLine(po_id=po.id, line_no=i, **p)
             _apply_match(line, customer_id)
             db.session.add(line)
+            # Foam black bhi hota hai aur white bhi — rang bina aage bhejna
+            # matlab operator ko phone karna padega. Isliye yahin rok dete hain.
+            if line_needs_colour(line):
+                need_colour.append(line.item_code or line.raw_size_text or f"#{i}")
+
+        if need_colour:
+            db.session.rollback()
+            flash(t("po_f_colour_needed", what=", ".join(need_colour)), "error")
+            return render_template("po_new.html", customers=customers,
+                                   today=date.today().isoformat(),
+                                   next_no=next_po_number())
 
         fill_remembered_rates(po)
         remember_po_number(po_number)
@@ -2332,6 +2384,8 @@ def po_party_products(customer_id):
             "label": m.label or "",
             "size": m.raw_size_text or "",
             "units": units,
+            # Rang category se aate hain — foam pe black/white, baaki pe khaali
+            "colours": colours_for_map(m),
             # Har unit ka apna rate — piece ka bhav roll pe nahi chalta
             "rates": {u: r.rate for u in units
                       for r in [PartyRate.look_up(m.id, u)] if r and r.rate},
@@ -2489,6 +2543,14 @@ def po_set_rates(po_id):
     units_changed = 0
     for line in po.lines:
         if set_line_unit(line, request.form.get(f"unit_{line.id}", "")):
+            units_changed += 1
+    # Rang bhi yahin se lagta hai — photo/paste se aaye order me wo likha hi
+    # nahi hota, aur galat rang bhi yahin sudharta hai.
+    for line in po.lines:
+        want = (request.form.get(f"colour_{line.id}", "") or "").strip()
+        allowed = colours_for_map(line.mapping)
+        if want and want in allowed and want != line.colour:
+            line.colour = want
             units_changed += 1
     if units_changed:
         db.session.commit()

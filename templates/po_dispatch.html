@@ -21,7 +21,7 @@
 
     <div class="table-wrap" style="margin-top:10px;">
       <table>
-        <thead><tr><th></th><th>{{ t('po_product') }}</th><th>{{ t('po_size') }}</th><th>{{ t('po_qty') }}</th></tr></thead>
+        <thead><tr><th></th><th>{{ t('po_product') }}</th><th>{{ t('po_size') }}</th><th>{{ t('po_colour') }}</th><th>{{ t('po_qty') }}</th></tr></thead>
         <tbody>
         {% for line in po.lines %}
           <tr>
@@ -37,6 +37,7 @@
                  ko size dikhna chahiye, chahe order me likha ho ya na ho. #}
               {{ line.raw_size_text or (line.mapping.raw_size_text if line.mapping else '') or '—' }}
             </td>
+            <td>{{ line.colour or '—' }}</td>
             <td class="num">{{ line.qty|round(2) }} {{ line.qty_unit }}</td>
           </tr>
         {% endfor %}
