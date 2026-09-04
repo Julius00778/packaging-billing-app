@@ -59,6 +59,14 @@
 {% endfor %}
 {% endwith %}
 {% block content %}{% endblock %}
+
+<script>
+// "Meri jagah lo" wale button ka text — screen ki bhasha me
+var MAPTXT = {
+  wait:  {{ t('map_wait')|tojson }},
+  noGps: {{ t('map_no_gps')|tojson }}
+};
+</script>
 </main>
 
 </body>
