@@ -58,11 +58,33 @@ input,select,textarea{font-family:inherit;}
 .user-pill a:hover{color:#fff;text-decoration:none;}
 .lang-switch{display:flex;align-items:center;gap:4px;font-size:12px;
   color:rgba(255,255,255,.5);}
-.lang-switch a{color:rgba(255,255,255,.66);padding:3px 7px;border-radius:4px;font-weight:600;}
+/* Devanagari ka upar wala bindu (हिं) tang line-height me kat jaata tha —
+   isliye yahan thodi jagah zyada. */
+.lang-switch a{color:rgba(255,255,255,.66);padding:3px 7px;border-radius:4px;
+  font-weight:600;line-height:1.6;display:inline-block;}
 .lang-switch a:hover{text-decoration:none;color:#fff;}
 .lang-switch a.active{background:rgba(255,255,255,.16);color:#fff;}
 .topbar .btn-primary{background:rgba(255,255,255,.14);color:#fff;}
 .topbar .btn-primary:hover{background:rgba(255,255,255,.24);}
+.topbar-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+
+/* Menu ka button — bade screen pe hai hi nahi. Ungli ke laayak 44px ka hai,
+   kyunki uske se chhota button phone pe teen baar dabana padta hai. */
+.nav-toggle{display:none;width:40px;height:36px;padding:0;margin-left:-6px;
+  background:transparent;border:1px solid rgba(255,255,255,.22);
+  border-radius:6px;align-items:center;justify-content:center;}
+.nav-toggle:hover{background:rgba(255,255,255,.12);}
+.nav-bars,.nav-bars::before,.nav-bars::after{display:block;width:17px;height:2px;
+  background:#fff;border-radius:2px;content:"";position:relative;}
+.nav-bars::before{position:absolute;top:-5px;}
+.nav-bars::after{position:absolute;top:5px;}
+
+/* ------------------------------------------------------------ focus dikhna */
+/* Keyboard se chalane wale ko dikhna chahiye ki abhi kahan khade hain. */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
+textarea:focus-visible,summary:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
+.topbar a:focus-visible,.topbar button:focus-visible{outline-color:#fff;}
 
 /* ------------------------------------------------------------ page + sheet */
 .container{max-width:1160px;margin:0 auto;padding:18px 20px 64px;}
@@ -161,6 +183,25 @@ th.num{text-align:right;}
 .badge.payment_made{background:var(--danger-soft);color:var(--danger);}
 .badge.challan{background:var(--accent-soft);color:var(--accent-deep);margin-left:6px;}
 
+/* Halat ke rang — ek hi jagah se, _badges.html ke zariye.
+
+   Naam halat ka nahi, rang ka hai (ok/warn/bad...), taaki do alag halat ek
+   jaisi dikhni ho toh ek hi class mile. Rang ke saath andar shabd hamesha
+   likha hota hai, kyunki rang na dikhne wale aadmi ko bhi halat pata chalna
+   chahiye. */
+.badge-ok{background:var(--success-soft);color:var(--success);}
+.badge-warn{background:var(--accent-soft);color:var(--accent-deep);}
+.badge-bad{background:var(--danger-soft);color:var(--danger);}
+.badge-info{background:#EAF0F8;color:#2C4A73;}
+.badge-blue{background:#E6EEF9;color:#1F4C8C;}
+.badge-teal{background:#E2F1F0;color:#1C6560;}
+.badge-muted{background:var(--sunk);color:var(--ink-soft);
+  box-shadow:inset 0 0 0 1px var(--border);}
+
+/* Jahan raqam hoti hi nahi (challan pe rate abhi tay nahi hua), wahan ₹0.00
+   likhna jhooth hai — ek lakeer lagti hai. */
+.amt-none{color:var(--ink-faint);font-weight:600;}
+
 /* ------------------------------------------------------------------- tiles */
 .entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:12px;margin-top:14px;}
@@ -242,12 +283,35 @@ th.num{text-align:right;}
 .tick input{margin:0;}
 .tick:hover{color:var(--ink);}
 
+/* Phone aur chhote tablet pe nav button ke peeche chala jaata hai. 900px
+   isliye ki 8 tab ek line me uske neeche nahi aate. */
+@media (max-width:900px){
+.nav-toggle{display:inline-flex;}
+.topbar{height:auto;padding:8px 14px;row-gap:8px;}
+.brand{flex:1;}
+.brand .tagline{display:none;}
+.topbar-right{gap:10px;}
+/* JS chala toh nav band; na chala toh khula hi rehta hai. */
+.topbar.nav-js .tabs{display:none;}
+.topbar.nav-js.nav-open .tabs{display:flex;}
+.tabs{order:10;flex-basis:100%;flex-direction:column;gap:1px;
+  border-top:1px solid rgba(255,255,255,.14);padding-top:8px;margin-top:2px;}
+.tab-btn{padding:10px 11px;font-size:14px;}
+}
+
 @media (max-width:760px){
 .stat-grid{grid-template-columns:1fr 1fr;}
 .form-grid,.form-grid.three{grid-template-columns:1fr;}
-.topbar{padding:10px 14px;height:auto;}
 .container{padding:14px 12px 56px;}
 .totals-inner{width:100%;}
+}
+
+/* 360px se neeche bhi kuch bahar nahi nikalna chahiye. */
+@media (max-width:400px){
+.stat-grid{grid-template-columns:1fr;}
+.brand h1{font-size:14px;}
+.topbar-right{width:100%;justify-content:space-between;}
+.user-pill{font-size:12px;}
 }
 
 /* print */
