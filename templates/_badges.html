@@ -1,0 +1,63 @@
+{# ============================================================================
+   Halat ka nishaan — poore software me ek hi jagah se.
+
+   Pehle har screen apna badge khud banati thi, isliye ek hi halat teen jagah
+   teen rang me dikhti thi — aur dashboard pe challan "₹0.00 · Unpaid" dikhta
+   tha jabki uska rate abhi tay hi nahi hua hota.
+
+   Rang akela kaafi nahi hota: har badge me padha ja sakne wala shabd bhi
+   hota hai, taaki rang na dikhne wale aadmi ko bhi halat pata chale.
+   ========================================================================= */
+#}
+
+{# Har halat ka apna rang. Naam wahi rakhe gaye hain jo halat ke hain, taaki
+   naya rang jodna ho toh ek hi jagah dekhni pade. #}
+{% set BADGE_TONE = {
+  'paid':          'ok',
+  'partial':       'warn',
+  'unpaid':        'bad',
+  'rate_pending':  'info',
+  'converted':     'muted',
+  'pending':       'muted',
+  'with_operator': 'warn',
+  'in_production': 'blue',
+  'made':          'ok',
+  'dispatched':    'teal',
+  'rejected':      'bad'
+} %}
+
+{% macro tone(kind) -%}
+badge badge-{{ BADGE_TONE.get(kind, 'muted') }}
+{%- endmacro %}
+
+
+{# Bill ya challan ka nishaan.
+
+   Challan pe rate hota hi nahi — use "unpaid" kehna galat hai, kyunki abhi
+   kisi ne paisa maanga hi nahi. Isliye uska apna nishaan hai. #}
+{% macro invoice_badge(inv) -%}
+  {%- if inv.hide_pricing and inv.consolidated_into_id -%}
+    <span class="{{ tone('converted') }}">{{ t('converted') }}</span>
+  {%- elif inv.hide_pricing -%}
+    <span class="{{ tone('rate_pending') }}">{{ t('pending_rate') }}</span>
+  {%- else -%}
+    <span class="{{ tone(inv.payment_status) }}">{{ t(inv.payment_status) }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+
+{# Order kis chaal pe hai #}
+{% macro po_badge(status) -%}
+  <span class="{{ tone(status) }}">{{ t('po_status_' + status) }}</span>
+{%- endmacro %}
+
+
+{# Bill ki raqam — challan pe raqam hoti hi nahi, isliye wahan nishaan lagta
+   hai, ₹0.00 nahi. ₹0.00 padh ke lagta hai "bill zero ka hai". #}
+{% macro invoice_amount(inv) -%}
+  {%- if inv.hide_pricing -%}
+    <span class="amt-none" title="{{ t('pending_rate') }}">—</span>
+  {%- else -%}
+    ₹{{ "%.2f"|format(inv.grand_total) }}
+  {%- endif -%}
+{%- endmacro %}

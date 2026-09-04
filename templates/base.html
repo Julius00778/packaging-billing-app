@@ -19,23 +19,31 @@
 </head>
 <body>
 
-<header class="topbar no-print">
+{# Chhoti screen pe saare tab ek line me nahi aate — pehle wo neeche khisak ke
+   aadhi screen kha jaate the. Ab wahan sirf ek button rehta hai aur nav uske
+   neeche khulta hai; bade screen pe kuch nahi badla. #}
+<header class="topbar no-print" id="topbar">
+<button class="nav-toggle" type="button" id="navToggle"
+        aria-controls="mainnav" aria-expanded="false" aria-label="{{ t('nav_menu') }}">
+  <span class="nav-bars" aria-hidden="true"></span>
+</button>
 <div class="brand">
 <h1>{{ firm_settings.firm_name or "My Firm" }}</h1>
 <span class="tagline">{{ t('tagline') }}</span>
 </div>
-<nav class="tabs">
-<a class="tab-btn {% if active=='dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">{{ t('nav_dashboard') }}</a>
-<a class="tab-btn {% if active=='invoices' %}active{% endif %}" href="{{ url_for('invoices') }}">{{ t('nav_invoices') }}</a>
-<a class="tab-btn {% if active=='customers' %}active{% endif %}" href="{{ url_for('customers') }}">{{ t('nav_customers') }}</a>
-<a class="tab-btn {% if active=='items' %}active{% endif %}" href="{{ url_for('items') }}">{{ t('nav_items') }}</a>
-<a class="tab-btn {% if active=='po' %}active{% endif %}" href="{{ url_for('po.po_list') }}">{{ t('nav_orders') }}</a>
-<a class="tab-btn {% if active=='accounts' %}active{% endif %}" href="{{ url_for('accounts_home') }}">{{ t('nav_accounts') }}</a>
+<nav class="tabs" id="mainnav" aria-label="{{ t('nav_menu') }}">
+<a class="tab-btn {% if active=='dashboard' %}active{% endif %}" {% if active=='dashboard' %}aria-current="page"{% endif %} href="{{ url_for('dashboard') }}">{{ t('nav_dashboard') }}</a>
+<a class="tab-btn {% if active=='invoices' %}active{% endif %}" {% if active=='invoices' %}aria-current="page"{% endif %} href="{{ url_for('invoices') }}">{{ t('nav_invoices') }}</a>
+<a class="tab-btn {% if active=='customers' %}active{% endif %}" {% if active=='customers' %}aria-current="page"{% endif %} href="{{ url_for('customers') }}">{{ t('nav_customers') }}</a>
+<a class="tab-btn {% if active=='items' %}active{% endif %}" {% if active=='items' %}aria-current="page"{% endif %} href="{{ url_for('items') }}">{{ t('nav_items') }}</a>
+<a class="tab-btn {% if active=='po' %}active{% endif %}" {% if active=='po' %}aria-current="page"{% endif %} href="{{ url_for('po.po_list') }}">{{ t('nav_orders') }}</a>
+<a class="tab-btn {% if active=='accounts' %}active{% endif %}" {% if active=='accounts' %}aria-current="page"{% endif %} href="{{ url_for('accounts_home') }}">{{ t('nav_accounts') }}</a>
 {% if current_user.is_authenticated and current_user.is_owner %}
-<a class="tab-btn {% if active=='settings' %}active{% endif %}" href="{{ url_for('settings_page') }}">{{ t('nav_settings') }}</a>
-<a class="tab-btn {% if active=='users' %}active{% endif %}" href="{{ url_for('users_page') }}">{{ t('nav_users') }}</a>
+<a class="tab-btn {% if active=='settings' %}active{% endif %}" {% if active=='settings' %}aria-current="page"{% endif %} href="{{ url_for('settings_page') }}">{{ t('nav_settings') }}</a>
+<a class="tab-btn {% if active=='users' %}active{% endif %}" {% if active=='users' %}aria-current="page"{% endif %} href="{{ url_for('users_page') }}">{{ t('nav_users') }}</a>
 {% endif %}
 </nav>
+<div class="topbar-right">
 {% if current_user.is_authenticated %}
 <a class="btn btn-primary btn-sm" href="{{ url_for('new_entry') }}">+ {{ t('new_entry') }}</a>
 {% endif %}
@@ -50,7 +58,32 @@
 <a href="{{ url_for('logout') }}">{{ t('logout') }}</a>
 </div>
 {% endif %}
+</div>
 </header>
+
+<script>
+// Menu button. JS na chale toh CSS nav ko khula hi rakhta hai, isliye koi
+// screen kabhi bina nav ke nahi rehti.
+(function () {
+  var bar = document.getElementById('topbar');
+  var btn = document.getElementById('navToggle');
+  if (!bar || !btn) { return; }
+  bar.classList.add('nav-js');
+  function setOpen(on) {
+    bar.classList.toggle('nav-open', on);
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  }
+  btn.addEventListener('click', function () {
+    setOpen(!bar.classList.contains('nav-open'));
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && bar.classList.contains('nav-open')) {
+      setOpen(false);
+      btn.focus();
+    }
+  });
+})();
+</script>
 
 <main class="container">
 {% with messages = get_flashed_messages(with_categories=true) %}

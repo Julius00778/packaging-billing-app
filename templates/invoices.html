@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "invoices" %}
 {% block title %}{{ t('nav_invoices') }}{% endblock %}
+{% import "_badges.html" as B with context %}
 {% block content %}
 
 <div class="toolbar">
@@ -32,8 +33,8 @@
 </td>
 <td>{{ inv.date }}</td>
 <td>{{ inv.customer.name }}</td>
-<td class="num">{% if inv.hide_pricing %}—{% else %}₹{{ "%.2f"|format(inv.grand_total) }}{% endif %}</td>
-<td>{% if inv.hide_pricing %}<span class="badge challan">{{ t('pending_rate') if not inv.consolidated_into_id else t('converted') }}</span>{% else %}<span class="badge {{ inv.payment_status }}">{{ t(inv.payment_status) }}</span>{% endif %}</td>
+<td class="num">{{ B.invoice_amount(inv) }}</td>
+<td>{{ B.invoice_badge(inv) }}</td>
 <td>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=inv.id) }}"
    data-bill="{{ inv.id }}" data-bill-no="{{ inv.invoice_no }}">{{ t('bill_open') }}</a>
