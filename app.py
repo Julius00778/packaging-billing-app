@@ -721,12 +721,50 @@ def add_stock(iid):
 @app.route("/api/items")
 @login_required
 def api_items():
-    rows = Item.query.order_by(Item.name).all()
+    # Hataaya hua maal nayi entry me haath nahi aana chahiye — purane bill
+    # uske saath waise ke waise rehte hain.
+    rows = (Item.query.filter(Item.archived_at.is_(None))
+            .order_by(Item.name).all())
     return jsonify([{
         "id": i.id, "name": i.name, "unit": i.unit, "rate": i.sale_price,
         "gst_rate": i.gst_rate, "hsn_code": i.hsn_code or "",
-        "stock": i.current_stock, "track_stock": i.track_stock
+        "stock": i.current_stock, "track_stock": i.track_stock,
+        "category": i.category.name if i.category else ""
     } for i in rows])
+
+
+@app.route("/api/customers", methods=["POST"])
+@login_required
+def api_add_customer():
+    """Bill ke form se hi nayi party jod do.
+
+    Pehle "party pehle Customers screen pe jodo, phir yahan wapas aao aur
+    page refresh karo" likha hota tha. Us refresh me aadha bhara hua bill
+    chala jaata tha. Ab party yahin ban jaati hai aur seedhe chun li jaati
+    hai — page hilta bhi nahi.
+
+    Ek naam ki do party wali rok yahan bhi wahi hai jo Customers screen pe
+    hai; wo rok ek hi jagah likhi hai isliye dono raaste par ek jaisi chalti
+    hai.
+    """
+    settings = Settings.get()
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": t("flash_customer_name_required")}), 400
+    clash = _same_party(name)
+    if clash:
+        return jsonify({"ok": False, "error": t("flash_customer_exists", name=clash.name)}), 400
+    c = Customer(
+        name=name,
+        phone=(request.form.get("phone") or "").strip(),
+        city=(request.form.get("city") or "").strip(),
+        state=(request.form.get("state") or "").strip() or settings.default_customer_state,
+        credit_days=settings.default_credit_days or 30,
+    )
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({"ok": True, "customer": {"id": c.id, "name": c.name,
+                                             "city": c.city or ""}})
 
 
 def calc_invoice_totals(line_items, discount_type, discount_value, other_charges, firm_state, customer_state):
