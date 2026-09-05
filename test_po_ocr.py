@@ -77,6 +77,45 @@ def po_image():
 
 # ---------------------------------------------- poora raasta: file -> lines
 client = app.test_client()
+
+# ---------------------------------------------------------------- CSRF ki parchi
+# Asli browser har form ke saath ek chhupi hui parchi bhejta hai. Test client
+# form nahi bharta, seedha POST karta hai — isliye yahan wahi parchi apne aap
+# laga di jaati hai, jaise browser lagata hai.
+#
+# Iska matlab ye NAHI ki test me rok band kar di gayi hai: rok chaalu hai, aur
+# neeche alag se ye bhi jaancha jaata hai ki bina parchi ke POST rukta hai.
+_raw_post = client.post
+
+
+def _post_with_csrf(*a, **kw):
+    if not kw.pop("no_csrf", False):
+        data = kw.get("data")
+        if isinstance(data, dict) and "_csrf" not in data:
+            with client.session_transaction() as sess:
+                tok = sess.get("_csrf")
+                if not tok:
+                    import secrets as _sec
+                    tok = _sec.token_urlsafe(32)
+                    sess["_csrf"] = tok
+            data = dict(data)
+            data["_csrf"] = tok
+            kw["data"] = data
+        elif data is None:
+            with client.session_transaction() as sess:
+                tok = sess.get("_csrf")
+                if not tok:
+                    import secrets as _sec
+                    tok = _sec.token_urlsafe(32)
+                    sess["_csrf"] = tok
+            kw["data"] = {"_csrf": tok}
+    else:
+        kw.pop("no_csrf", None)
+    return _raw_post(*a, **kw)
+
+
+client.post = _post_with_csrf
+
 client.post("/setup", data={"firm_name": "T", "name": "R",
                             "username": "owner", "password": "secret123"},
             follow_redirects=True)

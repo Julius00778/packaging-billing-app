@@ -5,6 +5,7 @@ from datetime import datetime, date
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort, session, send_file, Response
+from markupsafe import Markup, escape
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
@@ -113,7 +114,66 @@ def inject_globals():
     settings = Settings.get()
     return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
                 t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS,
-                asset_v=_asset_v, new_form_key=new_form_key)
+                asset_v=_asset_v, new_form_key=new_form_key,
+                csrf_field=csrf_field, csrf_token=csrf_token)
+
+
+# ============================================================ CSRF ki rok
+#
+# Kya bachaata hai: aap hamare software me login hain, aur usi browser me
+# koi doosri website khol lete hain. Wo website chup-chaap hamare pate pe ek
+# form bhej sakti hai — "ye bill mita do", "ye party badal do" — aur browser
+# aapki login parchi apne aap saath laga deta hai. Server ko lagta hai aapne
+# hi bheja hai.
+#
+# Rok ka tareeka: har form ke saath ek chhupi hui parchi jaati hai, jiska
+# number sirf aapke session me likha hai. Bahar wali website wo number padh
+# hi nahi sakti (doosri site ka page hamara page padh nahi sakta), isliye wo
+# sahi parchi laga hi nahi sakti.
+#
+# SameSite=Lax pehle se ek deewar hai — naye browser cross-site POST ke saath
+# cookie bhejte hi nahi. Ye doosri deewar hai: purane browser, koi anokha
+# haal, ya SameSite ka koi kinara — teenon jagah ye chalti hai.
+
+CSRF_FIELD = "_csrf"
+CSRF_EXEMPT = {"po.telegram_webhook"}   # Telegram ke paas hamara session hai hi nahi
+
+
+def csrf_token():
+    """Is session ki parchi ka number — ek baar banta hai, sess bhar chalta hai."""
+    tok = session.get(CSRF_FIELD)
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        session[CSRF_FIELD] = tok
+    return tok
+
+
+def csrf_field():
+    """Form me daalne wala chhupa hua khaana."""
+    return Markup('<input type="hidden" name="%s" value="%s">'
+                  % (CSRF_FIELD, escape(csrf_token())))
+
+
+@app.before_request
+def _csrf_protect():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    # Pata hi galat hai (kisi route se milta nahi) toh use Flask ko 404 dene
+    # do. Yahan 400 de denge toh "page hai hi nahi" wali baat chhup jaati hai.
+    if request.endpoint is None:
+        return None
+    if request.endpoint in CSRF_EXEMPT:
+        return None
+    sent = (request.form.get(CSRF_FIELD)
+            or request.headers.get("X-CSRF-Token")
+            or "")
+    have = session.get(CSRF_FIELD) or ""
+    # compare_digest — do string kitne milte hain ye waqt se pata na chale
+    if not have or not sent or not secrets.compare_digest(str(sent), str(have)):
+        # 400 hi theek hai: ye "aap kaun ho" ka sawaal nahi, "ye form hamara
+        # nahi tha" ka jawab hai. Login pe bhej denge toh aadmi ghoomta rahega.
+        return (render_template("csrf_error.html"), 400)
+    return None
 
 
 @app.after_request
