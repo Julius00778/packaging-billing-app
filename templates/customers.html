@@ -4,8 +4,16 @@
 {% import "_archive.html" as A with context %}
 {% block content %}
 
+{# Jo list dekhne aaya hai use pehle list dikhni chahiye. Jodne ka lamba
+   form ab button ke peeche rehta hai — aur galti hone par apne aap khul
+   jaata hai, taaki bhara hua form dhoondhna na pade. #}
 <div class="card panel-pad" style="margin-bottom:20px;">
+<div class="adder-head">
 <h2 class="section-title">{{ t('add_customer') }}</h2>
+<button class="btn btn-ghost btn-sm" type="button" id="adderBtn"
+        aria-expanded="false" aria-controls="adderBody">+ {{ t('adder_open') }}</button>
+</div>
+<div class="adder-body" id="adderBody" hidden>
 <form method="POST">
 <div class="form-grid three">
 <div class="field"><label>{{ t('customer_name') }} *</label><input type="text" name="name" required></div>
@@ -37,6 +45,7 @@
 </div>
 <div class="btn-row"><button class="btn btn-primary" type="submit">{{ t('add_customer') }}</button></div>
 </form>
+</div>
 </div>
 
 <div class="card panel-pad">
@@ -117,6 +126,31 @@
       }, { enableHighAccuracy: true, timeout: 10000 });
     });
   }
+})();
+</script>
+
+<script>
+// "+ Jodein" wala panel.
+//
+// Do baatein zaroori hain. Ek: server ne galti bataayi ho (naam khaali, ya
+// wahi naam pehle se hai) toh panel apne aap khulna chahiye — warna aadmi ko
+// laal message dikhta hai par form kahin dikhta hi nahi. Do: JS na chale toh
+// panel khula hi rehna chahiye, warna jodne ka raasta hi band ho jaata hai.
+(function () {
+  var btn = document.getElementById('adderBtn');
+  var body = document.getElementById('adderBody');
+  if (!btn || !body) { return; }
+  function set(on) {
+    body.hidden = !on;
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) {
+      var first = body.querySelector('input, select, textarea');
+      if (first) { first.focus(); }
+    }
+  }
+  btn.addEventListener('click', function () { set(body.hidden); });
+  // Galti hui thi toh khula rakho — bhara hua form saamne rehna chahiye.
+  if (document.querySelector('.flash.error')) { set(true); }
 })();
 </script>
 

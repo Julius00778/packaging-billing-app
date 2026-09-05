@@ -94,9 +94,18 @@
 // Button ko turant disabled kar dene se uski value form ke saath nahi jaati —
 // isliye pehle ek chhupi hui copy rakh dete hain, tab band karte hain.
 (function () {
+  // Dhyan: ye listener bubble phase me hai, capture me nahi.
+  //
+  // Capture me lagane se ye page ke apne handler se PEHLE chalta tha, aur
+  // button ko band kar deta tha — chahe wo handler baad me submit rok hi de.
+  // Nateeja: bill ke form pe ek baar galti hui (maal nahi chuna) toh Save ka
+  // button hamesha ke liye band ho jaata tha, aur bill kabhi save hi nahi
+  // hota. Bubble me chalne se page ka handler pehle chal chuka hota hai, aur
+  // uske rok dene par hum kuch band nahi karte.
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (!form || form.dataset.noGuard === '1') { return; }
+    if (e.defaultPrevented) { return; }
     if (form.dataset.sent === '1') { e.preventDefault(); return; }
     form.dataset.sent = '1';
     var btns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
@@ -115,11 +124,7 @@
       }
       b.disabled = true;
     }
-    // Browser back se wapas aaye toh form phir se chalna chahiye.
-    setTimeout(function () {
-      if (document.visibilityState === 'hidden') { return; }
-    }, 0);
-  }, true);
+  }, false);
   window.addEventListener('pageshow', function (ev) {
     if (!ev.persisted) { return; }
     var forms = document.querySelectorAll('form[data-sent="1"]');
