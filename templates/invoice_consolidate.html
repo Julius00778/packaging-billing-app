@@ -28,7 +28,7 @@
 <div class="card panel-pad">
 <h2 class="section-title">{{ t('pending_challans_for') }} {{ customer.name }}</h2>
 {% if selected_challans %}
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <input type="hidden" name="customer_id" value="{{ customer.id }}">
 <div class="table-wrap">
 <table>

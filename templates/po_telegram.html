@@ -27,7 +27,7 @@
     <div style="font-size:12px;color:var(--ink-faint);margin:8px 0 12px;">
       {{ t('po_tg_add_groups') }}
     </div>
-    <form method="POST" action="{{ url_for('po.telegram_set_hook') }}">
+    <form method="POST" action="{{ url_for('po.telegram_set_hook') }}">{{ csrf_field() }}
       <button class="btn btn-primary" type="submit">
         {{ t('po_tg_reconnect') if hooked else t('po_tg_connect') }}
       </button>
@@ -76,7 +76,7 @@
              likha hai: "manager" se ye pata nahi chalta ki kya msg jayega. #}
           <form method="POST" id="roles{{ c.id }}"
                 action="{{ url_for('po.telegram_set_role', row_id=c.id) }}"
-                style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+                style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">{{ csrf_field() }}
             <label class="tick"><input type="checkbox" name="roles" value="owner"
                    {% if c.has_role('owner') %}checked{% endif %}> {{ t('po_tg_gets_owner') }}</label>
             <label class="tick"><input type="checkbox" name="roles" value="operator"
@@ -86,12 +86,12 @@
                    {% if c.has_role('manager') %}checked{% endif %}> {{ t('po_tg_gets_manager') }}</label>
             <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_save') }}</button>
           </form>
-          <form method="POST" action="{{ url_for('po.telegram_test_chat', row_id=c.id) }}">
+          <form method="POST" action="{{ url_for('po.telegram_test_chat', row_id=c.id) }}">{{ csrf_field() }}
             <button class="btn btn-ghost btn-sm" type="submit"
                     title="{{ t('po_tg_test_hint') }}">{{ t('po_tg_test') }}</button>
           </form>
           <form method="POST" action="{{ url_for('po.telegram_delete_chat', row_id=c.id) }}"
-                onsubmit="return confirm({{ t('po_tg_remove_confirm')|tojson }});">
+                onsubmit="return confirm({{ t('po_tg_remove_confirm')|tojson }});">{{ csrf_field() }}
             <button class="btn btn-ghost btn-sm" type="submit"
                     title="{{ t('po_tg_remove_hint') }}">{{ t('po_tg_remove') }}</button>
           </form>
@@ -160,7 +160,7 @@
               {% endif %}
             </td>
             <td>
-              <form method="POST" action="{{ url_for('po.telegram_set_operator', row_id=p.id) }}">
+              <form method="POST" action="{{ url_for('po.telegram_set_operator', row_id=p.id) }}">{{ csrf_field() }}
                 <input type="hidden" name="is_operator" value="{{ '0' if p.is_operator else '1' }}">
                 <button class="btn btn-ghost btn-sm" type="submit">
                   {{ t('po_tg_remove_operator') if p.is_operator else t('po_tg_make_operator') }}

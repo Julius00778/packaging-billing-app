@@ -103,7 +103,7 @@
         {% endif %}
 
         {% if row.candidates and not line.map_id %}
-          <form method="POST" action="{{ url_for('po.po_line_choose', po_id=po.id, line_id=line.id) }}" style="margin-top:12px;">
+          <form method="POST" action="{{ url_for('po.po_line_choose', po_id=po.id, line_id=line.id) }}" style="margin-top:12px;">{{ csrf_field() }}
             <div style="display:flex;gap:12px;flex-wrap:wrap;">
               {% for c in row.candidates %}
                 <label style="border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center;cursor:pointer;">
@@ -125,7 +125,7 @@
 
         {% if not line.map_id and not row.candidates %}
           <form method="POST" action="{{ url_for('po.po_line_map', po_id=po.id, line_id=line.id) }}"
-                enctype="multipart/form-data" style="margin-top:12px;">
+                enctype="multipart/form-data" style="margin-top:12px;">{{ csrf_field() }}
             <div class="form-grid three">
               <div class="field">
                 <label>{{ t('po_item_code') }}</label>
@@ -159,7 +159,7 @@
         <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
           {{ t('po_rate_hint') }}
         </div>
-        <form method="POST" action="{{ url_for('po.po_set_rates', po_id=po.id) }}">
+        <form method="POST" action="{{ url_for('po.po_set_rates', po_id=po.id) }}">{{ csrf_field() }}
           <div class="table-wrap">
             <table>
               <thead><tr><th>{{ t('po_code') }}</th><th>{{ t('po_product') }}</th>
@@ -238,7 +238,7 @@
            Isliye ab ye pending order me hamesha rehta hai. #}
         {% if has_owner_chat %}
           <form method="POST" action="{{ url_for('po.po_ask_rates', po_id=po.id) }}"
-                style="margin-top:8px;">
+                style="margin-top:8px;">{{ csrf_field() }}
             <button class="btn {{ 'btn-ghost' if po.no_rate_count else 'btn-primary' }} btn-sm"
                     type="submit">
               {{ t('po_ask_on_telegram') if po.no_rate_count else t('po_send_rates_telegram') }}
@@ -286,7 +286,7 @@
           </div>
         {% endif %}
         <div class="toolbar" style="margin:0;">
-          <form method="POST" action="{{ url_for('po.po_confirm', po_id=po.id) }}" style="display:inline;">
+          <form method="POST" action="{{ url_for('po.po_confirm', po_id=po.id) }}" style="display:inline;">{{ csrf_field() }}
             <button class="btn btn-primary" type="submit"
                     {% if po.unresolved_count or po.no_qty_count or po.no_rate_count
                           or (has_owner_chat and not po.rates_ok_at) %}disabled{% endif %}>
@@ -294,7 +294,7 @@
             </button>
           </form>
           <form method="POST" action="{{ url_for('po.po_reject', po_id=po.id) }}" style="display:inline;"
-                onsubmit="return confirm({{ t('po_confirm_cancel')|tojson }});">
+                onsubmit="return confirm({{ t('po_confirm_cancel')|tojson }});">{{ csrf_field() }}
             <button class="btn btn-ghost" type="submit">{{ t('po_cancel_order') }}</button>
           </form>
         </div>
@@ -339,7 +339,7 @@
           {% for target in status_moves %}
             {% set label = t('po_move_' + target) %}
             <form method="POST" action="{{ url_for('po.po_set_status', po_id=po.id) }}" style="display:inline;"
-                  onsubmit="return confirm({{ t('po_confirm_move', label=label)|tojson }});">
+                  onsubmit="return confirm({{ t('po_confirm_move', label=label)|tojson }});">{{ csrf_field() }}
               <input type="hidden" name="to" value="{{ target }}">
               <button class="btn btn-ghost btn-sm" type="submit">{{ label }}</button>
             </form>

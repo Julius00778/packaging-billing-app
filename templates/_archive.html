@@ -34,12 +34,12 @@
    likha hota hai — "kya aap sure hain?" padh ke koi ruk nahi paata. #}
 {% macro row_buttons(archive_url, unarchive_url, name, is_archived) -%}
   {%- if is_archived -%}
-    <form method="POST" action="{{ unarchive_url }}" style="display:inline;">
+    <form method="POST" action="{{ unarchive_url }}" style="display:inline;">{{ csrf_field() }}
       <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_restore') }}</button>
     </form>
   {%- else -%}
     <form method="POST" action="{{ archive_url }}" style="display:inline;"
-          onsubmit="return confirm({{ t('arch_confirm', name=name)|tojson }});">
+          onsubmit="return confirm({{ t('arch_confirm', name=name)|tojson }});">{{ csrf_field() }}
       <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_archive') }}</button>
     </form>
   {%- endif -%}

@@ -56,7 +56,7 @@
 
     <div class="toolbar" style="margin:10px 0 0;">
       <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open_order') }}</a>
-      <form method="POST" action="{{ url_for('po.po_mark_dispatched', po_id=po.id) }}" style="display:inline;">
+      <form method="POST" action="{{ url_for('po.po_mark_dispatched', po_id=po.id) }}" style="display:inline;">{{ csrf_field() }}
         <button class="btn btn-primary btn-sm" type="submit">{{ t('po_move_dispatched') }}</button>
       </form>
     </div>

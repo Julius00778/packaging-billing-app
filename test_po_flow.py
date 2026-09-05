@@ -28,6 +28,45 @@ from po_module import PartyProductMap, PurchaseOrder, POLine, PartyPOConfig  # n
 fails = []
 client = app.test_client()
 
+# ---------------------------------------------------------------- CSRF ki parchi
+# Asli browser har form ke saath ek chhupi hui parchi bhejta hai. Test client
+# form nahi bharta, seedha POST karta hai — isliye yahan wahi parchi apne aap
+# laga di jaati hai, jaise browser lagata hai.
+#
+# Iska matlab ye NAHI ki test me rok band kar di gayi hai: rok chaalu hai, aur
+# neeche alag se ye bhi jaancha jaata hai ki bina parchi ke POST rukta hai.
+_raw_post = client.post
+
+
+def _post_with_csrf(*a, **kw):
+    if not kw.pop("no_csrf", False):
+        data = kw.get("data")
+        if isinstance(data, dict) and "_csrf" not in data:
+            with client.session_transaction() as sess:
+                tok = sess.get("_csrf")
+                if not tok:
+                    import secrets as _sec
+                    tok = _sec.token_urlsafe(32)
+                    sess["_csrf"] = tok
+            data = dict(data)
+            data["_csrf"] = tok
+            kw["data"] = data
+        elif data is None:
+            with client.session_transaction() as sess:
+                tok = sess.get("_csrf")
+                if not tok:
+                    import secrets as _sec
+                    tok = _sec.token_urlsafe(32)
+                    sess["_csrf"] = tok
+            kw["data"] = {"_csrf": tok}
+    else:
+        kw.pop("no_csrf", None)
+    return _raw_post(*a, **kw)
+
+
+client.post = _post_with_csrf
+
+
 
 def check(label, got, want=True):
     if got != want:
@@ -1534,6 +1573,101 @@ check("galti hone par panel apne aap khulta hai", "flash.error" in cpage)
 # List hi pehle aani chahiye — panel band ho toh uske khaane bhi na dikhein
 check("band panel me khaane chhupe rehte hain",
       cpage.index('id="adderBody"') < cpage.index('name="gstin"'))
+
+# ================================================ Hissa 5: form ki chhupi parchi
+
+# Kya bachaata hai: aap login hain, aur usi browser me koi doosri website
+# khol lete hain. Wo chup-chaap hamare pate pe form bhej sakti hai — "ye bill
+# mita do" — aur browser aapki login parchi apne aap laga deta hai.
+
+with app.app_context():
+    victim = Invoice.query.filter_by(hide_pricing=False).first()
+    victim_id, victim_no = victim.id, victim.invoice_no
+    inv_count_before = Invoice.query.count()
+
+# Bina parchi ke koi POST nahi chalta
+r = client.post(f"/invoices/{victim_id}/delete", data={}, no_csrf=True)
+check("bina parchi ke bill nahi mitta -> HTTP", r.status_code, 400)
+with app.app_context():
+    check("bill zinda hai", db.session.get(Invoice, victim_id) is not None)
+    check("ginti bhi wahi", Invoice.query.count(), inv_count_before)
+
+# Galat parchi bhi nahi chalti
+r = client.post(f"/invoices/{victim_id}/delete",
+                data={"_csrf": "galat-parchi-ka-number"}, no_csrf=True)
+check("galat parchi bhi nahi chalti", r.status_code, 400)
+with app.app_context():
+    check("bill ab bhi zinda hai", db.session.get(Invoice, victim_id) is not None)
+
+# Aur jawab me aadmi ko samajh aane wali baat likhi ho
+body = r.data.decode("utf8", "ignore")
+from translations import TRANSLATIONS as _TRC
+check("screen batati hai ki kya hua", _TRC["en"]["csrf_title"] in body)
+check("aur wapas jaane ka raasta bhi", _TRC["en"]["csrf_back"] in body)
+
+# Yahan tak sab theek hona zaroori hai. Agar rok toot chuki hai toh bill
+# sach me mit gaya hoga, aur aage ka har test us par latakta rahega —
+# asli wajah output me kahin dikhegi hi nahi.
+if fails:
+    print(f"FAILED {len(fails)} check(s):\n")
+    for f in fails:
+        print(" - " + f)
+    sys.exit(1)
+
+# Sahi parchi ke saath wahi kaam chalta hai — rok sirf bahar walon pe hai.
+# (Yahan bill hataate hain, mitate nahi — mitane se aage ki ginti bigadti.)
+r = ok("sahi parchi pe kaam chalta hai",
+       client.post(f"/invoices/{victim_id}/archive", follow_redirects=True))
+with app.app_context():
+    check("kaam sach me hua", db.session.get(Invoice, victim_id).archived_at is not None)
+client.post(f"/invoices/{victim_id}/unarchive", follow_redirects=True)
+
+# Sar (header) se bhi bheji ja sakti hai — JS wale POST isi raaste se aate hain
+with client.session_transaction() as _sess:
+    good_tok = _sess.get("_csrf")
+r = client.post("/api/customers",
+                data={"name": "SAR SE BANI"},
+                headers={"X-CSRF-Token": good_tok}, no_csrf=True)
+check("sar me parchi bhejo toh bhi chalta hai -> HTTP", r.status_code, 200)
+with app.app_context():
+    junk = Customer.query.filter_by(name="SAR SE BANI").first()
+    check("party ban gayi", junk is not None)
+    if junk:
+        db.session.delete(junk); db.session.commit()
+
+# ------------------------------------------- har form pe parchi lagi ho
+# Ek bhi form chhoot jaye toh wo feature live pe toot jaata hai. Isliye
+# saare templates khud gine jaate hain, haath se nahi.
+import glob as _glob
+import re as _re5
+tpl_dir = os.path.join(os.path.dirname(__file__), "templates")
+missing = []
+form_count = 0
+for tpl in sorted(_glob.glob(os.path.join(tpl_dir, "*.html"))):
+    src = open(tpl).read()
+    # Har POST form se lekar uske band hone tak ka tukda
+    for m in _re5.finditer(r'<form\b[^>]*method="POST"[^>]*>', src, _re5.I):
+        form_count += 1
+        end = src.find("</form>", m.end())
+        chunk = src[m.start():end if end != -1 else len(src)]
+        if "csrf_field()" not in chunk:
+            missing.append(os.path.basename(tpl) + " @" + str(src[:m.start()].count(chr(10)) + 1))
+check("har POST form pe parchi lagi hai", missing, [])
+check("form gine bhi gaye (koi galti se 0 na ho)", form_count > 30)
+
+# Telegram ka darwaza rok se bahar hona chahiye — uske paas hamara session
+# hai hi nahi, aur wo apne alag secret se pehchana jaata hai.
+check("telegram ka raasta rok se bahar hai",
+      "po.telegram_webhook" in open(os.path.join(os.path.dirname(__file__), "app.py")).read())
+
+# ------------------------------------------- naya order ek hi line se khulta hai
+onew = ok("naya order ka form", client.get("/po/new")).data.decode("utf8", "ignore")
+check("form ek hi khaali line se khulta hai", "var spare = 1;" in onew)
+check("line jodne ka button hai", 'id="addRow"' in onew)
+check("photo/PDF wala raasta alag hai", 'id="scanPick"' in onew)
+check("paste wala raasta alag hai", 'id="pasteOpen"' in onew)
+check("order ke form pe bhi parchi hai", "csrf_field()" in open(
+    os.path.join(tpl_dir, "po_new.html")).read())
 
 # ---------------------------------------------- purani screens abhi bhi chalti hain
 for path in ("/", "/invoices", "/customers", "/items", "/accounts"):

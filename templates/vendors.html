@@ -9,7 +9,7 @@
 
 <div class="card panel-pad" style="margin-bottom:20px;">
 <h2 class="section-title">{{ t('add_vendor') }}</h2>
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="form-grid three">
 <div class="field"><label>{{ t('vendor_name') }} *</label><input type="text" name="name" required></div>
 <div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone"></div>

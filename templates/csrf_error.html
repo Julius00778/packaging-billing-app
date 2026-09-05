@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ t('csrf_title') }}{% endblock %}
+{% block content %}
+
+{# Ye screen tab aati hai jab form ki chhupi hui parchi mel nahi khaati.
+
+   Aam taur pe iski wajah koi hamla nahi hoti — screen bahut der khuli padi
+   thi aur beech me session naya ho gaya. Isliye yahan darane wali baat
+   nahi likhi: seedha bataya hai ki kya karna hai. #}
+<div class="card panel-pad" style="max-width:560px;margin:40px auto;">
+  <h2 class="section-title">{{ t('csrf_title') }}</h2>
+  <p class="section-sub">{{ t('csrf_sub') }}</p>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="{{ request.referrer or url_for('dashboard') }}">{{ t('csrf_back') }}</a>
+    <a class="btn btn-ghost" href="{{ url_for('dashboard') }}">{{ t('nav_dashboard') }}</a>
+  </div>
+</div>
+
+{% endblock %}

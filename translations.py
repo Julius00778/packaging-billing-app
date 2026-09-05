@@ -5,6 +5,9 @@ TRANSLATIONS = {
     "en": {
         # brand / nav
         "tagline": "Billing & Invoices",
+        "csrf_title": "That form has expired",
+        "csrf_sub": "The page was open for a while and the session moved on. Nothing was saved \u2014 go back and send it again.",
+        "csrf_back": "Go back",
         "combo_none": "Nothing matches",
         "customer_search_ph": "Type a party name...",
         "item_search_ph": "Type an item name...",
@@ -784,6 +787,9 @@ TRANSLATIONS = {
     },
     "hi": {
         "tagline": "बिलिंग और इनवॉइस",
+        "csrf_title": "\u092f\u0947 \u092b\u093c\u0949\u0930\u094d\u092e \u092a\u0941\u0930\u093e\u0928\u093e \u0939\u094b \u0917\u092f\u093e",
+        "csrf_sub": "\u092a\u0947\u091c \u092c\u0939\u0941\u0924 \u0926\u0947\u0930 \u0916\u0941\u0932\u093e \u0930\u0939\u093e \u0914\u0930 \u0938\u0947\u0936\u0928 \u0906\u0917\u0947 \u092c\u0922\u093c \u0917\u092f\u093e\u0964 \u0915\u0941\u091b \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u0941\u0906 \u2014 \u0935\u093e\u092a\u0938 \u091c\u093e\u0915\u0930 \u0926\u094b\u092c\u093e\u0930\u093e \u092d\u0947\u091c\u0947\u0902\u0964",
+        "csrf_back": "\u0935\u093e\u092a\u0938 \u091c\u093e\u090f\u0902",
         "combo_none": "\u0915\u0941\u091b \u0928\u0939\u0940\u0902 \u092e\u093f\u0932\u093e",
         "customer_search_ph": "\u092a\u093e\u0930\u094d\u091f\u0940 \u0915\u093e \u0928\u093e\u092e \u0932\u093f\u0916\u0947\u0902...",
         "item_search_ph": "\u092e\u093e\u0932 \u0915\u093e \u0928\u093e\u092e \u0932\u093f\u0916\u0947\u0902...",

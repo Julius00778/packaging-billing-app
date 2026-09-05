@@ -31,7 +31,7 @@
 <td>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('view_expense', eid=e.id) }}">{{ t('view') }}</a>
 {% if current_user.is_owner %}
-<form method="POST" action="{{ url_for('delete_expense', eid=e.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">
+<form method="POST" action="{{ url_for('delete_expense', eid=e.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">{{ csrf_field() }}
 <button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}

@@ -27,7 +27,7 @@
 {% if current_user.is_owner %}
 <div class="divider"></div>
 <div class="btn-row">
-<form method="POST" action="{{ url_for('delete_expense', eid=e.id) }}" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">
+<form method="POST" action="{{ url_for('delete_expense', eid=e.id) }}" onsubmit="return confirm('{{ t('delete_confirm_generic') }}');">{{ csrf_field() }}
 <button class="btn btn-ghost" type="submit">{{ t('delete') }}</button>
 </form>
 </div>

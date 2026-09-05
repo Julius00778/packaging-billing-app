@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card panel-pad">
 <h2 class="section-title">{{ t('edit_customer') }}</h2>
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="form-grid three">
 <div class="field"><label>{{ t('customer_name') }} *</label><input type="text" name="name" value="{{ customer.name }}" required></div>
 <div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone" value="{{ customer.phone }}"></div>

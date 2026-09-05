@@ -14,7 +14,7 @@
         aria-expanded="false" aria-controls="adderBody">+ {{ t('adder_open') }}</button>
 </div>
 <div class="adder-body" id="adderBody" hidden>
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="form-grid three">
 <div class="field"><label>{{ t('customer_name') }} *</label><input type="text" name="name" required></div>
 <div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone"></div>
@@ -79,7 +79,7 @@
                  url_for('unarchive_customer', cid=c.id), c.name, c.is_archived) }}
 {% if current_user.is_owner %}
 <form method="POST" action="{{ url_for('delete_customer', cid=c.id) }}" style="display:inline;"
-      onsubmit="return confirm({{ t('confirm_delete_named', name=c.name)|tojson }});">
+      onsubmit="return confirm({{ t('confirm_delete_named', name=c.name)|tojson }});">{{ csrf_field() }}
 <button class="btn btn-ghost btn-sm btn-risky" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}
