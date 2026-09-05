@@ -202,6 +202,29 @@ th.num{text-align:right;}
    likhna jhooth hai — ek lakeer lagti hai. */
 .amt-none{color:var(--ink-faint);font-weight:600;}
 
+/* ------------------------------------------------------- hataayi hui cheez */
+/* Hataayi hui row halki dikhni chahiye, warna dono list ek jaisi lagti hain
+   aur pata hi nahi chalta ki abhi kaunsi list khuli hai. */
+.row-archived{opacity:.62;}
+.row-archived td:first-child{box-shadow:inset 3px 0 0 var(--border);}
+
+/* Mitaane wala button baaki buttonon jaisa nahi dikhna chahiye — wahi ek
+   kaam hai jo wapas nahi hota. Chhupa nahi rahega, par pehchana jayega. */
+/* Dhyan: .btn-danger pehle se hai aur wo bhara hua laal button hai. Yahan
+   uska naam dobara likh diya gaya tha, isliye laal pe laal likhavat aa gayi
+   thi — button dikhta tha par uspe kuch padha nahi jaata tha. Ye alag class
+   hai: chup-chaap laal likhavat, jo dabane se pehle nazar me aa jaye. */
+.btn-risky{color:var(--danger);}
+.btn-risky:hover{border-color:var(--danger);color:var(--danger);
+  background:var(--danger-soft);}
+
+/* Aankde ke neeche uska arsa — "kis waqt ka" bina likhe number adhoora hai. */
+.stat-note{font-size:11px;color:var(--ink-faint);letter-spacing:.03em;
+  text-transform:uppercase;margin-top:3px;}
+
+/* Minus ka stock laal me — wahan ginti hi galat hai. */
+.stock-neg{color:var(--danger);font-weight:600;}
+
 /* ------------------------------------------------------------------- tiles */
 .entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:12px;margin-top:14px;}
