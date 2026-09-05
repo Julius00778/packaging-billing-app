@@ -8,6 +8,7 @@ JPEG upload karke ye bhi check karta hai ki DB me chhoti hoke jaa rahi hai.
 import io
 import os
 import sys
+import json as _json_mod
 import re as _re2
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -1162,6 +1163,252 @@ check("password manager ko password samajh aata hai",
 check("label input se juda hua hai", 'for="username"' in lg and 'id="username"' in lg)
 check("naam ka pehla akshar apne aap bada nahi hota",
       'autocapitalize="none"' in lg)
+
+# ============================================================ Hissa 2: data aur ginti
+
+# ------------------------------------------------ hatao, mitao nahi
+# Ek galat click se saal bhar ka record nahi jaana chahiye. Isliye pehla
+# button "list se hatao" hai — cheez rehti hai, sirf nazar se hatti hai.
+with app.app_context():
+    arch_c = Customer(name="PURANI PARTY", city="Aligarh")
+    arch_i = Item(name="Band Product", unit="pcs", sale_price=10, track_stock=False)
+    db.session.add_all([arch_c, arch_i])
+    db.session.commit()
+    arch_cid, arch_iid = arch_c.id, arch_i.id
+
+page = ok("party list", client.get("/customers")).data.decode("utf8", "ignore")
+check("nayi party list me hai", "PURANI PARTY" in page)
+check("hataane ka button hai", "/archive" in page)
+
+ok("party ko list se hatao",
+   client.post(f"/customers/{arch_cid}/archive", follow_redirects=True))
+page = client.get("/customers").data.decode("utf8", "ignore")
+check("hataayi hui party roz ki list me nahi", "PURANI PARTY" in page, False)
+check("par 'hataaye hue' ka chip aa gaya", "show=archived" in page)
+
+page = ok("hataayi hui list", client.get("/customers?show=archived")).data.decode("utf8", "ignore")
+check("wahan party mil jaati hai", "PURANI PARTY" in page)
+check("wapas laane ka button hai", "/unarchive" in page)
+check("row halki dikhti hai", "row-archived" in page)
+
+# Hataayi hui list khaali ho toh "abhi shuru karo" likhna galat hai —
+# shuru ho chuka hai, bas kuch hataaya nahi gaya.
+empt = client.get("/items?show=archived").data.decode("utf8", "ignore")
+from translations import TRANSLATIONS as _TR0
+check("khaali hataayi hui list apni baat kehti hai",
+      _TR0["en"]["arch_empty"] in empt or "Band Product" in empt)
+
+# Sabse zaroori: hataane se DB me kuch mitta nahi
+with app.app_context():
+    c_still = db.session.get(Customer, arch_cid)
+    check("party ab bhi database me hai", c_still is not None)
+    check("uska naam waisa ka waisa", c_still.name if c_still else None, "PURANI PARTY")
+    check("bas nishaan lag gaya", bool(c_still and c_still.archived_at is not None))
+
+# Naya bill banate waqt hataayi hui party haath me nahi aani chahiye
+form = ok("naya bill ka form", client.get("/invoices/new")).data.decode("utf8", "ignore")
+check("hataayi hui party nayi entry me nahi dikhti", "PURANI PARTY" in form, False)
+
+ok("party wapas lao",
+   client.post(f"/customers/{arch_cid}/unarchive", follow_redirects=True))
+check("wapas aane pe list me hai",
+      b"PURANI PARTY" in client.get("/customers").data)
+form = client.get("/invoices/new").data.decode("utf8", "ignore")
+check("aur nayi entry me bhi wapas", "PURANI PARTY" in form)
+
+# Maal pe bhi wahi
+ok("maal hatao", client.post(f"/items/{arch_iid}/archive", follow_redirects=True))
+check("hataaya maal list me nahi",
+      b"Band Product" in client.get("/items").data, False)
+check("hataaye hue me hai",
+      b"Band Product" in client.get("/items?show=archived").data)
+with app.app_context():
+    check("maal database me zinda hai", db.session.get(Item, arch_iid) is not None)
+ok("maal wapas lao", client.post(f"/items/{arch_iid}/unarchive", follow_redirects=True))
+
+# Bill pe bhi — par bill ka hisaab nahi badalta
+with app.app_context():
+    any_inv = Invoice.query.filter_by(hide_pricing=False).first()
+    inv_arch_id = any_inv.id
+    inv_arch_no = any_inv.invoice_no
+    before_total = sum(i.grand_total for i in Invoice.query.filter_by(hide_pricing=False).all())
+
+ok("bill list se hatao",
+   client.post(f"/invoices/{inv_arch_id}/archive", follow_redirects=True))
+check("hataaya bill list me nahi",
+      inv_arch_no in client.get("/invoices").data.decode("utf8", "ignore"), False)
+check("hataaye hue me mil jaata hai",
+      inv_arch_no in client.get("/invoices?show=archived").data.decode("utf8", "ignore"))
+with app.app_context():
+    check("bill database me zinda hai", db.session.get(Invoice, inv_arch_id) is not None)
+    after_total = sum(i.grand_total for i in Invoice.query.filter_by(hide_pricing=False).all())
+    check("hisaab me raqam waisi ki waisi hai", after_total, before_total)
+ok("bill wapas lao", client.post(f"/invoices/{inv_arch_id}/unarchive", follow_redirects=True))
+
+# Order pe bhi
+with app.app_context():
+    some_po = po_module.PurchaseOrder.query.first()
+    arch_po_id, arch_po_no = some_po.id, some_po.po_number
+ok("order hatao", client.post(f"/po/{arch_po_id}/archive", follow_redirects=True))
+check("hataaya order list me nahi",
+      arch_po_no in client.get("/po/?status=all").data.decode("utf8", "ignore"), False)
+check("hataaye hue me mil jaata hai",
+      arch_po_no in client.get("/po/?status=all&show=archived").data.decode("utf8", "ignore"))
+with app.app_context():
+    check("order database me zinda hai",
+          db.session.get(po_module.PurchaseOrder, arch_po_id) is not None)
+ok("order wapas lao",
+   client.post(f"/po/{arch_po_id}/archive", data={"on": "0"}, follow_redirects=True))
+with app.app_context():
+    check("order ka nishaan hat gaya",
+          db.session.get(po_module.PurchaseOrder, arch_po_id).archived_at, None)
+
+# ------------------------------------- hataane se pehle asli naam dikhna chahiye
+# "Kya aap sure hain?" padh ke koi ruk nahi paata. Sawaal me us cheez ka apna
+# naam hona chahiye.
+invl = client.get("/invoices").data.decode("utf8", "ignore")
+with app.app_context():
+    named = db.session.get(Invoice, inv_arch_id)
+    # Agar "hatao" ne sach me mita diya hota toh yahan kuch milta hi nahi —
+    # isliye crash nahi, saaf failure.
+    check("hataaya hua bill wapas aane ke baad zinda hai", named is not None)
+    no = named.invoice_no if named else "??"
+    party = named.customer.name if named else "??"
+    amt = ("%.2f" % named.grand_total) if named else "??"
+check("mitaane ke sawaal me bill ka number hai", no in invl)
+check("aur party ka naam bhi", party in invl)
+check("aur raqam bhi", amt in invl)
+check("aur ye ki maal stock me wapas jayega",
+      "stock" in invl.lower() or "\u0938\u094d\u091f\u0949\u0915" in invl)
+check("mitaane wala button alag dikhta hai", "btn-risky" in invl)
+# Laal pe laal likhavat na ho jaye — .btn-danger pehle se bhara hua laal
+# button hai, uska naam dobara likhne se button khaali dikhne lagta tha.
+_css = open(os.path.join(os.path.dirname(__file__), "static", "style.css")).read()
+check("bhare hue laal button ka naam dobara nahi likha",
+      _css.count(".btn-danger{"), 1)
+check("chup-chaap wala apna alag naam rakhta hai", ".btn-risky{" in _css)
+custl = client.get("/customers").data.decode("utf8", "ignore")
+check("party mitaane ke sawaal me uska naam hai", "SARTHAK" in custl)
+
+# --------------------------------------------- dobara dabne se do bill na banein
+# Phone pe button dabne aur page badalne ke beech aadmi dobara daba deta hai.
+form = client.get("/invoices/new").data.decode("utf8", "ignore")
+check("form ke saath ek parchi ka number jaata hai", 'name="form_key"' in form)
+import re as _re3
+key = _re3.search(r'name="form_key" value="([0-9a-f]+)"', form).group(1)
+with app.app_context():
+    cust_for_dup = Customer.query.filter_by(name="SARTHAK").first() or Customer.query.first()
+    dup_cid = cust_for_dup.id
+    n_before = Invoice.query.count()
+
+dup_data = {
+    "customer_id": str(dup_cid), "date": "2026-02-01", "form_key": key,
+    "items_json": _json_mod.dumps([{"description": "Do baar wala maal", "qty": 5,
+                                    "rate": 20, "gst_rate": 0, "unit": "pcs"}]),
+}
+ok("pehli baar save", client.post("/invoices/new", data=dup_data, follow_redirects=True))
+with app.app_context():
+    n_after_one = Invoice.query.count()
+check("ek bill bana", n_after_one, n_before + 1)
+
+# Wahi parchi dobara — kuch nahi banna chahiye
+ok("wahi form dobara bheja", client.post("/invoices/new", data=dup_data, follow_redirects=True))
+with app.app_context():
+    n_after_two = Invoice.query.count()
+check("doosra bill nahi bana", n_after_two, n_after_one)
+
+# Nayi parchi pe naya bill banta hi hai — rok sirf dobara bhejne pe hai
+form2 = client.get("/invoices/new").data.decode("utf8", "ignore")
+key2 = _re3.search(r'name="form_key" value="([0-9a-f]+)"', form2).group(1)
+check("har baar nayi parchi milti hai", key2 != key)
+d2 = dict(dup_data, form_key=key2)
+ok("nayi parchi pe naya bill", client.post("/invoices/new", data=d2, follow_redirects=True))
+with app.app_context():
+    check("naya bill ban gaya", Invoice.query.count(), n_after_two + 1)
+    # Safai — aage ki ginti bigade nahi
+    for junk in Invoice.query.filter_by(date="2026-02-01").all():
+        db.session.delete(junk)
+    db.session.commit()
+
+# Order pe bhi wahi rok
+of = client.get("/po/new").data.decode("utf8", "ignore")
+check("order ke form me bhi parchi hai", 'name="form_key"' in of)
+
+# Aur screen pe button dobara dabne se rukta hai
+home2 = client.get("/").data.decode("utf8", "ignore")
+check("form bhejte hi nishaan lag jaata hai", "form.dataset.sent = '1'" in home2)
+check("dobara bheja toh rok deta hai",
+      "if (form.dataset.sent === '1') { e.preventDefault(); return; }" in home2)
+check("button sach me band hota hai (sirf dikhne me nahi)",
+      "b.disabled = true;" in home2)
+check("naam wale button ki value phir bhi jaati hai", 'keep.name = b.name;' in home2)
+check("back se wapas aane pe form phir chalta hai",
+      'form[data-sent="1"]' in home2)
+check("button pe 'ruko' likha aata hai", "BUSY_TEXT" in home2)
+
+# --------------------------------------------------- dashboard ki ginti sahi ho
+with app.app_context():
+    _c0 = Customer.query.first()
+    # Ek challan (rate nahi laga) aur ek asli bill
+    ch2 = Invoice(invoice_no="CH-CNT-1", date="2026-03-01", customer_id=_c0.id,
+                  subtotal=0, grand_total=0, payment_status="unpaid", hide_pricing=True)
+    inv2 = Invoice(invoice_no="INV-CNT-1", date="2026-03-01", customer_id=_c0.id,
+                   subtotal=700, grand_total=700, payment_status="unpaid")
+    db.session.add_all([ch2, inv2])
+    db.session.commit()
+    priced = Invoice.query.filter_by(hide_pricing=False).count()
+    everything = Invoice.query.count()
+    ch_ids = [ch2.id, inv2.id]
+check("challan aur bill dono database me hain", everything > priced)
+
+home = ok("dashboard", client.get("/")).data.decode("utf8", "ignore")
+# Dashboard pe jo ginti chhapi hai wahi padho — kahin bhi mila hua number
+# nahi. Warna challan ginne lage toh bhi test paas ho jaata hai.
+from translations import TRANSLATIONS as _TR2
+_sub = _TR2["en"]["totals_sub"]
+shown = None
+_m = _re2.search(_re2.escape(_sub).replace(r"\{n\}", r"(\d+)"), home)
+if _m:
+    shown = _m.group(1)
+check("dashboard pe bill ki ginti mil gayi", shown is not None)
+check("wo ginti sirf rate wale billon ki hai", shown, str(priced))
+check("us ginti me challan nahi gine gaye", shown == str(everything), False)
+check("har aankde pe waqt likha hai", "stat-note" in home)
+check("aur saaf likha hai ki sirf rate wale bill gine gaye", "totals_title" not in home)
+with app.app_context():
+    from translations import TRANSLATIONS as _TR
+    check("kul-jama ka sirnaam screen pe hai", _TR["en"]["totals_title"] in home)
+    check("aur uske neeche wajah bhi", "Challans are counted separately" in home)
+
+# Stock: 0 aur reorder 0 wala maal "kam" nahi kehlaata
+with app.app_context():
+    zero = Item(name="Bina Nazar Wala", unit="pcs", current_stock=0,
+                reorder_level=0, track_stock=True)
+    neg = Item(name="Minus Wala", unit="pcs", current_stock=-4,
+               reorder_level=0, track_stock=True)
+    low = Item(name="Sach Me Kam", unit="pcs", current_stock=2,
+               reorder_level=10, track_stock=True)
+    db.session.add_all([zero, neg, low])
+    db.session.commit()
+    junk_items = [zero.id, neg.id, low.id]
+
+home = client.get("/").data.decode("utf8", "ignore")
+check("stock 0 aur reorder 0 wala maal 'kam' me nahi aata",
+      "Bina Nazar Wala" in home, False)
+check("sach me kam wala maal aata hai", "Sach Me Kam" in home)
+check("minus wala alag khaane me hai", "Minus Wala" in home)
+check("minus wala laal me", "stock-neg" in home)
+
+itemp = client.get("/items").data.decode("utf8", "ignore")
+check("list me bhi minus laal nishaan me", "badge-bad" in itemp)
+check("list me kam maal peela nishaan me", "badge-warn" in itemp)
+
+with app.app_context():
+    for iid in junk_items:
+        db.session.delete(db.session.get(Item, iid))
+    for jid in ch_ids:
+        db.session.delete(db.session.get(Invoice, jid))
+    db.session.commit()
 
 # ---------------------------------------------- purani screens abhi bhi chalti hain
 for path in ("/", "/invoices", "/customers", "/items", "/accounts"):

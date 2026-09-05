@@ -431,6 +431,8 @@ class PurchaseOrder(db.Model):
     confirmed_at = db.Column(db.DateTime, nullable=True)
     confirmed_by = db.Column(db.Integer, db.ForeignKey("user.id"))
     dispatched_at = db.Column(db.DateTime, nullable=True)
+    # Order list se hata diya gaya — mitaaya nahi gaya. Khaali = zinda.
+    archived_at = db.Column(db.DateTime, nullable=True)
     # Telegram ka card kahan gaya — taaki wahi card update ho, naya na bhejna pade
     tg_chat_id = db.Column(db.String(40), default="")
     tg_message_ids = db.Column(db.String(300), default="")   # comma se jude
@@ -2228,15 +2230,50 @@ def po_list():
     if status in PO_STATUSES:
         q = q.filter_by(status=status)
     rows = q.order_by(PurchaseOrder.created_at.desc()).all()
-    counts = {s: PurchaseOrder.query.filter_by(status=s).count() for s in PO_STATUSES}
-    return render_template("po_list.html", pos=rows, status=status, counts=counts)
+    # Hataaya hua order roz ki list me nahi aata — par gaya nahi hai.
+    show = request.args.get("show", "")
+    archived_count = sum(1 for r in rows if r.archived_at is not None)
+    if show == "archived":
+        rows = [r for r in rows if r.archived_at is not None]
+    else:
+        rows = [r for r in rows if r.archived_at is None]
+    counts = {s: PurchaseOrder.query.filter(PurchaseOrder.status == s,
+                                            PurchaseOrder.archived_at.is_(None)).count()
+              for s in PO_STATUSES}
+    return render_template("po_list.html", pos=rows, status=status, counts=counts,
+                           show=show, archived_count=archived_count)
+
+
+@po_bp.route("/<int:po_id>/archive", methods=["POST"])
+@login_required
+def po_archive(po_id):
+    """Order list se hata do — mitao nahi.
+
+    Rad kiya hua ya galti se bana order roz ki list me pada rehta tha. Ab wo
+    nazar se hat jaata hai, par uska record, uska number aur uska bill sab
+    waise ke waise rehte hain.
+    """
+    po = PurchaseOrder.query.get_or_404(po_id)
+    on = request.form.get("on") != "0"
+    po.archived_at = datetime.utcnow() if on else None
+    db.session.commit()
+    flash(t("po_f_archived" if on else "po_f_unarchived", name=po.po_number), "success")
+    return redirect(request.referrer or url_for("po.po_list"))
 
 
 @po_bp.route("/new", methods=["GET", "POST"])
 @login_required
 def po_new():
-    customers = Customer.query.order_by(Customer.name).all()
+    # Hataayi hui party pe naya order nahi banta — purane order uske saath
+    # waise ke waise rehte hain.
+    customers = (Customer.query.filter(Customer.archived_at.is_(None))
+                 .order_by(Customer.name).all())
     if request.method == "POST":
+        # Ek parchi ek hi baar khapti hai — dobara dabne se do order nahi bante.
+        from app import form_key_used
+        if form_key_used(request.form.get("form_key")):
+            flash(t("po_f_already_saved"), "error")
+            return redirect(url_for("po.po_list"))
         customer_id = request.form.get("customer_id") or ""
         # Number khaali chhod do toh app khud laga deti hai. Do aadmi ek saath
         # form khole hon toh dono ko ek hi suggestion dikhta hai — isliye jo
