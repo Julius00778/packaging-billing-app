@@ -56,13 +56,13 @@
           <td>
             <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open') }}</a>
             {% if po.archived_at %}
-              <form method="POST" action="{{ url_for('po.po_archive', po_id=po.id) }}" style="display:inline;">
+              <form method="POST" action="{{ url_for('po.po_archive', po_id=po.id) }}" style="display:inline;">{{ csrf_field() }}
                 <input type="hidden" name="on" value="0">
                 <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_restore') }}</button>
               </form>
             {% else %}
               <form method="POST" action="{{ url_for('po.po_archive', po_id=po.id) }}" style="display:inline;"
-                    onsubmit="return confirm({{ t('arch_confirm', name=po.po_number)|tojson }});">
+                    onsubmit="return confirm({{ t('arch_confirm', name=po.po_number)|tojson }});">{{ csrf_field() }}
                 <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_archive') }}</button>
               </form>
             {% endif %}

@@ -76,7 +76,7 @@
               <a class="btn btn-ghost btn-sm" href="{{ url_for('print_invoice', invid=row.inv.id) }}"
                  data-bill="{{ row.inv.id }}" data-bill-no="{{ row.inv.invoice_no }}">{{ t('bill_open') }}</a>
               <form method="POST" style="display:inline;"
-                    action="{{ url_for('po.bill_mark_printed', po_id=row.po.id) }}">
+                    action="{{ url_for('po.bill_mark_printed', po_id=row.po.id) }}">{{ csrf_field() }}
                 <input type="hidden" name="printed" value="{{ '0' if row.po.bill_printed_at else '1' }}">
                 <button class="btn btn-ghost btn-sm" type="submit">
                   {{ t('po_mark_unprinted') if row.po.bill_printed_at else t('po_mark_printed') }}

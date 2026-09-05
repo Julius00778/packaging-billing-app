@@ -21,7 +21,7 @@
 <div class="flash {{ category }}">{{ message }}</div>
 {% endfor %}
 {% endwith %}
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="field">
 <label>{{ t('login_as') }}</label>
 <input type="hidden" name="role" id="role_input" value="owner">

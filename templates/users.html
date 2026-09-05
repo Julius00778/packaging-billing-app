@@ -6,7 +6,7 @@
 <div class="card panel-pad" style="margin-bottom:20px;">
 <h2 class="section-title">{{ t('add_user') }}</h2>
 <p class="section-sub">{{ t('add_user_sub') }}</p>
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="form-grid three">
 <div class="field"><label>{{ t('name') }} *</label><input type="text" name="name" required></div>
 <div class="field"><label>{{ t('username') }} *</label><input type="text" name="username" required></div>
@@ -37,7 +37,7 @@
 <td><span class="badge {% if u.active %}staff{% else %}inactive{% endif %}">{{ t('active') if u.active else t('inactive') }}</span></td>
 <td>
 {% if u.id != current_user.id %}
-<form method="POST" action="{{ url_for('toggle_user', uid=u.id) }}" style="display:inline;">
+<form method="POST" action="{{ url_for('toggle_user', uid=u.id) }}" style="display:inline;">{{ csrf_field() }}
 <button class="btn btn-ghost btn-sm" type="submit">{{ t('deactivate') if u.active else t('activate') }}</button>
 </form>
 {% else %}

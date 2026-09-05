@@ -10,7 +10,7 @@
 <div class="card panel-pad" style="margin-bottom:20px;">
 <h2 class="section-title">{{ t('add_category') }}</h2>
 <p class="section-sub">{{ t('add_category_sub') }}</p>
-<form method="POST" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+<form method="POST" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">{{ csrf_field() }}
 <div class="field" style="flex:1;min-width:220px;"><label>{{ t('category_name') }} *</label><input type="text" name="name" required></div>
 <div class="field" style="flex:1;min-width:220px;"><label>{{ t('category_units') }}</label><input type="text" name="units" placeholder="pcs, roll"></div>
 <div class="field" style="flex:1;min-width:220px;"><label>{{ t('category_colours') }}</label><input type="text" name="colours" placeholder="black, white"></div>
@@ -18,7 +18,7 @@
 </form>
 </div>
 
-<form method="POST" action="{{ url_for('category_units') }}">
+<form method="POST" action="{{ url_for('category_units') }}">{{ csrf_field() }}
 <div class="card panel-pad">
 <h2 class="section-title">{{ t('categories') }}</h2>
 <p class="section-sub">{{ t('category_units_hint') }}</p>
@@ -54,7 +54,7 @@
 
 {% for c in categories %}
 {% if current_user.is_owner %}
-<form id="delcat{{ c.id }}" method="POST" action="{{ url_for('delete_category', cid=c.id) }}" style="display:none;"></form>
+<form id="delcat{{ c.id }}" method="POST" action="{{ url_for('delete_category', cid=c.id) }}" style="display:none;">{{ csrf_field() }}</form>
 {% endif %}
 {% endfor %}
 

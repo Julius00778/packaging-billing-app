@@ -50,7 +50,7 @@
    aur ye ki maal stock me wapas chadh jayega. #}
 <form method="POST" action="{{ url_for('delete_invoice', invid=inv.id) }}" style="display:inline;"
       onsubmit="return confirm({{ t('invoice_delete_confirm', no=inv.invoice_no, party=inv.customer.name,
-                                    amt=('%.2f'|format(inv.grand_total)))|tojson }});">
+                                    amt=('%.2f'|format(inv.grand_total)))|tojson }});">{{ csrf_field() }}
 <button class="btn btn-ghost btn-sm btn-risky" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}

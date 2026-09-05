@@ -14,7 +14,7 @@
 {# Lamba form button ke peeche; galti hone par apne aap khul jaata hai. #}
 <div class="adder-body" id="adderBody" hidden>
 <p class="section-sub">{{ t('add_item_sub') }}</p>
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="form-grid three">
 <div class="field"><label>{{ t('item_name') }} *</label><input type="text" name="name" required></div>
 <div class="field">
@@ -109,7 +109,7 @@
                  url_for('unarchive_item', iid=it.id), it.name, it.is_archived) }}
 {% if current_user.is_owner %}
 <form method="POST" action="{{ url_for('delete_item', iid=it.id) }}" style="display:inline;"
-      onsubmit="return confirm({{ t('confirm_delete_named', name=it.name)|tojson }});">
+      onsubmit="return confirm({{ t('confirm_delete_named', name=it.name)|tojson }});">{{ csrf_field() }}
 <button class="btn btn-ghost btn-sm btn-risky" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}
@@ -134,7 +134,7 @@
 <div id="stockModal{{it.id}}" style="display:none;position:fixed;inset:0;background:rgba(28,37,65,0.5);align-items:center;justify-content:center;z-index:50;">
 <div class="card panel-pad" style="width:320px;">
 <h3 style="font-size:15px;margin-bottom:14px;">{{ t('add_stock_title') }} — {{ it.name }}</h3>
-<form method="POST" action="{{ url_for('add_stock', iid=it.id) }}">
+<form method="POST" action="{{ url_for('add_stock', iid=it.id) }}">{{ csrf_field() }}
 <div class="field"><label>{{ t('quantity_neg_hint') }} ({{ it.unit }})</label><input type="number" step="0.01" name="qty" required></div>
 <div class="field"><label>{{ t('note') }}</label><input type="text" name="note" placeholder="{{ t('note_ph') }}"></div>
 <div class="btn-row">

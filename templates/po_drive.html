@@ -20,7 +20,7 @@
 {% endif %}
 
 <div class="card panel-pad" style="margin-bottom:14px;">
-  <form method="POST" action="{{ url_for('po.drive_set_folder') }}">
+  <form method="POST" action="{{ url_for('po.drive_set_folder') }}">{{ csrf_field() }}
     <div class="field">
       <label>{{ t('po_drive_link_label') }}</label>
       <input type="text" name="root_link" value="{{ root_link }}"
@@ -39,7 +39,7 @@
   <div class="card panel-pad">
     <div class="toolbar" style="margin-bottom:12px;">
       <div style="flex:1;font-weight:600;">{{ t('po_drive_party_folders') }}</div>
-      <form method="POST" action="{{ url_for('po.drive_sync_now') }}">
+      <form method="POST" action="{{ url_for('po.drive_sync_now') }}">{{ csrf_field() }}
         <button class="btn btn-primary" type="submit">{{ t('po_drive_sync_all') }}</button>
       </form>
     </div>
@@ -65,7 +65,7 @@
         {% endif %}
 
         <form method="POST" action="{{ url_for('po.drive_link_folder', folder_id=f.id) }}"
-              style="margin-top:10px;">
+              style="margin-top:10px;">{{ csrf_field() }}
           <div class="form-grid three">
             <div class="field">
               <label>{{ t('po_drive_this_party') }}</label>
@@ -92,7 +92,7 @@
         </form>
 
         {% if f.customer_id %}
-          <form method="POST" action="{{ url_for('po.drive_sync_now') }}" style="display:inline;">
+          <form method="POST" action="{{ url_for('po.drive_sync_now') }}" style="display:inline;">{{ csrf_field() }}
             <input type="hidden" name="folder_id" value="{{ f.id }}">
             <button class="btn btn-ghost btn-sm" type="submit">{{ t('po_drive_sync_one') }}</button>
           </form>

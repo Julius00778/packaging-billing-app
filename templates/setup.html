@@ -21,7 +21,7 @@
 <div class="flash {{ category }}">{{ message }}</div>
 {% endfor %}
 {% endwith %}
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <h3 class="settings-sec-title" style="margin-top:0;">{{ t('firm_account_section') }}</h3>
 <div class="field"><label for="firm_name">{{ t('firm_name') }}</label><input type="text" id="firm_name" name="firm_name" required autocomplete="organization"></div>
 <div class="field"><label for="address">{{ t('address') }}</label><input type="text" id="address" name="address" autocomplete="street-address"></div>

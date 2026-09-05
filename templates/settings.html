@@ -6,7 +6,7 @@
 <div class="card panel-pad" style="margin-bottom:20px;">
 <h2 class="section-title">{{ t('firm_settings') }}</h2>
 <p class="section-sub">{{ t('settings_sub') }}</p>
-<form method="POST">
+<form method="POST">{{ csrf_field() }}
 <div class="form-grid">
 <div class="field"><label>{{ t('firm_name') }}</label><input type="text" name="firm_name" value="{{ s.firm_name }}"></div>
 <div class="field"><label>{{ t('phone') }}</label><input type="text" name="phone" value="{{ s.phone }}"></div>
