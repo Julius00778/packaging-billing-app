@@ -11,6 +11,8 @@
    unit aur pichli baar ka rate khud bhar jaate hain. #}
 
 <form method="POST" enctype="multipart/form-data" id="orderForm" class="sheet">
+{# Ek parchi ka number — ye form ek hi baar khap sakta hai. #}
+<input type="hidden" name="form_key" value="{{ new_form_key() }}">
   <input type="hidden" name="entry_mode" value="rows">
 
   <div class="sheet-head">

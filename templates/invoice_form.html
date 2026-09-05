@@ -13,6 +13,9 @@
 </div>
 
 <form method="POST" id="invForm">
+{# Ek parchi ka number — ye form ek hi baar khap sakta hai. Purana bill
+   sudhaarte waqt naya number nikalta hi nahi, isliye wahan rok nahi. #}
+{% if not invoice %}<input type="hidden" name="form_key" value="{{ new_form_key() }}">{% endif %}
 <div class="checkbox-row" style="background:var(--accent-soft);padding:10px 12px;border-radius:8px;">
 <input type="checkbox" name="hide_pricing" id="f_hidePricing" {% if invoice and invoice.hide_pricing %}checked{% endif %} {% if invoice %}disabled{% endif %}>
 <label for="f_hidePricing" style="margin:0;font-weight:600;color:var(--accent-deep);">{{ t('hide_pricing_label') }}</label>

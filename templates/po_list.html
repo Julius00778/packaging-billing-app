@@ -2,6 +2,7 @@
 {% set active = "po" %}
 {% block title %}{{ t('po_orders') }}{% endblock %}
 {% import "_badges.html" as B with context %}
+{% import "_archive.html" as A with context %}
 {% block content %}
 
 {# Ek hi manzil: Orders. Setup wale link (Products, Drive, Telegram) Settings me
@@ -19,6 +20,7 @@
   <a class="btn btn-ghost btn-sm {% if status not in counts %}active{% endif %}"
      href="{{ url_for('po.po_list', status='all') }}">{{ t('po_all') }}</a>
 </div>
+{{ A.chips(show, archived_count) }}
 
 {# Ban gaye order ka agla padav dispatch aur bill hai — wo raasta wahin dikhna
    chahiye jahan zaroorat hai, alag manzil banke nahi. #}
@@ -36,7 +38,7 @@
                  <th>{{ t('po_lines') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
       <tbody>
       {% for po in pos %}
-        <tr>
+        <tr class="{{ A.row_class(po.archived_at is not none) }}">
           <td class="mono">{{ po.po_number }}
             {% if po.has_scan %}<span class="badge">{{ t('po_src_upload') }}</span>{% endif %}
           </td>
@@ -51,7 +53,20 @@
             {{ B.po_badge(po.status) }}
             {% if po.operator_name %}<div style="font-size:11px;color:var(--ink-faint);">{{ po.operator_name }}</div>{% endif %}
           </td>
-          <td><a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open') }}</a></td>
+          <td>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('po.po_review', po_id=po.id) }}">{{ t('po_open') }}</a>
+            {% if po.archived_at %}
+              <form method="POST" action="{{ url_for('po.po_archive', po_id=po.id) }}" style="display:inline;">
+                <input type="hidden" name="on" value="0">
+                <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_restore') }}</button>
+              </form>
+            {% else %}
+              <form method="POST" action="{{ url_for('po.po_archive', po_id=po.id) }}" style="display:inline;"
+                    onsubmit="return confirm({{ t('arch_confirm', name=po.po_number)|tojson }});">
+                <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_archive') }}</button>
+              </form>
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
       </tbody>

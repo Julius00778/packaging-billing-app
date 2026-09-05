@@ -83,6 +83,53 @@
     }
   });
 })();
+
+// Ek form ek hi baar jaye.
+//
+// Phone pe button dabne aur page badalne ke beech ek-do second lagta hai. Us
+// beech me aadmi dobara daba deta hai — aur do bill ban jaate hain, do alag
+// numbers ke saath. Sirf CSS se button "dabaya hua" dikha dena kaafi nahi;
+// use sach me band karna padta hai.
+//
+// Button ko turant disabled kar dene se uski value form ke saath nahi jaati —
+// isliye pehle ek chhupi hui copy rakh dete hain, tab band karte hain.
+(function () {
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || form.dataset.noGuard === '1') { return; }
+    if (form.dataset.sent === '1') { e.preventDefault(); return; }
+    form.dataset.sent = '1';
+    var btns = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (b.name) {
+        var keep = document.createElement('input');
+        keep.type = 'hidden';
+        keep.name = b.name;
+        keep.value = b.value;
+        form.appendChild(keep);
+      }
+      if (b.tagName === 'BUTTON' && !b.dataset.busyText) {
+        b.dataset.busyText = '1';
+        b.textContent = (window.BUSY_TEXT || '...');
+      }
+      b.disabled = true;
+    }
+    // Browser back se wapas aaye toh form phir se chalna chahiye.
+    setTimeout(function () {
+      if (document.visibilityState === 'hidden') { return; }
+    }, 0);
+  }, true);
+  window.addEventListener('pageshow', function (ev) {
+    if (!ev.persisted) { return; }
+    var forms = document.querySelectorAll('form[data-sent="1"]');
+    for (var i = 0; i < forms.length; i++) {
+      forms[i].dataset.sent = '0';
+      var b = forms[i].querySelectorAll('button, input[type="submit"]');
+      for (var j = 0; j < b.length; j++) { b[j].disabled = false; }
+    }
+  });
+})();
 </script>
 
 <main class="container">
@@ -99,6 +146,8 @@ var MAPTXT = {
   wait:  {{ t('map_wait')|tojson }},
   noGps: {{ t('map_no_gps')|tojson }}
 };
+// Form bhejte waqt button pe kya likha aaye — screen ki bhasha me
+var BUSY_TEXT = {{ t('busy')|tojson }};
 </script>
 </main>
 

@@ -54,22 +54,34 @@
   {% endif %}
 </div>
 
+{# Har aankde ke saath ab likha hota hai ki wo kis arse ka hai aur kis cheez
+   ka. Pehle "Total Billed" aur "Pending" bina waqt ke khade the, aur unme
+   challan bhi ginte the — jinpe rate laga hi nahi. Ab neeche ek hi line me
+   saaf likha hai ki ye ginti sirf rate wale billon ki hai. #}
+<h2 class="section-title" style="margin-top:22px;">{{ t('totals_title') }}</h2>
+{# Bill ki ginti apna khaana nahi maangti — wo is line me hi theek baith
+   jaati hai, aur paise wale chaar khaane ek hi katar me reh jaate hain. #}
+<p class="section-sub">{{ t('totals_sub', n=count) }}</p>
 <div class="stat-grid">
 <div class="card stat-card">
-<div class="stat-label">{{ t('total_invoices') }}</div>
-<div class="stat-value mono">{{ count }}</div>
+<div class="stat-label">{{ t('billed_this_month') }}</div>
+<div class="stat-value mono">₹{{ "%.2f"|format(month_billed) }}</div>
+<div class="stat-note">{{ t('span_this_month') }}</div>
 </div>
 <div class="card stat-card">
 <div class="stat-label">{{ t('total_billed') }}</div>
 <div class="stat-value mono">₹{{ "%.2f"|format(billed) }}</div>
+<div class="stat-note">{{ t('span_all_time') }}</div>
 </div>
 <div class="card stat-card received">
 <div class="stat-label">{{ t('received') }}</div>
 <div class="stat-value mono">₹{{ "%.2f"|format(received) }}</div>
+<div class="stat-note">{{ t('span_all_time') }}</div>
 </div>
 <div class="card stat-card pending">
 <div class="stat-label">{{ t('pending') }}</div>
 <div class="stat-value mono">₹{{ "%.2f"|format(pending) }}</div>
+<div class="stat-note">{{ t('span_all_time') }}</div>
 </div>
 </div>
 
@@ -85,13 +97,35 @@
 </div>
 {% endif %}
 
+{# Stock minus me hona "kam maal" nahi hai — us maal ka hisaab hi galat hai,
+   bina entry ke bik gaya. Isliye alag khaana, sabse upar. #}
+{% if neg_stock %}
+<div class="card panel-pad" style="margin-bottom:20px;">
+<h2 class="section-title">{{ t('neg_stock_alert') }}</h2>
+<p class="section-sub">{{ t('neg_stock_sub') }}</p>
+{% for it in neg_stock %}
+<div class="low-stock-row">
+<span><a href="{{ url_for('edit_item', iid=it.id) }}">{{ it.name }}</a></span>
+<span class="mono stock-neg">{{ "%.2f"|format(it.current_stock) }} {{ it.unit }}</span>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+
 {% if low_stock %}
 <div class="card panel-pad" style="margin-bottom:20px;">
-<h2 class="section-title">{{ t('low_stock_alert') }}</h2>
-<p class="section-sub">{{ t('low_stock_sub') }}</p>
+<div class="toolbar" style="margin:0 0 10px;">
+<div style="flex:1;">
+<h2 class="section-title" style="margin-bottom:2px;">{{ t('low_stock_alert') }}</h2>
+<p class="section-sub" style="margin-bottom:0;">{{ t('low_stock_sub') }}</p>
+</div>
+{% if low_total > low_stock|length %}
+<a class="btn btn-ghost btn-sm" href="{{ url_for('items') }}">{{ t('low_stock_see_all', n=low_total) }}</a>
+{% endif %}
+</div>
 {% for it in low_stock %}
 <div class="low-stock-row">
-<span>{{ it.name }}</span>
+<span><a href="{{ url_for('edit_item', iid=it.id) }}">{{ it.name }}</a></span>
 <span class="mono">{{ "%.2f"|format(it.current_stock) }} {{ it.unit }} ({{ t('reorder_at') }} {{ "%.2f"|format(it.reorder_level) }})</span>
 </div>
 {% endfor %}
