@@ -1276,33 +1276,343 @@ def _row_to_dict(row):
     return out
 
 
+# ============================================================ backup aur restore
+#
+# Purana backup sirf billing wali tables leta tha. Uska matlab ye tha ki agar
+# database chala jaye toh order ka poora hissa — party ke product code, unke
+# rate, Telegram ke group, purane order — aur sabse badi baat, **product ki
+# saari photos** — kahin se wapas nahi aatin. Photos ka doosra copy hai hi
+# nahi tha: wo sirf live database ke andar rehti hain.
+#
+# Isliye ab backup ek ZIP hai:
+#   backup.json   — saari tables (photos ki jagah unke file ka naam)
+#   photos/...    — har product ki photo aur uska chhota roop
+#   scans/...     — order ki asli parchi/photo
+#   PADHO.txt     — insaan ke padhne layak: kya-kya andar hai, wapas kaise laana
+#
+# Do cheezein jaan-boojh ke BAHAR rakhi hain: password ka nishaan, aur wo
+# settings jo taale ka kaam karti hain (jaise Telegram ka webhook secret).
+# Backup file WhatsApp pe bhi ghoom sakti hai — usme taale ki chaabi nahi honi
+# chahiye. Kaunsi cheez chhodi gayi wo PADHO.txt me likh di jaati hai, taaki
+# wapas laate waqt pata rahe ki kya haath se bharna hai.
+
+BACKUP_SECRET_KEYS = {"telegram_webhook_secret"}
+
+
+def _is_secret_key(key):
+    """Ye setting taale ka kaam karti hai kya."""
+    k = (key or "").lower()
+    if k in BACKUP_SECRET_KEYS:
+        return True
+    return any(w in k for w in ("secret", "token", "password", "api_key", "credential"))
+
+
+def _backup_tables():
+    """Kaunsi table backup me jaati hai, aur kis kram me.
+
+    Kram maayne rakhta hai: wapas laate waqt party pehle aani chahiye, uske
+    baad uska maal, phir bill. Isliye ye list hi restore ka bhi kram hai.
+    """
+    import po_module as M
+    return [
+        ("settings", Settings),
+        ("users", User),
+        ("categories", Category),
+        ("customers", Customer),
+        ("vendors", Vendor),
+        ("items", Item),
+        ("stock_entries", StockEntry),
+        ("invoices", Invoice),
+        ("invoice_items", InvoiceItem),
+        ("payments", Payment),
+        ("expenses", Expense),
+        # ---- order wala poora hissa (pehle backup me tha hi nahi)
+        ("po_settings", M.POSetting),
+        ("party_po_configs", M.PartyPOConfig),
+        ("party_folders", M.PartyFolder),
+        ("telegram_chats", M.TelegramChat),
+        ("telegram_people", M.TelegramPerson),
+        ("party_product_maps", M.PartyProductMap),
+        ("party_rates", M.PartyRate),
+        ("purchase_orders", M.PurchaseOrder),
+        ("po_lines", M.POLine),
+        ("po_parts", M.POPart),
+    ]
+
+
+def _blob_columns(model):
+    """Is table ke kaunse khaane me tasveer/file ke bytes hain."""
+    return [c.name for c in model.__table__.columns
+            if isinstance(c.type, db.LargeBinary)]
+
+
+def _backup_row(row, model, blobs, files, folder):
+    """Ek row ko JSON layak banao; bytes alag file me nikaal do.
+
+    Bytes JSON me aate hi nahi. Pehle wo `default=str` se chup-chaap
+    "b'\\xff\\xd8...'" jaisi bekaar string ban jaate the — dekhne me lagta tha
+    backup ho gaya, par us string se photo kabhi wapas nahi banti.
+    """
+    out = {}
+    for col in row.__table__.columns:
+        val = getattr(row, col.name)
+        if col.name in blobs:
+            if val:
+                name = f"{folder}/{model.__tablename__}_{getattr(row, 'id', 'x')}_{col.name}.bin"
+                files[name] = val
+                out[col.name] = {"file": name, "bytes": len(val)}
+            else:
+                out[col.name] = None
+            continue
+        if isinstance(val, (datetime, date)):
+            val = val.isoformat()
+        out[col.name] = val
+    return out
+
+
 @app.route("/settings/backup")
 @login_required
 @owner_required
 def backup_export():
-    """One-click full data export (JSON) — a safety net before testing changes or
-    just for periodic offline backup. Owner-only. Excludes password hashes."""
+    """Poora backup — ZIP me, photos ke saath."""
+    import io
+    import zipfile
+
     data = {
+        "format": 2,
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "firm": Settings.get().firm_name,
-        "customers": [_row_to_dict(r) for r in Customer.query.all()],
-        "categories": [_row_to_dict(r) for r in Category.query.all()],
-        "items": [_row_to_dict(r) for r in Item.query.all()],
-        "stock_entries": [_row_to_dict(r) for r in StockEntry.query.all()],
-        "invoices": [_row_to_dict(r) for r in Invoice.query.all()],
-        "invoice_items": [_row_to_dict(r) for r in InvoiceItem.query.all()],
-        "payments": [_row_to_dict(r) for r in Payment.query.all()],
-        "vendors": [_row_to_dict(r) for r in Vendor.query.all()],
-        "expenses": [_row_to_dict(r) for r in Expense.query.all()],
-        "settings": [_row_to_dict(r) for r in Settings.query.all()],
-        "users": [{k: v for k, v in _row_to_dict(r).items() if k != "password_hash"} for r in User.query.all()],
+        "tables": {},
     }
-    body = json.dumps(data, indent=2, ensure_ascii=False, default=str)
-    fname = f"backup_{date.today().isoformat()}.json"
+    files = {}
+    left_out = []
+
+    for name, model in _backup_tables():
+        blobs = _blob_columns(model)
+        folder = "scans" if model.__tablename__ == "purchase_order" else "photos"
+        rows = []
+        for r in model.query.all():
+            d = _backup_row(r, model, blobs, files, folder)
+            if model is User:
+                d.pop("password_hash", None)
+            if model.__tablename__ == "po_setting" and _is_secret_key(d.get("key")):
+                left_out.append(d.get("key"))
+                continue
+            rows.append(d)
+        data["tables"][name] = rows
+
+    data["left_out_keys"] = left_out
+
+    counts = "\n".join(f"  {k:22s} {len(v)}" for k, v in data["tables"].items())
+    readme = (
+        "SAMBHAV / packaging billing — data backup\n"
+        "=========================================\n\n"
+        f"Banaya gaya: {data['exported_at']}\n"
+        f"Firm: {data['firm']}\n\n"
+        "Andar kya hai\n-------------\n"
+        f"{counts}\n"
+        f"  photos + scans        {len(files)} file\n\n"
+        "Wapas kaise laana\n-----------------\n"
+        "App ki Settings screen -> 'Backup se wapas laao' -> yahi ZIP file chuno.\n"
+        "Wapas laane ka raasta sirf KHAALI database pe chalta hai. Chaalu\n"
+        "database pe wo mana kar dega — taaki galti se aaj ka kaam na mit jaye.\n"
+        "Sirf jaanchna ho ki file theek hai, toh 'Sirf jaanch karo' chuno:\n"
+        "usse kuch likha nahi jaata.\n\n"
+        "Ye backup me JAAN-BOOJH KE nahi hai\n-----------------------------------\n"
+        "1. Password (sirf unka nishaan bhi nahi). Wapas laane ke baad har\n"
+        "   aadmi ka password dobara banana padega.\n"
+        "2. Taale wali settings: "
+        + (", ".join(left_out) if left_out else "(koi nahi)") + "\n"
+        "   Telegram ka bot token aur Google Drive ki chaabi bhi isme nahi hain —\n"
+        "   wo app ki settings me nahi, server ke apne khaane (environment) me\n"
+        "   rehte hain. Ye file kisi ke haath lag jaye toh usse aapka Telegram ya\n"
+        "   Drive nahi khulta.\n"
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("PADHO.txt", readme, zipfile.ZIP_DEFLATED)
+        z.writestr("backup.json",
+                   json.dumps(data, indent=1, ensure_ascii=False, default=str),
+                   zipfile.ZIP_DEFLATED)
+        # Photos pehle se hi JPEG hain — unhe dobara dabaane se kuch nahi milta,
+        # sirf waqt lagta hai.
+        for name, blob in files.items():
+            z.writestr(name, blob, zipfile.ZIP_STORED)
+    buf.seek(0)
+
+    fname = f"backup_{date.today().isoformat()}.zip"
     return Response(
-        body, mimetype="application/json",
+        buf.getvalue(), mimetype="application/zip",
         headers={"Content-Disposition": f"attachment; filename={fname}"}
     )
+
+
+def _restore_read(fp):
+    """ZIP kholo aur uska data nikaalo. Kuch likhta nahi."""
+    import zipfile
+    z = zipfile.ZipFile(fp)
+    with z.open("backup.json") as fh:
+        data = json.loads(fh.read().decode("utf8"))
+    return z, data
+
+
+def _restore_counts(data):
+    return {k: len(v) for k, v in (data.get("tables") or {}).items()}
+
+
+def _db_is_empty():
+    """Database khaali hai kya — yaani ismein abhi koi asli kaam nahi hua.
+
+    Restore sirf khaali database pe chalta hai. Ye rok jaan-boojh ke hai:
+    backup wapas laane ka matlab hai "sab kuch is file jaisa kar do", aur
+    chaalu database pe wo aaj ka poora kaam mita dega. Aisi galti ek baar
+    hoti hai aur hamesha ke liye hoti hai.
+    """
+    import po_module as M
+    busy = {
+        "customers": Customer.query.count(),
+        "invoices": Invoice.query.count(),
+        "items": Item.query.count(),
+        "orders": M.PurchaseOrder.query.count(),
+        "product maps": M.PartyProductMap.query.count(),
+    }
+    return {k: v for k, v in busy.items() if v}
+
+
+def _reset_sequences():
+    """Postgres pe id ka counter aage badhao.
+
+    Hum purani id ke saath hi rows daalte hain (taaki purane bill, order aur
+    photo ke aapas ke jode na tootein). Postgres ka apna counter isse nahi
+    badhta — aur restore ke baad pehla naya bill "id 1" maangta hai, jo pehle
+    se bhara hua hai. SQLite khud sambhal leta hai; Postgres ko bolna padta
+    hai.
+    """
+    if not db.engine.url.drivername.startswith("postgres"):
+        return
+    from sqlalchemy import text
+    for _, model in _backup_tables():
+        tbl = model.__table__
+        pk = list(tbl.primary_key.columns)
+        if len(pk) != 1 or pk[0].name != "id":
+            continue
+        db.session.execute(text(
+            "SELECT setval(pg_get_serial_sequence(:t, 'id'), "
+            "COALESCE((SELECT MAX(id) FROM \"%s\"), 1), true)" % tbl.name
+        ), {"t": tbl.name})
+
+
+def _restore_apply(z, data, keep_user_id=None):
+    """Backup ki rows database me daalo. Sirf khaali database pe.
+
+    "Khaali" ka matlab bilkul khaali nahi hota: app khud shuru hote hi kuch
+    cheezein bo deta hai — firm ki setting, category ki list — aur andar
+    aane ke liye ek aadmi toh chahiye hi. Wo bo hui rows purani id ke saath
+    takraati hain, isliye pehle unhe hatana padta hai.
+
+    Ek cheez jaan-boojh ke bachaayi jaati hai: jo aadmi abhi ye kaam kar raha
+    hai. Backup me kisi ka password nahi hota, toh agar uska bhi khaata mita
+    diya jaye toh andar aane ka koi raasta hi na bache — apne hi software se
+    bahar. Baaki logon ke khaate backup se aate hain, par unka password
+    dobara banana padta hai.
+    """
+    tables = data.get("tables") or {}
+    made = {}
+
+    # Pehle safai — ulte kram me, taaki bachche pehle jaayein aur maa-baap baad me.
+    for name, model in reversed(_backup_tables()):
+        q = model.query
+        if model is User and keep_user_id is not None:
+            q = q.filter(User.id != keep_user_id)
+        for row in q.all():
+            db.session.delete(row)
+    db.session.flush()
+
+    kept_names = set()
+    if keep_user_id is not None:
+        kept = db.session.get(User, keep_user_id)
+        if kept:
+            kept_names = {kept.username}
+
+    for name, model in _backup_tables():
+        rows = tables.get(name) or []
+        blobs = _blob_columns(model)
+        cols = {c.name for c in model.__table__.columns}
+        n = 0
+        for d in rows:
+            kw = {}
+            for k, v in d.items():
+                if k not in cols:
+                    continue          # purane backup me na hone wala khaana
+                if k in blobs:
+                    kw[k] = z.read(v["file"]) if isinstance(v, dict) and v.get("file") else None
+                    continue
+                col = model.__table__.columns[k]
+                if v is not None and isinstance(col.type, db.DateTime):
+                    try:
+                        v = datetime.fromisoformat(str(v).replace("Z", ""))
+                    except ValueError:
+                        v = None
+                kw[k] = v
+            if model is User:
+                # Jo aadmi abhi andar hai use chhodo — uska khaata bacha hua hai.
+                if kw.get("username") in kept_names or kw.get("id") == keep_user_id:
+                    continue
+                # Backup me password ka nishaan hota hi nahi. Bina uske khaata
+                # banega toh sahi, par uska password dobara lagana padega.
+                kw.setdefault("password_hash", "")
+            db.session.add(model(**kw))
+            n += 1
+        db.session.flush()
+        made[name] = n
+    _reset_sequences()
+    db.session.commit()
+    return made
+
+
+@app.route("/settings/restore", methods=["POST"])
+@login_required
+@owner_required
+def backup_restore():
+    """Backup file ko jaancho, ya khaali database me wapas laao."""
+    f = request.files.get("backup")
+    if not f or not f.filename:
+        flash(t("restore_no_file"), "error")
+        return redirect(url_for("settings_page"))
+
+    try:
+        z, data = _restore_read(f.stream)
+    except Exception:
+        # Kya toota ye user ko batane ka matlab nahi — usse bas ye jaanna hai
+        # ki file padhi nahi ja rahi.
+        flash(t("restore_bad_file"), "error")
+        return redirect(url_for("settings_page"))
+
+    counts = _restore_counts(data)
+    total = sum(counts.values())
+    photos = sum(1 for n in z.namelist() if n.startswith(("photos/", "scans/")))
+    when = (data.get("exported_at") or "")[:10]
+
+    if request.form.get("mode") != "restore":
+        flash(t("restore_checked", when=when, rows=total, photos=photos), "success")
+        return redirect(url_for("settings_page"))
+
+    busy = _db_is_empty()
+    if busy:
+        flash(t("restore_not_empty",
+                what=", ".join(f"{k}: {v}" for k, v in busy.items())), "error")
+        return redirect(url_for("settings_page"))
+
+    try:
+        made = _restore_apply(z, data, keep_user_id=current_user.id)
+    except Exception:
+        db.session.rollback()
+        flash(t("restore_failed"), "error")
+        return redirect(url_for("settings_page"))
+
+    flash(t("restore_done", rows=sum(made.values()), photos=photos), "success")
+    return redirect(url_for("settings_page"))
 
 
 @app.route("/users", methods=["GET", "POST"])

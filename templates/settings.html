@@ -143,6 +143,26 @@
 <h2 class="section-title">{{ t('data_backup') }}</h2>
 <p class="section-sub">{{ t('data_backup_hint') }}</p>
 <div class="btn-row"><a class="btn btn-ghost" href="{{ url_for('backup_export') }}">{{ t('download_backup_btn') }}</a></div>
+
+{# Backup ka aadha hissa wapas laana hai. Jo backup kabhi wapas laake dekha
+   hi nahi gaya, wo backup nahi — bas ek file hai. Isliye "sirf jaanch" ka
+   button alag hai: usse kuch likha nahi jaata, sirf pata chalta hai ki file
+   padhi ja rahi hai aur usme kitna maal hai. #}
+<div class="divider"></div>
+<h2 class="section-title">{{ t('restore_title') }}</h2>
+<p class="section-sub">{{ t('restore_hint') }}</p>
+<form method="POST" action="{{ url_for('backup_restore') }}" enctype="multipart/form-data">
+{{ csrf_field() }}
+<div class="field">
+<label for="backupFile">{{ t('restore_pick') }}</label>
+<input type="file" id="backupFile" name="backup" accept=".zip,application/zip" required>
+</div>
+<div class="btn-row">
+<button class="btn btn-ghost" type="submit" name="mode" value="check">{{ t('restore_check_btn') }}</button>
+<button class="btn btn-ghost btn-risky" type="submit" name="mode" value="restore"
+        onclick="return confirm({{ t('restore_confirm')|tojson }});">{{ t('restore_do_btn') }}</button>
+</div>
+</form>
 </div>
 
 {% endblock %}
