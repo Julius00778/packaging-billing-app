@@ -225,6 +225,38 @@ th.num{text-align:right;}
 /* Minus ka stock laal me — wahan ginti hi galat hai. */
 .stock-neg{color:var(--danger);font-weight:600;}
 
+/* -------------------------------------------------- type karke dhoondhna */
+/* List input ke theek neeche tairti hai. z-index isliye ki totals aur
+   table ke upar rahe — warna aadha naam kagaz ke peeche chhup jaata hai. */
+.combo-list{position:absolute;left:0;right:0;top:100%;z-index:40;
+  background:var(--paper);border:1px solid var(--border);border-radius:6px;
+  box-shadow:var(--shadow-lift);max-height:260px;overflow-y:auto;margin-top:3px;}
+.combo-opt{padding:8px 11px;font-size:13.5px;cursor:pointer;
+  display:flex;gap:8px;align-items:baseline;}
+.combo-opt:hover,.combo-opt.is-active{background:var(--accent-soft);
+  color:var(--accent-deep);}
+.combo-note{margin-left:auto;font-size:11.5px;color:var(--ink-faint);}
+.combo-opt.is-active .combo-note{color:var(--accent-deep);}
+.combo-none{padding:10px 11px;font-size:13px;color:var(--ink-faint);}
+
+/* ------------------------------------------------------- galti wahin dikhe */
+/* Galti ka message us khaane ke neeche hi hona chahiye jahan galti hui hai.
+   Upar ek alert box me "kuch galat hai" likhne se aadmi dhoondhta reh jaata
+   hai ki kahan. Rang ke saath shabd bhi hai. */
+.field-error{font-size:12px;color:var(--danger);margin-top:4px;font-weight:500;}
+.field-error::before{content:"\26A0  ";}
+.has-error input,.has-error select,.has-error textarea,
+input.has-error,select.has-error{border-color:var(--danger);
+  box-shadow:0 0 0 3px var(--danger-soft);}
+
+/* --------------------------------------------------- chhupa hua "jodo" form */
+/* Jo list dekhne aaya hai use pehle list dikhni chahiye. Jodne ka lamba form
+   button ke peeche rehta hai; galti hone par apne aap khul jaata hai. */
+.adder-head{display:flex;gap:10px;align-items:center;}
+.adder-head h2{flex:1;margin:0;}
+.adder-body{margin-top:16px;}
+.adder-body[hidden]{display:none !important;}
+
 /* ------------------------------------------------------------------- tiles */
 .entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:12px;margin-top:14px;}

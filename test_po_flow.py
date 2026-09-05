@@ -10,6 +10,8 @@ import os
 import sys
 import json as _json_mod
 import re as _re2
+import shutil as _sh
+import subprocess as _sp
 
 sys.path.insert(0, os.path.dirname(__file__))
 DB = os.path.join(os.path.dirname(__file__), "test_po.db")
@@ -1410,6 +1412,129 @@ with app.app_context():
         db.session.delete(db.session.get(Invoice, jid))
     db.session.commit()
 
+# ============================================================ Hissa 3: bill ka form
+
+form = ok("naya bill ka form", client.get("/invoices/new")).data.decode("utf8", "ignore")
+
+# ------------------------------------------- party type karke dhoondhi jaye
+check("party ab lambi drop-down nahi hai",
+      '<select id="f_customer"' in form, False)
+check("uski jagah likhne wala khaana hai", 'id="f_customerName"' in form)
+check("chuni hui party chhupe khaane me jaati hai",
+      'type="hidden" id="f_customer" name="customer_id"' in form)
+check("party ki list page ke saath hi aa jaati hai", "const CUSTOMERS" in form)
+check("dhoondhne wala code juda hua hai", "combo.js" in form)
+
+# Combo alag file me hai — uska JS bhi parse hona chahiye
+if _sh.which("node"):
+    res = _sp.run(["node", "--check",
+                   os.path.join(os.path.dirname(__file__), "static", "combo.js")],
+                  capture_output=True)
+    check("combo.js parse hota hai", res.returncode, 0)
+    if res.returncode:
+        print(res.stderr.decode("utf8", "ignore")[:400])
+
+combo_src = open(os.path.join(os.path.dirname(__file__), "static", "combo.js")).read()
+check("keyboard se bhi chalta hai (upar/neeche)", "ArrowDown" in combo_src)
+check("Enter se chunav hota hai", "'Enter'" in combo_src)
+check("Escape se list band hoti hai", "'Escape'" in combo_src)
+check("screen reader ko list khulne ka pata chalta hai",
+      "aria-expanded" in combo_src and "aria-activedescendant" in combo_src)
+check("list ko listbox bataya gaya hai", "'listbox'" in combo_src)
+# Sabse zaroori: aadha likha hua naam id nahi banata
+check("type karte hi purana chunav chhoot jaata hai",
+      "hidden.value = '';" in combo_src)
+
+# ------------------------------------------ bill ke form se hi nayi party
+check("form pe 'nayi party' ka button hai", 'id="newCustBtn"' in form)
+check("uska panel shuru me band hai", 'id="newCustBox" hidden' in form)
+
+with app.app_context():
+    n_cust_before = Customer.query.count()
+
+r = ok("form se nayi party bani",
+       client.post("/api/customers", data={"name": "FORM SE BANI", "city": "Aligarh"}))
+j = r.get_json()
+check("jawab me ok aaya", j.get("ok"), True)
+check("aur uski id bhi", isinstance(j.get("customer", {}).get("id"), int))
+with app.app_context():
+    check("party sach me ban gayi", Customer.query.count(), n_cust_before + 1)
+    made = Customer.query.filter_by(name="FORM SE BANI").first()
+    check("sheher bhi save hua", made.city, "Aligarh")
+    # State firm ki setting se aata hai — setting khaali ho toh khaali hi
+    # rehna chahiye, koi anjaan state nahi ghusni chahiye.
+    from models import Settings as _St
+    check("state firm ki setting se aata hai",
+          made.state, _St.get().default_customer_state or "")
+
+# Ek naam ki do party wali rok yahan bhi chalni chahiye — warna sudhaari hui
+# galti pichhle darwaze se wapas aa jaati.
+r2 = client.post("/api/customers", data={"name": "  form se bani  "})
+check("wahi naam dobara nahi banta -> HTTP", r2.status_code, 400)
+check("aur wajah bhi batata hai", bool(r2.get_json().get("error")))
+with app.app_context():
+    check("doosri party bani hi nahi", Customer.query.count(), n_cust_before + 1)
+
+check("khaali naam bhi nahi chalta",
+      client.post("/api/customers", data={"name": "   "}).status_code, 400)
+
+# Hataayi hui party form ki list me nahi aani chahiye
+with app.app_context():
+    made_id = Customer.query.filter_by(name="FORM SE BANI").first().id
+client.post(f"/customers/{made_id}/archive", follow_redirects=True)
+form2 = client.get("/invoices/new").data.decode("utf8", "ignore")
+check("hataayi hui party form ki list me nahi", "FORM SE BANI" in form2, False)
+client.post(f"/customers/{made_id}/unarchive", follow_redirects=True)
+
+# Hataaya hua maal bhi nahi
+with app.app_context():
+    hidden_item = Item(name="Chhupa Maal", unit="pcs", sale_price=5, track_stock=False)
+    db.session.add(hidden_item)
+    db.session.commit()
+    hidden_iid = hidden_item.id
+check("naya maal list me aata hai",
+      b"Chhupa Maal" in ok("maal ki list", client.get("/api/items")).data)
+client.post(f"/items/{hidden_iid}/archive", follow_redirects=True)
+check("hataaya hua maal list me nahi aata",
+      b"Chhupa Maal" in client.get("/api/items").data, False)
+with app.app_context():
+    db.session.delete(db.session.get(Item, hidden_iid))
+    db.session.commit()
+
+# Maal ki list me ab category bhi jaati hai — ek hi naap ka do tarah ka maal
+# alag pehchana ja sake
+items_api = ok("maal ki list", client.get("/api/items")).get_json()
+check("har maal ke saath uski category bhi", all("category" in i for i in items_api))
+
+# ------------------------------------------------ galti wahin dikhe, alert nahi
+# "alert(" shabd tippani me bhi aata hai — asli bulawa dhoondho.
+check("alert() ab nahi lagta",
+      ("alert('" in form) or ('alert("' in form), False)
+check("galti ka khaana form me hai", 'id="itemsError"' in form)
+check("party ke khaane pe bhi galti dikh sakti hai", "showError('custField'" in form)
+check("laal lakeer ka style maujood hai",
+      ".field-error" in open(os.path.join(os.path.dirname(__file__), "static", "style.css")).read())
+
+# ----------------------------------------- adhoora bill chhod ke mat jaao
+check("page chhodte waqt browser tokta hai", "beforeunload" in form)
+check("save karte waqt nahi tokta", "sending = true" in form)
+
+# ------------------------------------------------ maal ki list aane tak khabar
+check("list aane tak 'aa raha hai' dikhta hai", 'id="itemsLoading"' in form)
+check("purana angrezi '-- custom --' hat gaya", "-- custom --" in form, False)
+
+# -------------------------------------------- jodne wala form chhupa rahe
+cpage = ok("party ki screen", client.get("/customers")).data.decode("utf8", "ignore")
+check("jodne ka panel button ke peeche hai", 'id="adderBody" hidden' in cpage)
+check("kholne ka button hai", 'id="adderBtn"' in cpage)
+ipage = ok("maal ki screen", client.get("/items")).data.decode("utf8", "ignore")
+check("maal ki screen pe bhi wahi", 'id="adderBody" hidden' in ipage)
+check("galti hone par panel apne aap khulta hai", "flash.error" in cpage)
+
+# List hi pehle aani chahiye — panel band ho toh uske khaane bhi na dikhein
+check("band panel me khaane chhupe rehte hain",
+      cpage.index('id="adderBody"') < cpage.index('name="gstin"'))
+
 # ---------------------------------------------- purani screens abhi bhi chalti hain
 for path in ("/", "/invoices", "/customers", "/items", "/accounts"):
     ok(f"GET {path} (regression)", client.get(path))
@@ -1419,8 +1544,6 @@ for path in ("/", "/invoices", "/customers", "/items", "/accounts"):
 # adhoora bracket sirf live pe pakda jaata tha — page chup-chaap aadha kaam
 # karta. Ab har page ka JS yahin parse karke dekh lete hain. Node na ho toh
 # ye jaanch chhod di jaati hai; baaki test phir bhi chalte hain.
-import shutil as _sh                                       # noqa: E402
-import subprocess as _sp                                   # noqa: E402
 import tempfile as _tf                                     # noqa: E402
 
 if _sh.which("node"):

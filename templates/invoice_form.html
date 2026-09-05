@@ -47,15 +47,41 @@
 </div>
 </div>
 
-<div class="field">
-<label>{{ t('customer') }} *</label>
-<select id="f_customer" name="customer_id" required>
-<option value="">{{ t('select_customer') }}</option>
-{% for c in customers %}
-<option value="{{ c.id }}" {% if invoice and invoice.customer_id==c.id %}selected{% endif %}>{{ c.name }}</option>
-{% endfor %}
-</select>
-<div style="font-size:12px;color:var(--ink-faint);">{{ t('new_customer_hint') }} <a href="{{ url_for('customers') }}" target="_blank">{{ t('add_here') }}</a> {{ t('refresh_hint') }}</div>
+{# Party ab type karke dhoondhi jaati hai. Naam chhupe hue khaane me id
+   ke saath baithta hai — aadha likha hua naam bill pe nahi jaata. #}
+<div class="field" id="custField">
+<label for="f_customerName">{{ t('customer') }} *</label>
+<div style="position:relative;">
+<input type="text" id="f_customerName" placeholder="{{ t('customer_search_ph') }}"
+       value="{{ invoice.customer.name if invoice else '' }}">
+</div>
+<input type="hidden" id="f_customer" name="customer_id"
+       value="{{ invoice.customer_id if invoice else '' }}">
+</div>
+
+<div class="btn-row" style="margin-top:-4px;">
+<button class="btn btn-ghost btn-sm" type="button" id="newCustBtn"
+        aria-expanded="false" aria-controls="newCustBox">+ {{ t('new_customer_btn') }}</button>
+</div>
+
+{# Nayi party yahin ban jaati hai — page chhode bina, adhoora bill gaye bina.
+   Ye panel party wale khaane ke BAAHAR hai: andar rehne se iska galti wala
+   message us khaane ka bhi ban jaata tha, aur khaana saaf karte hi ye bhi
+   uth jaata tha. #}
+<div class="card panel-pad" id="newCustBox" hidden style="margin-bottom:14px;background:var(--sunk);">
+  <div class="form-grid three">
+    <div class="field"><label for="nc_name">{{ t('customer_name') }} *</label>
+      <input type="text" id="nc_name"></div>
+    <div class="field"><label for="nc_phone">{{ t('phone') }}</label>
+      <input type="tel" id="nc_phone" inputmode="tel"></div>
+    <div class="field"><label for="nc_city">{{ t('city') }}</label>
+      <input type="text" id="nc_city"></div>
+  </div>
+  <div class="field" id="nc_err_wrap" hidden><div class="field-error" id="nc_err"></div></div>
+  <div class="btn-row" style="margin-top:0;">
+    <button class="btn btn-primary btn-sm" type="button" id="nc_save">{{ t('save') }}</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="nc_cancel">{{ t('cancel') }}</button>
+  </div>
 </div>
 
 <div class="divider"></div>
@@ -68,6 +94,10 @@
 <tbody id="itemsBody"></tbody>
 </table>
 </div>
+{# Maal ki list server se aati hai. Jab tak na aaye, khaali table dikha ke
+   "kuch hai hi nahi" ka dhokha dena galat hai. #}
+<div id="itemsLoading" class="section-sub" style="margin-top:6px;">{{ t('loading') }}</div>
+<div class="field-error" id="itemsError" hidden></div>
 <button class="add-row-btn" type="button" id="addRowBtn">{{ t('add_item_row') }}</button>
 
 <div class="totals-box">
@@ -113,7 +143,19 @@
 <option value="mtr"><option value="ltr"><option value="roll"><option value="sheet">
 </datalist>
 
+<script src="{{ url_for('static', filename='combo.js') }}?v={{ asset_v('combo.js') }}"></script>
 <script>
+var COMBO_TXT = { none: {{ t('combo_none')|tojson }} };
+const ITEM_PH = {{ t('item_search_ph')|tojson }};
+const TXT = {
+  needCustomer: {{ t('flash_select_customer')|tojson }},
+  needItem:     {{ t('flash_valid_item_required')|tojson }},
+  leaving:      {{ t('leave_warning')|tojson }},
+  saving:       {{ t('busy')|tojson }}
+};
+const CUSTOMERS = [
+{% for c in customers %}{id: {{ c.id }}, label: {{ c.name|tojson }}, note: {{ (c.city or '')|tojson }}},
+{% endfor %}];
 let ITEM_MASTER = [];
 let rows = [];
 
@@ -142,6 +184,8 @@ async function loadItemMaster(){
         const res = await fetch("{{ url_for('api_items') }}");
         ITEM_MASTER = await res.json();
     }catch(e){ ITEM_MASTER = []; }
+    const spin = document.getElementById('itemsLoading');
+    if(spin) spin.hidden = true;
     renderRows();
 }
 
@@ -151,11 +195,14 @@ function renderRows(){
     rows.forEach((r,i)=>{
         const amount = (parseFloat(r.qty)||0)*(parseFloat(r.rate)||0);
         const tr = document.createElement('tr');
-        const options = ['<option value="">-- custom --</option>'].concat(
-            ITEM_MASTER.map(it=>`<option value="${it.id}" ${String(r.item_id)===String(it.id)?'selected':''}>${escapeAttr(it.name)}</option>`)
-        ).join('');
+        const picked = ITEM_MASTER.find(x=>String(x.id)===String(r.item_id));
         tr.innerHTML = `
-            <td><select data-idx="${i}" data-field="item_id">${options}</select></td>
+            <td><div style="position:relative;">
+              <input type="text" class="row-item" id="rowItem${i}" data-idx="${i}"
+                     value="${escapeAttr(picked ? picked.name : '')}"
+                     placeholder="${escapeAttr(ITEM_PH)}">
+              <input type="hidden" class="row-item-id" data-idx="${i}" value="${escapeAttr(r.item_id||'')}">
+            </div></td>
             <td><input type="text" value="${escapeAttr(r.description)}" data-idx="${i}" data-field="description" placeholder="{{ t('description') }}"></td>
             <td><input type="number" min="0" step="0.01" value="${r.qty}" data-idx="${i}" data-field="qty"></td>
             <td><input type="text" list="unitList" value="${escapeAttr(r.unit)}" data-idx="${i}" data-field="unit"></td>
@@ -166,13 +213,19 @@ function renderRows(){
         body.appendChild(tr);
     });
 
-    body.querySelectorAll('select[data-field="item_id"]').forEach(sel=>{
-        sel.addEventListener('change', (e)=>{
-            const idx = parseInt(e.target.dataset.idx);
-            const itemId = e.target.value;
-            rows[idx].item_id = itemId || null;
-            if(itemId){
-                const it = ITEM_MASTER.find(x=>String(x.id)===String(itemId));
+    // Har line ka maal bhi type karke dhoondha jaata hai. Maal chunte hi
+    // uska naam, unit aur rate apne aap bhar jaate hain — par uske baad wo
+    // khaane haath se badle ja sakte hain, kyunki ek hi maal kabhi alag
+    // rate pe bhi jaata hai.
+    body.querySelectorAll('.row-item').forEach(inp=>{
+        const idx = parseInt(inp.dataset.idx);
+        const hid = body.querySelector('.row-item-id[data-idx="'+idx+'"]');
+        Combo.attach(inp, hid, ITEM_MASTER.map(it=>({
+            id: it.id, label: it.name, note: it.category || ''
+        })), (opt)=>{
+            rows[idx].item_id = opt ? opt.id : null;
+            if(opt){
+                const it = ITEM_MASTER.find(x=>String(x.id)===String(opt.id));
                 if(it){
                     rows[idx].description = it.name;
                     rows[idx].unit = it.unit;
@@ -184,7 +237,10 @@ function renderRows(){
         });
     });
 
-    body.querySelectorAll('input').forEach(inp=>{
+    // Sirf wahi khaane jinka apna field naam hai. Combo wale do input
+    // (dikhne wala naam aur chhupi hui id) is loop me nahi aane chahiye —
+    // warna rows[idx][undefined] likh jaata hai.
+    body.querySelectorAll('input[data-field]').forEach(inp=>{
         inp.addEventListener('input', (e)=>{
             const idx = parseInt(e.target.dataset.idx);
             const field = e.target.dataset.field;
@@ -254,11 +310,135 @@ if(!IS_EDIT){
     });
 }
 
+// ------------------------------------------------------------ party ka picker
+const custCombo = Combo.attach(
+    document.getElementById('f_customerName'),
+    document.getElementById('f_customer'),
+    CUSTOMERS,
+    ()=> clearError('custField')
+);
+
+// ----------------------------------------------------- yahin se nayi party
+const ncBox = document.getElementById('newCustBox');
+const ncBtn = document.getElementById('newCustBtn');
+
+function ncOpen(on){
+    ncBox.hidden = !on;
+    ncBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if(on){ document.getElementById('nc_name').focus(); }
+}
+ncBtn.addEventListener('click', ()=> ncOpen(ncBox.hidden));
+document.getElementById('nc_cancel').addEventListener('click', ()=>{
+    document.getElementById('nc_err_wrap').hidden = true;
+    ncOpen(false);
+    ncBtn.focus();
+});
+
+document.getElementById('nc_save').addEventListener('click', async ()=>{
+    const btn = document.getElementById('nc_save');
+    const errWrap = document.getElementById('nc_err_wrap');
+    const err = document.getElementById('nc_err');
+    const body = new FormData();
+    body.append('name', document.getElementById('nc_name').value);
+    body.append('phone', document.getElementById('nc_phone').value);
+    body.append('city', document.getElementById('nc_city').value);
+    btn.disabled = true;
+    const was = btn.textContent;
+    btn.textContent = TXT.saving;
+    try{
+        const res = await fetch("{{ url_for('api_add_customer') }}", {method:'POST', body: body});
+        const data = await res.json();
+        if(!data.ok){
+            err.textContent = data.error || '';
+            errWrap.hidden = false;
+            return;
+        }
+        // Nayi party turant list me aur turant chuni hui — page hilta nahi.
+        CUSTOMERS.push({id: data.customer.id, label: data.customer.name, note: data.customer.city});
+        CUSTOMERS.sort((a,b)=> a.label.localeCompare(b.label));
+        custCombo.setOptions(CUSTOMERS);
+        document.getElementById('f_customer').value = data.customer.id;
+        document.getElementById('f_customerName').value = data.customer.name;
+        clearError('custField');
+        errWrap.hidden = true;
+        document.getElementById('nc_name').value = '';
+        document.getElementById('nc_phone').value = '';
+        document.getElementById('nc_city').value = '';
+        ncOpen(false);
+    }catch(e){
+        err.textContent = String(e);
+        errWrap.hidden = false;
+    }finally{
+        btn.disabled = false;
+        btn.textContent = was;
+    }
+});
+
+// -------------------------------------------------------- galti wahin dikhe
+// Pehle alert() aata tha: wo screen dhak leta hai, batata nahi ki kahan
+// galti hui, aur phone pe do baar dabana padta hai. Ab message us khaane ke
+// neeche aata hai aur nazar wahin chali jaati hai.
+function showError(fieldId, msg){
+    const f = document.getElementById(fieldId);
+    if(!f) return;
+    f.classList.add('has-error');
+    // Sirf is khaane ka apna message — andar kisi panel ka nahi.
+    let box = f.querySelector(':scope > .field-error');
+    if(!box){
+        box = document.createElement('div');
+        box.className = 'field-error';
+        f.appendChild(box);
+    }
+    box.textContent = msg;
+    const focusable = f.querySelector('input:not([type=hidden]), select, textarea');
+    if(focusable){ focusable.focus(); }
+    f.scrollIntoView({block:'center', behavior:'smooth'});
+}
+function clearError(fieldId){
+    const f = document.getElementById(fieldId);
+    if(!f) return;
+    f.classList.remove('has-error');
+    const box = f.querySelector(':scope > .field-error');
+    if(box){ box.remove(); }
+}
+function showItemsError(msg){
+    const box = document.getElementById('itemsError');
+    box.textContent = msg;
+    box.hidden = false;
+    box.scrollIntoView({block:'center', behavior:'smooth'});
+}
+
+// ------------------------------------------ adhoora bill chhod ke mat jaao
+// Aadha bhara hua bill sabse mehngi cheez hai — dobara banane me utna hi
+// waqt lagta hai. Isliye page chhodte waqt browser ek baar poochhta hai.
+// Save karte waqt nahi poochhta, warna har baar do click lagte.
+let dirty = false;
+let sending = false;
+document.getElementById('invForm').addEventListener('input', ()=>{ dirty = true; });
+document.getElementById('invForm').addEventListener('change', ()=>{ dirty = true; });
+window.addEventListener('beforeunload', (e)=>{
+    if(!dirty || sending) return;
+    e.preventDefault();
+    e.returnValue = TXT.leaving;
+    return TXT.leaving;
+});
+
 document.getElementById('invForm').addEventListener('submit', (e)=>{
-    const custSel = document.getElementById('f_customer');
-    if(!custSel.value){ alert('{{ t("flash_select_customer") }}'); e.preventDefault(); return; }
+    clearError('custField');
+    document.getElementById('itemsError').hidden = true;
+
+    if(!document.getElementById('f_customer').value){
+        e.preventDefault();
+        showError('custField', TXT.needCustomer);
+        return;
+    }
     const valid = rows.filter(r=> r.description && r.description.trim() && (parseFloat(r.qty)||0) > 0);
-    if(valid.length===0){ alert('{{ t("flash_valid_item_required") }}'); e.preventDefault(); return; }
+    if(valid.length===0){
+        e.preventDefault();
+        showItemsError(TXT.needItem);
+        return;
+    }
+    sending = true;
     document.getElementById('itemsJson').value = JSON.stringify(rows);
 });
 
