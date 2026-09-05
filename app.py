@@ -1,5 +1,6 @@
 import os
 import json
+import secrets
 from datetime import datetime, date
 from functools import wraps
 
@@ -112,7 +113,7 @@ def inject_globals():
     settings = Settings.get()
     return dict(firm_settings=settings, state_names=STATE_NAMES, today=date.today().isoformat(),
                 t=t, current_lang=session.get("lang", "en"), invoice_fonts=INVOICE_FONTS,
-                asset_v=_asset_v)
+                asset_v=_asset_v, new_form_key=new_form_key)
 
 
 @app.after_request
@@ -257,10 +258,47 @@ def _today_snapshot(today):
     }
 
 
+def _stock_alerts(limit=6):
+    """Maal khatam hone wala hai — par sirf jahan sach me baat hai.
+
+    Do galtiyan theek ki gayi hain:
+
+    1. Jis maal ka stock 0 hai aur reorder bhi 0 (yaani us par nazar rakhi hi
+       nahi jaati), wo "reorder se neeche" dikhta tha. 0 <= 0 sach hai, par
+       matlab kuch nahi. Ab wo list me nahi aata.
+    2. Stock minus me chala jaye toh ye alag baat hai — us maal ka hisaab hi
+       galat hai (bina entry ke bik gaya). Wo ab alag, laal me, sabse upar.
+
+    Poori list nahi dikhaayi jaati — upar ke chand, aur baaki ke liye "sab
+    dekho". Dashboard pe 40 line ki list kisi ke kaam nahi aati.
+    """
+    tracked = Item.query.filter(Item.track_stock == True,
+                                Item.archived_at.is_(None)).all()
+    neg = sorted([i for i in tracked if (i.current_stock or 0) < 0],
+                 key=lambda i: i.current_stock or 0)
+    low = [i for i in tracked
+           if (i.current_stock or 0) >= 0
+           and (i.reorder_level or 0) > 0
+           and (i.current_stock or 0) <= (i.reorder_level or 0)]
+    low.sort(key=lambda i: ((i.current_stock or 0) - (i.reorder_level or 0),
+                            i.name.lower()))
+    return low[:limit], neg[:limit], len(low)
+
+
 @app.route("/")
 @login_required
 def dashboard():
-    invoices = Invoice.query.all()
+    all_rows = Invoice.query.all()
+
+    # Kul-jama sirf un billon ka jinme rate laga hua hai.
+    #
+    # Pehle challan bhi isi ginti me aa jaate the. Challan pe rate hota hi
+    # nahi, isliye uska grand_total 0 rehta hai — "Total Invoices" me wo gina
+    # jaata tha par "Total Billed" me kuch nahi jodta. Nateeja: bill ki ginti
+    # zyada dikhti thi aur aukat (average) kam. Ab challan sirf apni jagah
+    # ginta hai: "Challan waiting to be billed".
+    invoices = [i for i in all_rows if not i.hide_pricing]
+
     count = len(invoices)
     billed = sum(i.grand_total for i in invoices)
     received = sum(i.amount_received for i in invoices)
@@ -271,14 +309,21 @@ def dashboard():
     cgst = sum(i.cgst_amount for i in month_invoices)
     sgst = sum(i.sgst_amount for i in month_invoices)
     igst = sum(i.igst_amount for i in month_invoices)
+    month_billed = sum(i.grand_total for i in month_invoices)
 
-    recent = sorted(invoices, key=lambda i: i.created_at, reverse=True)[:8]
-    low_stock = Item.query.filter(Item.track_stock == True, Item.current_stock <= Item.reorder_level).all()
+    # Haal ki list me challan bhi aate hain — wahan sawal "abhi kya hua" hai,
+    # "kitna kamaya" nahi. Hataaye hue bill kahin nahi aate.
+    recent = sorted([i for i in all_rows if i.archived_at is None],
+                    key=lambda i: i.created_at, reverse=True)[:8]
+
+    low_stock, neg_stock, low_total = _stock_alerts()
     pending_challans = Invoice.query.filter_by(hide_pricing=True, consolidated_into_id=None).count()
 
     return render_template(
         "dashboard.html", count=count, billed=billed, received=received, pending=pending,
-        cgst=cgst, sgst=sgst, igst=igst, recent=recent, low_stock=low_stock,
+        month_billed=month_billed,
+        cgst=cgst, sgst=sgst, igst=igst, recent=recent,
+        low_stock=low_stock, neg_stock=neg_stock, low_total=low_total,
         pending_challans=pending_challans,
         # `today` naam global me pehle se ek tareekh hai — usi naam se yahan
         # dictionary bhejna baad me kisi ko dhokha dega.
@@ -310,6 +355,65 @@ def _same_party(name, skip_id=None):
         if " ".join((c.name or "").split()).lower() == want:
             return c
     return None
+
+
+def new_form_key():
+    """Ek form ke liye ek parchi ka number.
+
+    Ye JS wali rok ke peeche doosri deewar hai. JS band ho, connection atak
+    jaye aur aadmi Refresh daba de, ya do tab me ek hi form khula ho — teenon
+    haalat me screen se ek hi parchi aati hai. Us parchi ka number ek baar
+    khap gaya toh dobara nahi khapta, isliye doosra bill banta hi nahi.
+    """
+    return secrets.token_hex(8)
+
+
+def form_key_used(key):
+    """Ye parchi pehle khap chuki hai kya — aur nahi, toh ab khap gayi.
+
+    Sirf pichhli 40 parchiyan yaad rakhte hain: ek aadmi ek sitting me itne
+    form nahi bharta, aur session cookie chhoti rehni chahiye.
+    """
+    key = (key or "").strip()
+    if not key:
+        return False
+    used = session.get("used_form_keys") or []
+    if key in used:
+        return True
+    used.append(key)
+    session["used_form_keys"] = used[-40:]
+    return False
+
+
+def _archive_view(rows):
+    """List me kya dikhega — zinda cheezein, ya hataayi hui.
+
+    Roz ki nazar me hataayi hui cheez aani hi nahi chahiye, warna "hataane"
+    ka koi matlab hi nahi bachta. Par wo gayi nahi hai — ek chip daba ke
+    dekhi aur wapas laayi ja sakti hai.
+    """
+    show = request.args.get("show", "")
+    archived_count = sum(1 for r in rows if r.archived_at is not None)
+    if show == "archived":
+        rows = [r for r in rows if r.archived_at is not None]
+    else:
+        rows = [r for r in rows if r.archived_at is None]
+    return rows, show, archived_count
+
+
+def _live_customers(keep=None):
+    """Naya bill banate waqt sirf chaalu party dikhti hai.
+
+    Hataayi hui party purane billon pe waise ki waisi rehti hai — sirf nayi
+    entry me haath nahi aati, taaki dobara galti se usi pe bill na bane.
+    Purana bill khol ke sudhaarte waqt uski apni party hamesha rehti hai,
+    chahe wo hata di gayi ho — warna bill save karte hi party badal jaati.
+    """
+    rows = (Customer.query.filter(Customer.archived_at.is_(None))
+            .order_by(Customer.name).all())
+    if keep is not None and keep not in rows:
+        rows = sorted(rows + [keep], key=lambda c: c.name)
+    return rows
 
 
 @app.route("/customers", methods=["GET", "POST"])
@@ -346,7 +450,9 @@ def customers():
         items = [c for c in items
                  if q in c.name.lower() or q in (c.phone or "")
                  or q in (c.city or "").lower()]
-    return render_template("customers.html", customers=items, q=q, settings=settings)
+    items, show, archived_count = _archive_view(items)
+    return render_template("customers.html", customers=items, q=q, settings=settings,
+                           show=show, archived_count=archived_count)
 
 
 @app.route("/customers/<int:cid>/edit", methods=["GET", "POST"])
@@ -389,6 +495,63 @@ def delete_customer(cid):
         db.session.commit()
         flash(t("flash_customer_deleted"), "success")
     return redirect(url_for("customers"))
+
+
+# --------------------------------------------------------------- archive karna
+#
+# Hataana aakhri raasta hona chahiye. Roz ke kaam me jo cheez "ab nahi
+# chahiye" hoti hai wo galat nahi hoti — bas purani ho jaati hai: chhoot gayi
+# party, band ho gaya product. Use mitaane se saal bhar ka record chala jaata
+# hai; "list se hata do" se sirf nazar se hatti hai.
+#
+# Isliye ab har jagah pehla button "list se hatao" hai aur wapas laane ka
+# raasta usi screen pe rehta hai. Mitaane wala button ab bhi hai — par wo
+# maalik ke paas hai aur poochhta hai ki kis cheez ki baat ho rahi hai.
+
+
+def _archive_toggle(model, obj_id, on, back, name_of):
+    """Ek cheez ko list se hata do ya wapas le aao."""
+    obj = model.query.get_or_404(obj_id)
+    obj.archived_at = datetime.utcnow() if on else None
+    db.session.commit()
+    flash(t("flash_archived" if on else "flash_unarchived", name=name_of(obj)), "success")
+    return redirect(request.referrer or url_for(back))
+
+
+@app.route("/customers/<int:cid>/archive", methods=["POST"])
+@login_required
+def archive_customer(cid):
+    return _archive_toggle(Customer, cid, True, "customers", lambda c: c.name)
+
+
+@app.route("/customers/<int:cid>/unarchive", methods=["POST"])
+@login_required
+def unarchive_customer(cid):
+    return _archive_toggle(Customer, cid, False, "customers", lambda c: c.name)
+
+
+@app.route("/items/<int:iid>/archive", methods=["POST"])
+@login_required
+def archive_item(iid):
+    return _archive_toggle(Item, iid, True, "items", lambda i: i.name)
+
+
+@app.route("/items/<int:iid>/unarchive", methods=["POST"])
+@login_required
+def unarchive_item(iid):
+    return _archive_toggle(Item, iid, False, "items", lambda i: i.name)
+
+
+@app.route("/invoices/<int:invid>/archive", methods=["POST"])
+@login_required
+def archive_invoice(invid):
+    return _archive_toggle(Invoice, invid, True, "invoices", lambda i: i.invoice_no)
+
+
+@app.route("/invoices/<int:invid>/unarchive", methods=["POST"])
+@login_required
+def unarchive_invoice(invid):
+    return _archive_toggle(Invoice, invid, False, "invoices", lambda i: i.invoice_no)
 
 
 def _resolve_unit(form):
@@ -441,9 +604,11 @@ def items():
     elif cat_filter == "none":
         rows = [i for i in rows if not i.category_id]
     categories = Category.query.order_by(Category.name).all()
+    rows, show, archived_count = _archive_view(rows)
     return render_template("items.html", items=rows, q=q, categories=categories,
                            cat_filter=cat_filter, common_units=COMMON_UNITS, settings=settings,
-                           can_edit_price=_can_edit_price(settings))
+                           can_edit_price=_can_edit_price(settings),
+                           show=show, archived_count=archived_count)
 
 
 @app.route("/items/<int:iid>/edit", methods=["GET", "POST"])
@@ -619,7 +784,9 @@ def invoices():
         rows = [i for i in rows if i.hide_pricing]
     elif filt == "invoice":
         rows = [i for i in rows if not i.hide_pricing]
-    return render_template("invoices.html", invoices=rows, q=q, filt=filt)
+    rows, show, archived_count = _archive_view(rows)
+    return render_template("invoices.html", invoices=rows, q=q, filt=filt,
+                           show=show, archived_count=archived_count)
 
 
 @app.route("/invoices/new", methods=["GET", "POST"])
@@ -633,7 +800,7 @@ def new_invoice():
     next_challan_no = f"{settings.challan_prefix}-{str(settings.next_challan_no).zfill(4)}"
     return render_template("invoice_form.html", invoice=None, next_invoice_no=next_no,
                            next_challan_no=next_challan_no,
-                           customers=Customer.query.order_by(Customer.name).all(),
+                           customers=_live_customers(),
                            can_give_discount=_can_give_discount(settings))
 
 
@@ -652,11 +819,17 @@ def edit_invoice(invid):
         return _save_invoice(inv, settings)
     return render_template("invoice_form.html", invoice=inv, next_invoice_no=inv.invoice_no,
                            next_challan_no=inv.invoice_no,
-                           customers=Customer.query.order_by(Customer.name).all(),
+                           customers=_live_customers(keep=inv.customer),
                            can_give_discount=_can_give_discount(settings))
 
 
 def _save_invoice(existing_invoice, settings):
+    # Naya bill do baar na bane. Purana bill sudhaarna alag baat hai — usme
+    # naya number nahi nikalta, isliye wahan rok ki zaroorat nahi.
+    if existing_invoice is None and form_key_used(request.form.get("form_key")):
+        flash(t("flash_already_saved"), "error")
+        return redirect(url_for("invoices"))
+
     customer_id = request.form.get("customer_id")
     customer = Customer.query.get(int(customer_id)) if customer_id else None
     if not customer:
@@ -1423,6 +1596,12 @@ def _run_startup_migrations():
                            "city VARCHAR(120) DEFAULT ''")
     _add_column_if_missing(inspector, "customer", "map_link",
                            "map_link VARCHAR(500) DEFAULT ''")
+    # "List se hata do" ka khaana — mitaane ka nahi. Khaali rehta hai, isliye
+    # purana saara data waise ka waisa zinda rehta hai.
+    _add_column_if_missing(inspector, "customer", "archived_at", "archived_at TIMESTAMP")
+    _add_column_if_missing(inspector, "item", "archived_at", "archived_at TIMESTAMP")
+    _add_column_if_missing(inspector, "invoice", "archived_at", "archived_at TIMESTAMP")
+    _add_column_if_missing(inspector, "purchase_order", "archived_at", "archived_at TIMESTAMP")
     # Ek chat ke kai role ho sakte hain, aur ek order kai group me jaata hai.
     # Isliye msg ki pehchan ab "chat:msg" jodon me rehti hai — purane khaane
     # uske liye chhote pad gaye the.

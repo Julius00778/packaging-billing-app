@@ -118,6 +118,15 @@ class Customer(db.Model):
     credit_days = db.Column(db.Integer, default=30)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Purani cheez list se hata di gayi hai — mitaayi nahi gayi. Hataana
+    # hamesha aakhri raasta hona chahiye: ek galat click se saal bhar ka
+    # record nahi jaana chahiye. Khaali = zinda.
+    archived_at = db.Column(db.DateTime, nullable=True)
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
     @property
     def map_url(self):
         """Map kholne ka safe link — ya khaali.
@@ -181,6 +190,15 @@ class Item(db.Model):
     track_stock = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Purani cheez list se hata di gayi hai — mitaayi nahi gayi. Hataana
+    # hamesha aakhri raasta hona chahiye: ek galat click se saal bhar ka
+    # record nahi jaana chahiye. Khaali = zinda.
+    archived_at = db.Column(db.DateTime, nullable=True)
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
     category = db.relationship("Category")
 
 
@@ -218,6 +236,15 @@ class Invoice(db.Model):
     amount_received = db.Column(db.Float, default=0.0)
     notes = db.Column(db.String(500), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Purani cheez list se hata di gayi hai — mitaayi nahi gayi. Hataana
+    # hamesha aakhri raasta hona chahiye: ek galat click se saal bhar ka
+    # record nahi jaana chahiye. Khaali = zinda.
+    archived_at = db.Column(db.DateTime, nullable=True)
+
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
 
     # Delivery-challan support: goods sent to a party without pricing shown, rate
     # added later when the batch is billed (common in this business — payment for

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "items" %}
 {% block title %}{{ t('nav_items') }}{% endblock %}
+{% import "_archive.html" as A with context %}
 {% block content %}
 
 <div class="card panel-pad" style="margin-bottom:20px;">
@@ -69,12 +70,13 @@
 <button class="btn btn-ghost" type="submit">{{ t('search') }}</button>
 </form>
 </div>
+{{ A.chips(show, archived_count) }}
 <div class="table-wrap">
 <table>
 <thead><tr><th>{{ t('name') }}</th><th>{{ t('category') }}</th><th>{{ t('unit') }}</th><th class="num">{{ t('price') }}</th><th class="num">{{ t('stock') }}</th><th></th></tr></thead>
 <tbody>
 {% for it in items %}
-<tr>
+<tr class="{{ A.row_class(it.is_archived) }}">
 <td>{{ it.name }}</td>
 <td>{{ it.category.name if it.category else "—" }}</td>
 <td>{{ it.unit }}</td>
@@ -82,9 +84,14 @@
 {# Badge cell pe nahi, cell ke andar — warna khaana khud badge ban ke sikud
    jaata hai aur column ki katar toot jaati hai. #}
 <td class="num">
+{# "Kam maal" tabhi jab uspe nazar rakhi jaati ho. Jis maal ka reorder 0
+   hai uspe koi had hi nahi lagi — uska 0 stock khabar nahi hai. Aur minus
+   me hona alag baat hai: wahan hisaab hi galat hai. #}
 {% if it.track_stock %}
-  {% if it.current_stock <= it.reorder_level %}
-    <span class="badge unpaid mono">{{ "%.2f"|format(it.current_stock) }}</span>
+  {% if it.current_stock < 0 %}
+    <span class="badge badge-bad mono" title="{{ t('neg_stock_alert') }}">{{ "%.2f"|format(it.current_stock) }}</span>
+  {% elif it.reorder_level > 0 and it.current_stock <= it.reorder_level %}
+    <span class="badge badge-warn mono" title="{{ t('low_stock_alert') }}">{{ "%.2f"|format(it.current_stock) }}</span>
   {% else %}{{ "%.2f"|format(it.current_stock) }}{% endif %}
 {% else %}—{% endif %}
 </td>
@@ -93,9 +100,12 @@
 {% if it.track_stock %}
 <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('stockModal{{it.id}}').style.display='flex'">{{ t('add_stock_btn') }}</button>
 {% endif %}
+{{ A.row_buttons(url_for('archive_item', iid=it.id),
+                 url_for('unarchive_item', iid=it.id), it.name, it.is_archived) }}
 {% if current_user.is_owner %}
-<form method="POST" action="{{ url_for('delete_item', iid=it.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('confirm_delete') }}');">
-<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
+<form method="POST" action="{{ url_for('delete_item', iid=it.id) }}" style="display:inline;"
+      onsubmit="return confirm({{ t('confirm_delete_named', name=it.name)|tojson }});">
+<button class="btn btn-ghost btn-sm btn-risky" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}
 </td>
@@ -105,7 +115,13 @@
 </table>
 </div>
 {% if not items %}
+{% if show == 'archived' %}
+{# Hataayi hui list khaali hai — yahan "abhi shuru karo" likhna galat
+   hai, kyunki shuru toh ho chuka hai; bas kuch hataaya nahi gaya. #}
+<div class="empty-state"><div class="big">{{ t('arch_empty') }}</div><div>{{ t('arch_empty_hint') }}</div></div>
+{% else %}
 <div class="empty-state"><div class="big">{{ t('no_items_yet') }}</div><div>{{ t('no_items_hint') }}</div></div>
+{% endif %}
 {% endif %}
 </div>
 

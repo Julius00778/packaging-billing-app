@@ -1,0 +1,50 @@
+{# ============================================================================
+   "List se hata do" — mitaane ki jagah.
+
+   Roz ke kaam me jo cheez hatti hai wo galat nahi hoti, bas purani ho jaati
+   hai: chhoot gayi party, band ho gaya product, rad hua order. Use mitaane se
+   saal bhar ka record chala jaata hai. Isliye pehla button ab "hatao" hai —
+   aur wapas laane ka raasta usi screen pe rehta hai.
+
+   Chip pe jo bhi khoj ya filter laga hua hai wo bana rehta hai — request ke
+   apne arguments hi aage bhej diye jaate hain.
+   ========================================================================= */
+#}
+
+{% macro chips(show, archived_count) -%}
+  {%- if archived_count or show == 'archived' -%}
+  <div class="toolbar" style="margin-top:-8px;">
+    <a class="btn btn-ghost btn-sm {% if show != 'archived' %}active{% endif %}"
+       href="{{ url_for(request.endpoint, **dict(request.view_args or {}, **dict(request.args, show=''))) }}">
+      {{ t('arch_live') }}
+    </a>
+    <a class="btn btn-ghost btn-sm {% if show == 'archived' %}active{% endif %}"
+       href="{{ url_for(request.endpoint, **dict(request.view_args or {}, **dict(request.args, show='archived'))) }}">
+      {{ t('arch_archived_n', n=archived_count) }}
+    </a>
+  </div>
+  {%- endif -%}
+{%- endmacro %}
+
+
+{# Ek row ka "hatao" ya "wapas lao" button.
+
+   Wapas laane pe kuch poochha nahi jaata — us kaam se kuch bigadta hi nahi.
+   Hataane pe ek baar poochha jaata hai, aur sawaal me us cheez ka apna naam
+   likha hota hai — "kya aap sure hain?" padh ke koi ruk nahi paata. #}
+{% macro row_buttons(archive_url, unarchive_url, name, is_archived) -%}
+  {%- if is_archived -%}
+    <form method="POST" action="{{ unarchive_url }}" style="display:inline;">
+      <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_restore') }}</button>
+    </form>
+  {%- else -%}
+    <form method="POST" action="{{ archive_url }}" style="display:inline;"
+          onsubmit="return confirm({{ t('arch_confirm', name=name)|tojson }});">
+      <button class="btn btn-ghost btn-sm" type="submit">{{ t('arch_archive') }}</button>
+    </form>
+  {%- endif -%}
+{%- endmacro %}
+
+
+{# Hataayi hui row halki dikhni chahiye, warna dono list ek jaisi lagti hain. #}
+{% macro row_class(is_archived) -%}{% if is_archived %}row-archived{% endif %}{%- endmacro %}

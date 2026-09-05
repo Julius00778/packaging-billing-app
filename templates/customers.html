@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = "customers" %}
 {% block title %}{{ t('nav_customers') }}{% endblock %}
+{% import "_archive.html" as A with context %}
 {% block content %}
 
 <div class="card panel-pad" style="margin-bottom:20px;">
@@ -46,12 +47,13 @@
 <button class="btn btn-ghost" type="submit">{{ t('search') }}</button>
 </form>
 </div>
+{{ A.chips(show, archived_count) }}
 <div class="table-wrap">
 <table>
 <thead><tr><th>{{ t('name') }}</th><th>{{ t('phone') }}</th><th>{{ t('city') }}</th><th>{{ t('state') }}</th><th>GSTIN</th><th>{{ t('default_credit_days') }}</th><th></th></tr></thead>
 <tbody>
 {% for c in customers %}
-<tr>
+<tr class="{{ A.row_class(c.is_archived) }}">
 <td>{{ c.name }}</td>
 <td>{{ c.phone }}</td>
 <td>{{ c.city }}</td>
@@ -64,9 +66,12 @@
 {% endif %}
 <a class="btn btn-ghost btn-sm" href="{{ url_for('customer_khata', cid=c.id) }}">{{ t('ledger') }}</a>
 <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_customer', cid=c.id) }}">{{ t('edit') }}</a>
+{{ A.row_buttons(url_for('archive_customer', cid=c.id),
+                 url_for('unarchive_customer', cid=c.id), c.name, c.is_archived) }}
 {% if current_user.is_owner %}
-<form method="POST" action="{{ url_for('delete_customer', cid=c.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('confirm_delete') }}');">
-<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
+<form method="POST" action="{{ url_for('delete_customer', cid=c.id) }}" style="display:inline;"
+      onsubmit="return confirm({{ t('confirm_delete_named', name=c.name)|tojson }});">
+<button class="btn btn-ghost btn-sm btn-risky" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}
 </td>
@@ -76,7 +81,13 @@
 </table>
 </div>
 {% if not customers %}
+{% if show == 'archived' %}
+{# Hataayi hui list khaali hai — yahan "abhi shuru karo" likhna galat
+   hai, kyunki shuru toh ho chuka hai; bas kuch hataaya nahi gaya. #}
+<div class="empty-state"><div class="big">{{ t('arch_empty') }}</div><div>{{ t('arch_empty_hint') }}</div></div>
+{% else %}
 <div class="empty-state"><div class="big">{{ t('no_customers_yet') }}</div><div>{{ t('no_customers_hint') }}</div></div>
+{% endif %}
 {% endif %}
 </div>
 

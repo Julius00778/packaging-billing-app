@@ -2,6 +2,7 @@
 {% set active = "invoices" %}
 {% block title %}{{ t('nav_invoices') }}{% endblock %}
 {% import "_badges.html" as B with context %}
+{% import "_archive.html" as A with context %}
 {% block content %}
 
 <div class="toolbar">
@@ -19,6 +20,7 @@
 <a class="btn btn-ghost btn-sm {% if filt=='invoice' %}active{% endif %}" href="{{ url_for('invoices', q=q, type='invoice') }}">{{ t('filter_invoices') }}</a>
 <a class="btn btn-ghost btn-sm {% if filt=='challan' %}active{% endif %}" href="{{ url_for('invoices', q=q, type='challan') }}">{{ t('filter_challans') }}</a>
 </div>
+{{ A.chips(show, archived_count) }}
 
 <div class="card panel-pad">
 <div class="table-wrap">
@@ -26,7 +28,7 @@
 <thead><tr><th>{{ t('invoice_no') }}</th><th>{{ t('date') }}</th><th>{{ t('customer') }}</th><th class="num">{{ t('amount') }}</th><th>{{ t('status') }}</th><th></th></tr></thead>
 <tbody>
 {% for inv in invoices %}
-<tr>
+<tr class="{{ A.row_class(inv.is_archived) }}">
 <td class="mono">{{ inv.invoice_no }}
 {% if inv.hide_pricing %}<span class="badge challan">{{ t('challan_badge') }}</span>{% endif %}
 {% if inv.consolidated_into_id %}<div style="font-size:11px;color:var(--ink-faint);margin-top:2px;">{{ t('converted_to') }} {{ inv.consolidated_into.invoice_no }}</div>{% endif %}
@@ -41,9 +43,15 @@
 {% if not inv.consolidated_into_id %}
 <a class="btn btn-ghost btn-sm" href="{{ url_for('edit_invoice', invid=inv.id) }}">{{ t('edit') }}</a>
 {% endif %}
+{{ A.row_buttons(url_for('archive_invoice', invid=inv.id),
+                 url_for('unarchive_invoice', invid=inv.id), inv.invoice_no, inv.is_archived) }}
 {% if current_user.is_owner %}
-<form method="POST" action="{{ url_for('delete_invoice', invid=inv.id) }}" style="display:inline;" onsubmit="return confirm('{{ t('stock_restore_confirm') }}');">
-<button class="btn btn-ghost btn-sm" type="submit">{{ t('delete') }}</button>
+{# Mitaane ka sawaal ab bataata hai ki kaunsa bill, kiska, kitne ka —
+   aur ye ki maal stock me wapas chadh jayega. #}
+<form method="POST" action="{{ url_for('delete_invoice', invid=inv.id) }}" style="display:inline;"
+      onsubmit="return confirm({{ t('invoice_delete_confirm', no=inv.invoice_no, party=inv.customer.name,
+                                    amt=('%.2f'|format(inv.grand_total)))|tojson }});">
+<button class="btn btn-ghost btn-sm btn-risky" type="submit">{{ t('delete') }}</button>
 </form>
 {% endif %}
 </td>
@@ -53,7 +61,13 @@
 </table>
 </div>
 {% if not invoices %}
+{% if show == 'archived' %}
+{# Hataayi hui list khaali hai — yahan "abhi shuru karo" likhna galat
+   hai, kyunki shuru toh ho chuka hai; bas kuch hataaya nahi gaya. #}
+<div class="empty-state"><div class="big">{{ t('arch_empty') }}</div><div>{{ t('arch_empty_hint') }}</div></div>
+{% else %}
 <div class="empty-state"><div class="big">{{ t('no_invoices_yet') }}</div><div>{{ t('no_invoices_hint2') }}</div></div>
+{% endif %}
 {% endif %}
 </div>
 
